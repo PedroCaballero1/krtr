@@ -4,16 +4,17 @@ Guidance for Claude Code when writing or modifying code in this repository.
 
 ## Project structure
 
-`krtr/krtr/` is organized as **vertical slices**, not by technical layer: each
-subdirectory is a single, self-contained concept, and further nesting narrows that
-concept into concrete implementations. This is encapsulation and Single Responsibility
-applied at the package level — a vertical should be understandable, testable, and
-replaceable without touching unrelated verticals.
+The `krtr` package (repo root: `krtr/`) is organized as **vertical slices**, not by
+technical layer: each subdirectory directly under `krtr/` is a single, self-contained
+concept, and further nesting narrows that concept into concrete implementations. This
+is encapsulation and Single Responsibility applied at the package level — a vertical
+should be understandable, testable, and replaceable without touching unrelated
+verticals.
 
-Example: `krtr/krtr/database/` is the "database" concept; each backend gets its own
-sub-vertical: `krtr/krtr/database/s3/`, `krtr/krtr/database/snowflake/`. Shared
-database-wide contracts/config live in `database/`; backend-specific logic stays inside
-its own backend directory and does not leak into siblings.
+Example: `krtr/database/` is the "database" concept; each backend gets its own
+sub-vertical: `krtr/database/s3/`, `krtr/database/snowflake/`. Shared database-wide
+contracts/config live in `database/`; backend-specific logic stays inside its own
+backend directory and does not leak into siblings.
 
 At the discretion of whoever is implementing a subpackage, but preferred by default,
 each subpackage should expose:
@@ -30,8 +31,28 @@ its implementation.
 ### CLI
 
 The CLI is defined in `krtr/cli/` using `typer`. CLI commands should stay thin: parse
-input, call into the relevant vertical under `krtr/krtr/`, and present the result.
-Business logic belongs in the vertical package it concerns, not in the CLI layer.
+input, call into the relevant vertical under `krtr/`, and present the result. Business
+logic belongs in the vertical package it concerns, not in the CLI layer.
+
+`krtr/cli/` **mirrors the structure of `krtr/`**: for each vertical (and sub-vertical)
+under `krtr/`, there is a matching module or subpackage under `krtr/cli/` that exposes
+its commands, registered onto the root `app` (from `krtr/cli/main.py`) via
+`app.add_typer(...)`. Example: `krtr/database/s3/` gets `krtr/cli/database/s3.py`
+(or `krtr/cli/database/s3/` if it needs several command modules). A vertical with no
+user-facing commands does not need a CLI counterpart — the mirroring is structural
+where commands exist, not mandatory for every file.
+
+### Tests
+
+`tests/` (at the repo root) **mirrors the structure of `krtr/` 1:1**, including
+`krtr/cli/`. Every module's tests live at the same relative path under `tests/` as the
+module itself under `krtr/`: `krtr/database/s3/client.py` is tested by
+`tests/database/s3/test_client.py`, `krtr/cli/database/s3.py` is tested by
+`tests/cli/database/test_s3.py`, and so on. Each directory under `tests/` gets an
+`__init__.py` (matching its `krtr/` counterpart) so that same-named test files in
+different verticals (e.g. multiple `test_config.py`) don't collide during collection.
+See the Testing philosophy section below for what a test in this tree must actually
+assert.
 
 ## Clean code practices (mandatory)
 
@@ -82,7 +103,7 @@ Example shape:
 class DatabaseBackend(str, Enum):
     """The database backends this repository knows how to connect to.
 
-    Used by `krtr/krtr/database/` to select which backend-specific client to
+    Used by `krtr/database/` to select which backend-specific client to
     construct, and by the CLI to validate the `--backend` option.
     """
 
