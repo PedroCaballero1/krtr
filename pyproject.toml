@@ -35,3 +35,14 @@ build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
 packages = ["krtr"]
+
+[tool.semantic_release]
+version_toml = ["pyproject.toml:project.version"]
+commit_parser = "conventional"
+tag_format = "v{version}"
+major_on_zero = false
+commit_author = "github-actions[bot] <github-actions[bot]@users.noreply.github.com>"
+commit_message = "chore(release): {version}"
+
+[tool.semantic_release.branches.main]
+match = "master"
