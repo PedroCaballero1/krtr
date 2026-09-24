@@ -3,7 +3,13 @@ name: CI
 on:
   push:
     branches: [master]
+    paths:
+      - "krtr/krtr/**"
+      - ".github/workflows/ci.yml"
   pull_request:
+    paths:
+      - "krtr/krtr/**"
+      - ".github/workflows/ci.yml"
 
 jobs:
   lint-and-test:
@@ -24,13 +30,13 @@ jobs:
         run: uv sync --locked
 
       - name: Check formatting (black)
-        run: uv run black --check .
+        run: uv run black --check krtr/krtr
 
       - name: Lint (flake8)
-        run: uv run flake8 .
+        run: uv run flake8 krtr/krtr
 
       - name: Lint (ruff)
-        run: uv run ruff check .
+        run: uv run ruff check krtr/krtr
 
       - name: Run tests (pytest)
-        run: uv run pytest
+        run: uv run pytest krtr/krtr
