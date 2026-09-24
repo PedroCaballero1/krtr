@@ -34,9 +34,7 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
 
-      - name: Bump version, tag, and push release
+      - name: Bump version, update changelog, tag, and create release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          uvx --from python-semantic-release semantic-release version
-          uvx --from python-semantic-release semantic-release publish
+        run: uvx --from python-semantic-release semantic-release version

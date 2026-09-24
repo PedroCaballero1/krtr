@@ -46,3 +46,6 @@ commit_message = "chore(release): {version}"
 
 [tool.semantic_release.branches.main]
 match = "master"
+
+[tool.semantic_release.changelog.default_templates]
+mask_initial_release = false
