@@ -2,6 +2,14 @@
 
 <!-- version list -->
 
+## v1.0.2 (2026-09-24)
+
+### Bug Fixes
+
+- **changelog**: Restore the version-list insertion marker
+  ([`4dd6a3d`](https://github.com/PedroCaballero1/krtr/commit/4dd6a3d4b53b9bd3f28f4758462f49438f3debb7))
+
+
 ## v1.0.0 (2026-09-24)
 
 ### Chores
