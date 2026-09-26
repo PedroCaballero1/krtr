@@ -26,6 +26,14 @@ from tests.compute.modal.fakes import DASHBOARD_URL, FakeExecutor, FakeVolume
 SUMMARY = LoadSummary(rows_read=2, rows_loaded=2)
 
 
+@pytest.fixture(autouse=True)
+def loaded_dotenv(monkeypatch: pytest.MonkeyPatch) -> list[str]:
+    """Replaces `load_dotenv` with a recorder, so the real `.env` never enters the tests."""
+    calls: list[str] = []
+    monkeypatch.setattr(runner_module, "load_dotenv", lambda: calls.append("load_dotenv"))
+    return calls
+
+
 @pytest.fixture
 def parquet(tmp_path: Path) -> Path:
     """A small local file standing in for `data/products.parquet`."""
@@ -528,3 +536,21 @@ def test_building_the_runner_uses_the_configured_staging_volume(
 
     assert isinstance(built, RemoteRunner)
     assert volume_names == [ModalConfig().staging_volume_name]
+
+
+def test_building_the_runner_loads_dotenv_before_the_modal_sdk_is_touched(
+    monkeypatch: pytest.MonkeyPatch, loaded_dotenv: list[str]
+) -> None:
+    """A token in `.env` only counts if it is in the environment before Modal reads it."""
+    order: list[str] = []
+    monkeypatch.setattr(runner_module, "load_dotenv", lambda: order.append("load_dotenv"))
+
+    def _volume(name: str) -> FakeVolume:
+        order.append("volume")
+        return FakeVolume()
+
+    monkeypatch.setattr(runner_module, "ModalStagingVolume", _volume)
+
+    runner_module.build_modal_runner()
+
+    assert order == ["load_dotenv", "volume"]
