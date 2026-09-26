@@ -2,6 +2,14 @@
 
 <!-- version list -->
 
+## v1.1.0 (2026-09-26)
+
+### Features
+
+- **repo**: Add isort dependency
+  ([`4211423`](https://github.com/PedroCaballero1/krtr/commit/4211423190c8314f0f93b46f7b4f67c475ded881))
+
+
 ## v1.0.2 (2026-09-24)
 
 ### Bug Fixes
