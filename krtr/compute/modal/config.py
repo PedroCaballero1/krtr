@@ -9,7 +9,7 @@ under `krtr/cli/compute/modal/`.
 """
 
 from enum import StrEnum
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 
 from pydantic import BaseModel, Field
 
@@ -17,6 +17,9 @@ from krtr.database.neon.config import NeonEnvironmentVariable
 
 # Repository root, where the git-ignored `.krtr/` directory for local CLI state lives.
 REPOSITORY_ROOT = Path(__file__).resolve().parents[3]
+
+# Where the staging volume is mounted inside the Modal container.
+STAGING_MOUNT_PATH = PurePosixPath("/staging")
 
 
 class ExecutionMode(StrEnum):

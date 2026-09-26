@@ -24,7 +24,20 @@ class StagedFile(BaseModel):
     """
 
     local_path: Path
-    remote_path: PurePosixPath  # Path inside the staging volume, e.g. `<run-id>/products.parquet`.
+    remote_path: PurePosixPath  # Path in the volume: `<run-id>/<argument>/<file name>`.
+
+
+class StagingResult(BaseModel):
+    """The outcome of staging a task's local files for a remote run.
+
+    Exists so the runner receives, in one value, the arguments to send to Modal
+    (with each local file path replaced by its path inside the container) and
+    the files that were uploaded. Returned by the staging step and consumed by
+    the runner.
+    """
+
+    arguments: dict[str, Any]
+    staged_files: list[StagedFile]
 
 
 class RunRecord(BaseModel):
