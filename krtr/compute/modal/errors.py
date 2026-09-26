@@ -6,6 +6,8 @@ without importing the optional `modal` SDK, which would break the local path.
 Consumed by the executor and the runner, and caught by the CLI commands.
 """
 
+MODAL_MISSING_HINT = "The modal SDK is not installed; run `uv sync --extra modal`"
+
 
 class RemoteExecutionError(Exception):
     """A run on Modal failed, was rejected, or could not be inspected or cancelled.

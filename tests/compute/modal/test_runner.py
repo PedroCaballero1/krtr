@@ -1,5 +1,6 @@
 """Tests for running tasks locally or on Modal, and following the runs on Modal."""
 
+import sys
 from pathlib import Path, PurePosixPath
 from typing import Any
 
@@ -7,10 +8,11 @@ import pytest
 
 from krtr.compute.modal import registry as task_registry
 from krtr.compute.modal import runner as runner_module
-from krtr.compute.modal.artifacts import CallState, RunRecord
+from krtr.compute.modal.artifacts import CallState, RunRecord, StagedFile
 from krtr.compute.modal.config import (
     STAGING_MOUNT_PATH,
     ExecutionMode,
+    ModalConfig,
     RemoteTask,
     RunStatus,
 )
@@ -63,16 +65,30 @@ def _arguments(parquet: Path) -> dict[str, Any]:
     return {"table_name": "products", "parquet_path": parquet, "truncate": True}
 
 
-def _record_running_run(run_registry: RunRegistry, staged: bool = True) -> RunRecord:
-    """Records a run that is still going, as `--detach` would have left it."""
+def _add_run(
+    run_registry: RunRegistry,
+    call_id: str = "fc-1",
+    status: RunStatus = RunStatus.RUNNING,
+    staged: bool = False,
+) -> RunRecord:
+    """Records a run as `--detach` would have left it, optionally with a staged file."""
     record = RunRecord(
-        run_id="run-1",
-        call_id="fc-1",
+        run_id=f"run-{call_id}",
+        call_id=call_id,
         dashboard_url=DASHBOARD_URL,
         task=RemoteTask.NEON_LOAD,
         arguments={"table_name": "products"},
-        staged_files=[],
-        status=RunStatus.RUNNING,
+        staged_files=(
+            [
+                StagedFile(
+                    local_path=Path("data/products.parquet"),
+                    remote_path=PurePosixPath(f"run-{call_id}/parquet_path/products.parquet"),
+                )
+            ]
+            if staged
+            else []
+        ),
+        status=status,
     )
     run_registry.add(record)
     return record
@@ -222,7 +238,7 @@ def test_status_of_a_running_run_leaves_its_record_alone(
     run_registry: RunRegistry,
 ) -> None:
     """Asking about a run that is still going must not change anything."""
-    _record_running_run(run_registry)
+    _add_run(run_registry)
 
     outcome = runner.get_status("fc-1")
 
@@ -279,7 +295,7 @@ def test_status_of_a_finished_run_does_not_ask_modal(
     run_registry: RunRegistry,
 ) -> None:
     """A run already recorded as finished is answered from the record."""
-    _record_running_run(run_registry)
+    _add_run(run_registry)
     run_registry.update_status("fc-1", RunStatus.CANCELLED)
 
     outcome = runner.get_status("fc-1")
@@ -300,7 +316,7 @@ def test_result_waits_for_the_run_and_returns_the_tasks_result(
     run_registry: RunRegistry,
 ) -> None:
     """`result` must block until the run is done, then return what the task returned."""
-    _record_running_run(run_registry)
+    _add_run(run_registry)
     executor.state = CallState(
         status=RunStatus.SUCCEEDED, dashboard_url=DASHBOARD_URL, result=SUMMARY
     )
@@ -317,7 +333,7 @@ def test_result_of_a_failed_run_raises_with_the_reason(
     run_registry: RunRegistry,
 ) -> None:
     """Asking for the result of a failed run must fail loudly, not return an empty result."""
-    _record_running_run(run_registry)
+    _add_run(run_registry)
     executor.state = CallState(
         status=RunStatus.FAILED, dashboard_url=DASHBOARD_URL, error="connection lost"
     )
@@ -332,7 +348,7 @@ def test_result_of_a_cancelled_run_raises_without_asking_modal(
     run_registry: RunRegistry,
 ) -> None:
     """A cancelled run has no result, and waiting for one would block forever."""
-    _record_running_run(run_registry)
+    _add_run(run_registry)
     run_registry.update_status("fc-1", RunStatus.CANCELLED)
 
     with pytest.raises(RemoteExecutionError, match="cancelled"):
@@ -365,7 +381,7 @@ def test_cancelling_a_finished_run_is_refused_without_calling_modal(
     run_registry: RunRegistry,
 ) -> None:
     """A run that already finished has nothing to cancel, and Modal must not be asked."""
-    _record_running_run(run_registry)
+    _add_run(run_registry)
     run_registry.update_status("fc-1", RunStatus.SUCCEEDED)
 
     with pytest.raises(ValueError, match="succeeded"):
@@ -417,3 +433,98 @@ def test_remote_modes_go_through_the_modal_runner(
     run_task(RemoteTask.NEON_LOAD, _arguments(parquet), mode)
 
     assert executor.detach_flags == [mode is ExecutionMode.DETACHED]
+
+
+# --- Staging: list and clean ------------------------------------------------------------------
+
+
+def test_list_staging_reports_what_the_volume_holds(
+    executor: FakeExecutor, run_registry: RunRegistry
+) -> None:
+    """Users must be able to see which files runs have left on the volume."""
+    files = [PurePosixPath("run-1/parquet_path/products.parquet")]
+
+    listed = RemoteRunner(executor, FakeVolume(files), run_registry).list_staging()
+
+    assert listed == files
+
+
+def test_cleaning_one_run_removes_only_that_runs_files(
+    runner: RemoteRunner, volume: FakeVolume, run_registry: RunRegistry
+) -> None:
+    """Cleaning a failed run must not touch another run's staged files."""
+    _add_run(run_registry, "fc-1", RunStatus.FAILED, staged=True)
+    _add_run(run_registry, "fc-2", RunStatus.FAILED, staged=True)
+
+    cleaned = runner.clean_staging("run-fc-1")
+
+    assert cleaned == ["run-fc-1"]
+    assert volume.removed_directories == [PurePosixPath("run-fc-1")]
+
+
+def test_cleaning_a_run_that_is_still_running_is_refused(
+    runner: RemoteRunner, volume: FakeVolume, run_registry: RunRegistry
+) -> None:
+    """Its container may still be reading the file, so deleting it would break the run."""
+    _add_run(run_registry, "fc-1", RunStatus.RUNNING, staged=True)
+
+    with pytest.raises(ValueError, match="still running"):
+        runner.clean_staging("run-fc-1")
+
+    assert volume.removed_directories == []
+
+
+def test_cleaning_an_id_the_registry_does_not_know_is_allowed(
+    runner: RemoteRunner, volume: FakeVolume
+) -> None:
+    """An orphaned directory seen in `staging list` has no record, and must still be removable."""
+    assert runner.clean_staging("orphan") == ["orphan"]
+    assert volume.removed_directories == [PurePosixPath("orphan")]
+
+
+def test_cleaning_everything_skips_running_runs_and_runs_without_staged_files(
+    runner: RemoteRunner, volume: FakeVolume, run_registry: RunRegistry
+) -> None:
+    """Bulk cleaning must remove only what is safe: finished runs that left files behind."""
+    _add_run(run_registry, "fc-1", RunStatus.FAILED, staged=True)
+    _add_run(run_registry, "fc-2", RunStatus.CANCELLED, staged=True)
+    _add_run(run_registry, "fc-3", RunStatus.RUNNING, staged=True)
+    _add_run(run_registry, "fc-4", RunStatus.SUCCEEDED, staged=False)
+
+    cleaned = runner.clean_staging(None)
+
+    assert cleaned == ["run-fc-1", "run-fc-2"]
+    assert volume.removed_directories == [PurePosixPath("run-fc-1"), PurePosixPath("run-fc-2")]
+
+
+# --- build_modal_runner -----------------------------------------------------------------------
+
+
+def test_building_the_runner_without_the_modal_sdk_explains_how_to_install_it(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Using --remote without the extra must say what to install, not show an ImportError."""
+    monkeypatch.setitem(sys.modules, "modal", None)
+
+    with pytest.raises(RemoteExecutionError, match="uv sync --extra modal") as failure:
+        runner_module.build_modal_runner()
+
+    assert isinstance(failure.value.__cause__, ImportError)
+
+
+def test_building_the_runner_uses_the_configured_staging_volume(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The runner must stage on the volume named in the config, not a hardcoded one."""
+    volume_names: list[str] = []
+
+    def _volume(name: str) -> FakeVolume:
+        volume_names.append(name)
+        return FakeVolume()
+
+    monkeypatch.setattr(runner_module, "ModalStagingVolume", _volume)
+
+    built = runner_module.build_modal_runner()
+
+    assert isinstance(built, RemoteRunner)
+    assert volume_names == [ModalConfig().staging_volume_name]
