@@ -8,6 +8,8 @@ import pytest
 from krtr.database.neon import loader
 from krtr.database.neon.artifacts import ColumnSpec, LoadSummary
 from krtr.database.neon.loader import DEFAULT_BATCH_SIZE, load_table, run_table_load
+from krtr.database.neon.artifacts import ColumnSpec, LoadSummary
+from krtr.database.neon.loader import load_table
 from krtr.database.neon.validation import RowValidationError
 
 PRODUCTS_SPECS = [

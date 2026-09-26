@@ -6,6 +6,7 @@ without ever materializing the whole file in memory, for any table under
 `krtr/database/queries/` - not just one hardcoded table. Consumed by the
 `krtr database neon load` CLI command, both when it runs locally and when it is
 dispatched to Modal.
+`krtr database neon load` CLI command.
 """
 
 import logging

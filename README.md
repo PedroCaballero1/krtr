@@ -92,7 +92,7 @@ krtr database s3 generate-catalog --source data --output data
 # Download a dataset (into data/, keeping the year=/month=/day= folders), all or by date
 krtr database s3 download-dataset data/products.csv
 krtr database s3 download-dataset complaints --start 2024-01-01 --end 2024-03-31
-krtr database s3 download-dataset complaints --year 2025
+krtr database s3 download-dataset transactions --source data --year 2026
 krtr database s3 download-dataset complaints --month 2024-09
 ```
 

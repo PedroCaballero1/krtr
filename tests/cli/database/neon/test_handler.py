@@ -15,12 +15,17 @@ from krtr.compute.modal.errors import RemoteExecutionError
 from krtr.database.neon.artifacts import LoadSummary
 from krtr.database.neon.loader import DEFAULT_BATCH_SIZE
 from krtr.database.neon.validation import RowValidationError
+from krtr.database.neon.artifacts import LoadSummary
 
 runner = CliRunner()
 
 
 class RecordingClient:
     """Stands in for NeonClient in `create-schema`, which still opens its own connection."""
+    """Stands in for NeonClient, recording calls and optionally failing."""
+
+    calls: list[tuple[str, ...]] = []
+    error: Exception | None = None
 
     def __enter__(self) -> "RecordingClient":
         """Returns itself, like the real NeonClient context manager."""
@@ -35,6 +40,18 @@ class RecordingClient:
 def recording_client(monkeypatch: pytest.MonkeyPatch) -> None:
     """Replaces NeonClient in the handler so `create-schema` never opens a connection."""
     monkeypatch.setattr(handler, "NeonClient", RecordingClient)
+    def truncate_table(self, table_name: str) -> None:
+        """Records the truncated table name."""
+        self.calls.append(("truncate", table_name))
+
+
+@pytest.fixture(autouse=True)
+def recording_client(monkeypatch: pytest.MonkeyPatch) -> type[RecordingClient]:
+    """Replaces NeonClient in the handler and resets recorded state."""
+    RecordingClient.calls = []
+    RecordingClient.error = None
+    monkeypatch.setattr(handler, "NeonClient", RecordingClient)
+    return RecordingClient
 
 
 def test_create_schema_calls_create_table_schema_with_the_given_table(
@@ -128,6 +145,69 @@ def test_load_passes_truncate_force_convert_strict_and_batch_size(
     """Verifies every load option is forwarded to the function that consumes it."""
     parquet_path = tmp_path / "products.parquet"
     calls = _record_load_calls(monkeypatch, parquet_path)
+def test_load_resolves_source_and_loads_without_truncating_by_default(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Verifies the default load resolves the source and skips truncation."""
+    resolved = []
+    monkeypatch.setattr(
+        handler,
+        "resolve_table_source",
+        lambda table, source, force_convert: resolved.append((table, source, force_convert))
+        or tmp_path / "products.parquet",
+    )
+    monkeypatch.setattr(
+        handler,
+        "load_table",
+        lambda table, path, client, batch_size, strict: LoadSummary(rows_read=2, rows_loaded=2),
+    )
+
+    result = runner.invoke(app, ["database", "neon", "load", "products", "--source", str(tmp_path)])
+
+    assert result.exit_code == 0
+    assert resolved == [("products", tmp_path, False)]
+    assert RecordingClient.calls == []
+
+
+def test_load_truncates_before_loading_when_requested(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Verifies --truncate reaches the client before the load happens."""
+    monkeypatch.setattr(
+        handler, "resolve_table_source", lambda table, source, force_convert: tmp_path
+    )
+    monkeypatch.setattr(
+        handler,
+        "load_table",
+        lambda table, path, client, batch_size, strict: LoadSummary(rows_read=0, rows_loaded=0),
+    )
+
+    result = runner.invoke(
+        app, ["database", "neon", "load", "products", "--source", str(tmp_path), "--truncate"]
+    )
+
+    assert result.exit_code == 0
+    assert RecordingClient.calls == [("truncate", "products")]
+
+
+def test_load_passes_force_convert_and_strict_and_batch_size(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Verifies every load option is forwarded to its underlying function."""
+    resolved = []
+    loaded = []
+    monkeypatch.setattr(
+        handler,
+        "resolve_table_source",
+        lambda table, source, force_convert: resolved.append((table, source, force_convert))
+        or tmp_path,
+    )
+    monkeypatch.setattr(
+        handler,
+        "load_table",
+        lambda table, path, client, batch_size, strict: loaded.append((batch_size, strict))
+        or LoadSummary(rows_read=0, rows_loaded=0),
+    )
 
     result = runner.invoke(
         app,
@@ -222,6 +302,8 @@ def test_load_failure_exits_with_code_one(
 
     assert result.exit_code == 1
     assert isinstance(result.exception, SystemExit)
+    assert resolved == [("products", tmp_path, True)]
+    assert loaded == [(10, True)]
 
 
 def test_load_error_exits_with_code_one(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
