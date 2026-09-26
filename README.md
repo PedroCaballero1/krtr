@@ -7,7 +7,23 @@
 ### Credentials
 
 Credentials are read from environment variables, optionally loaded from a `.env` file in the
-working directory (do not commit it):
+working directory (do not commit it).
+
+To set them up:
+
+1. Copy the example file to `.env`:
+
+   ```bash
+   cp .env.example .env        # Windows PowerShell: Copy-Item .env.example .env
+   ```
+
+2. Open `.env` and replace the placeholder values with your own keys. Only
+   `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY` are required; leave the optional ones empty
+   if you don't need them.
+3. Run any `krtr database s3 ...` command from the same directory; the file is loaded
+   automatically.
+
+The variables are:
 
 ```dotenv
 AWS_ACCESS_KEY_ID=...          # required
