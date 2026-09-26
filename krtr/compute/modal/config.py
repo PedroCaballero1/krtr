@@ -21,6 +21,13 @@ REPOSITORY_ROOT = Path(__file__).resolve().parents[3]
 # Where the staging volume is mounted inside the Modal container.
 STAGING_MOUNT_PATH = PurePosixPath("/staging")
 
+# Python version of the Modal container; matches `requires-python` in `pyproject.toml`.
+CONTAINER_PYTHON_VERSION = "3.13"
+
+# Patterns excluded when copying the `krtr` package into the container image. Modal's default
+# skips every non-Python file, which would drop the `.sql` files the Neon commands read.
+IMAGE_SOURCE_IGNORE_PATTERNS = ("**/__pycache__", "**/*.pyc")
+
 
 class ExecutionMode(StrEnum):
     """Where a CLI command runs.
