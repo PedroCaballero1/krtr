@@ -8,6 +8,7 @@ dependencies = [
     "black>=26.5.1",
     "dotenv>=0.9.9",
     "flake8>=7.4.1",
+    "isort>=9.0.1",
     "pydantic>=2.13.5",
     "pytest>=9.1.1",
     "ruff>=0.16.8",
