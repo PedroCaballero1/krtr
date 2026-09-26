@@ -5,11 +5,24 @@ download returns) discoverable apart from its implementation. Consumed by
 `krtr/database/s3/client.py` and `krtr/cli/database/s3/handler.py`.
 """
 
-from pathlib import Path
+from datetime import date
+from enum import StrEnum
+from pathlib import Path, PurePosixPath
 
 from pydantic import BaseModel
 
 S3_URI_SCHEME = "s3://"
+
+
+class DatasetFormat(StrEnum):
+    """The non-extension formats a dataset can have in the catalog.
+
+    Exists so the catalog never hardcodes these labels. Files use their own
+    extension (`.csv`, `.parquet`) as format. Consumed by `DatasetSummary`.
+    """
+
+    DIRECTORY = "directory"  # A folder of date-partitioned files.
+    UNKNOWN = "unknown"  # A single file without an extension.
 
 
 class S3Location(BaseModel):
@@ -63,3 +76,48 @@ class DownloadResult(BaseModel):
     """
 
     downloaded_files: list[Path]
+
+
+class DatasetSummary(BaseModel):
+    """What is available to download for one dataset (concept) in a bucket.
+
+    Exists so the catalog of datasets is a typed result instead of loose
+    tuples. Returned by `summarize_datasets` and shown by the `datasets` CLI
+    command.
+    """
+
+    name: str
+    is_partitioned: bool
+    file_count: int
+    first_date: date | None = None
+    last_date: date | None = None
+    missing_dates: list[date] = []
+
+    @property
+    def concept(self) -> str:
+        """Returns the dataset's concept: its name without any file extension.
+
+        Exists so the catalog lists `customers` for `customers.csv` and
+        `complaints` for the partitioned `complaints/` folder.
+
+        Returns:
+            str: the concept name.
+        """
+        if self.is_partitioned:
+            return self.name
+        return PurePosixPath(self.name).with_suffix("").as_posix()
+
+    @property
+    def format(self) -> str:
+        """Returns the dataset's format: `directory` or the file extension.
+
+        Exists so the catalog says how each concept is stored, e.g. `directory`,
+        `.csv` or `.parquet`.
+
+        Returns:
+            str: `directory` for partitioned datasets, else the extension
+                (`unknown` when the file has none).
+        """
+        if self.is_partitioned:
+            return DatasetFormat.DIRECTORY
+        return PurePosixPath(self.name).suffix or DatasetFormat.UNKNOWN

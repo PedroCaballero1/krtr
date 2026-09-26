@@ -6,12 +6,14 @@ and any script that needs data from S3.
 """
 
 import logging
+from datetime import date
 from pathlib import Path
 
 import boto3
 
-from krtr.database.s3.artifacts import DownloadResult, S3Location
+from krtr.database.s3.artifacts import DatasetSummary, DownloadResult, S3Location
 from krtr.database.s3.config import S3Config
+from krtr.database.s3.datasets import select_dataset_files, summarize_datasets
 
 logger = logging.getLogger(__name__)
 
@@ -157,6 +159,138 @@ class S3Client:
         paginator = self._boto_client.get_paginator("list_objects_v2")
         pages = paginator.paginate(Bucket=bucket, Prefix=prefix)
         return [item["Key"] for page in pages for item in page.get("Contents", [])]
+
+    def save_file_list(self, s3_path: str, file_names: list[str], output_directory: Path) -> Path:
+        """Writes a file listing to a `.txt` file named after the S3 directory.
+
+        Exists so a directory listing can be kept locally and reviewed later;
+        the name is derived from the bucket and prefix so different
+        directories do not overwrite each other.
+
+        Args:
+            s3_path: The S3 directory that was listed (same forms as `list_files`).
+            file_names: The file names to write, one per line.
+            output_directory: Local directory to write into; created if missing.
+
+        Returns:
+            Path: the `.txt` file that was written.
+
+        Raises:
+            ValueError: if `s3_path` is malformed.
+        """
+        return self._write_lines(s3_path, "files", file_names, output_directory)
+
+    def list_datasets(self, s3_path: str = "") -> list[DatasetSummary]:
+        """Summarizes the datasets available under an S3 directory.
+
+        Exists to answer "what can I download?": each dataset with its file
+        count, date coverage and missing days.
+
+        Args:
+            s3_path: Directory to inspect; empty means the default bucket's root.
+
+        Returns:
+            list[DatasetSummary]: one summary per dataset, sorted by name.
+
+        Raises:
+            ValueError: if `s3_path` is malformed.
+        """
+        return summarize_datasets(self.list_files(s3_path))
+
+    def save_catalog(
+        self, s3_path: str, datasets: list[DatasetSummary], output_directory: Path
+    ) -> Path:
+        """Writes the distinct concepts and their formats to a `.txt` file.
+
+        Exists so the concepts present in a bucket are kept locally, one per
+        line as `concept | format`: `complaints | directory` for every
+        `complaints/year=.../...csv` file, `customers | .csv` for `customers.csv`.
+
+        Args:
+            s3_path: The S3 directory the datasets were found in.
+            datasets: The datasets to write, one line each.
+            output_directory: Local directory to write into; created if missing.
+
+        Returns:
+            Path: the `.txt` file that was written.
+
+        Raises:
+            ValueError: if `s3_path` is malformed.
+        """
+        lines = [f"{dataset.concept} | {dataset.format}" for dataset in datasets]
+        return self._write_lines(s3_path, "catalog", lines, output_directory)
+
+    def download_dataset(
+        self,
+        dataset: str,
+        local_path: Path,
+        s3_path: str = "",
+        start_date: date | None = None,
+        end_date: date | None = None,
+    ) -> DownloadResult:
+        """Downloads the files of one dataset, optionally within a date range.
+
+        Exists so users fetch a dataset by its concept name and days instead of
+        spelling out each partition path; the `year=/month=/day=` folders are kept.
+
+        Args:
+            dataset: Dataset name, e.g. `complaints` or `customers.csv`.
+            local_path: Local directory to write into; created if missing.
+            s3_path: Directory holding the datasets; empty means the default bucket's root.
+            start_date: Inclusive first day, or None for no lower bound.
+            end_date: Inclusive last day, or None for no upper bound.
+
+        Returns:
+            DownloadResult: containing every file written.
+
+        Raises:
+            ValueError: if `s3_path` is malformed or dates are given for a single-file dataset.
+            FileNotFoundError: if no file matches the dataset and dates.
+        """
+        location = S3Location.parse(s3_path, self._default_bucket)
+        prefix = self._as_directory_prefix(location.key)
+        file_names = select_dataset_files(self.list_files(s3_path), dataset, start_date, end_date)
+        if not file_names:
+            raise FileNotFoundError(f"No files found for dataset '{dataset}' in the given range")
+        logger.info(
+            "Downloading %d files of dataset %s to %s", len(file_names), dataset, local_path
+        )
+        downloaded_files = [
+            self._download_object(
+                location.bucket, prefix + name, self._resolve_destination(local_path, name, "")
+            )
+            for name in file_names
+        ]
+        return DownloadResult(downloaded_files=downloaded_files)
+
+    def _write_lines(
+        self, s3_path: str, label: str, lines: list[str], output_directory: Path
+    ) -> Path:
+        """Writes lines to a `.txt` named after the S3 directory and a label.
+
+        Exists so listings and catalogs share one naming and writing scheme; the
+        bucket and prefix in the name keep different directories from overwriting
+        each other.
+
+        Args:
+            s3_path: The S3 directory the lines describe.
+            label: Word ending the file name, e.g. `files` or `catalog`.
+            lines: The lines to write.
+            output_directory: Local directory to write into; created if missing.
+
+        Returns:
+            Path: the `.txt` file that was written.
+
+        Raises:
+            ValueError: if `s3_path` is malformed.
+        """
+        location = S3Location.parse(s3_path, self._default_bucket)
+        name_parts = [location.bucket, *filter(None, location.key.split("/")), label]
+        output_path = output_directory / f"{'_'.join(name_parts)}.txt"
+        output_directory.mkdir(parents=True, exist_ok=True)
+        output_path.write_text("".join(f"{line}\n" for line in lines), encoding="utf-8")
+        logger.info("Saved %d lines to %s", len(lines), output_path)
+        return output_path
 
     def _list_file_keys(self, bucket: str, prefix: str) -> list[str]:
         """Lists object keys under a prefix, excluding folder marker keys.

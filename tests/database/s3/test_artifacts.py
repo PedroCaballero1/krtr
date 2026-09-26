@@ -2,7 +2,7 @@
 
 import pytest
 
-from krtr.database.s3.artifacts import S3Location
+from krtr.database.s3.artifacts import DatasetSummary, S3Location
 
 
 def test_parse_splits_bucket_and_nested_key() -> None:
@@ -39,3 +39,21 @@ def test_parse_rejects_malformed_paths(bad_path: str) -> None:
     """Verifies missing scheme or bucket fails fast instead of hitting S3."""
     with pytest.raises(ValueError, match="Invalid S3 path"):
         S3Location.parse(bad_path)
+
+
+@pytest.mark.parametrize(
+    ("name", "is_partitioned", "concept", "file_format"),
+    [
+        ("complaints", True, "complaints", "directory"),
+        ("customers.csv", False, "customers", ".csv"),
+        ("ref/rates.parquet", False, "ref/rates", ".parquet"),
+        ("README", False, "README", "unknown"),
+    ],
+)
+def test_dataset_summary_concept_and_format(
+    name: str, is_partitioned: bool, concept: str, file_format: str
+) -> None:
+    """Verifies concepts drop file extensions and formats are directory or the extension."""
+    summary = DatasetSummary(name=name, is_partitioned=is_partitioned, file_count=1)
+
+    assert (summary.concept, summary.format) == (concept, file_format)

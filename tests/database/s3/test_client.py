@@ -1,5 +1,6 @@
 """Tests S3Client downloads against a fake in-memory boto3 client."""
 
+from datetime import date
 from pathlib import Path
 from typing import Any
 
@@ -178,3 +179,81 @@ def test_list_files_uses_default_bucket_for_bare_prefix(monkeypatch: pytest.Monk
     client = make_client(monkeypatch, {"data/a.txt": b""}, bucket="env-bkt")
 
     assert client.list_files("data") == ["a.txt"]
+
+
+def test_save_file_list_writes_one_name_per_line_in_named_file(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Verifies the .txt is named after bucket and prefix and holds the complete list."""
+    client = make_client(monkeypatch, {})
+
+    output = client.save_file_list("s3://bkt/data/sub/", ["a.txt", "x/b.txt"], tmp_path / "out")
+
+    assert output == tmp_path / "out" / "bkt_data_sub_files.txt"
+    assert output.read_text(encoding="utf-8") == "a.txt\nx/b.txt\n"
+
+
+def test_save_file_list_names_bucket_root_and_default_bucket(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Verifies an empty prefix and a bare path produce distinct, sensible names."""
+    client = make_client(monkeypatch, {}, bucket="env-bkt")
+
+    root = client.save_file_list("s3://bkt", [], tmp_path)
+    default = client.save_file_list("data", ["a.txt"], tmp_path)
+
+    assert root.name == "bkt_files.txt"
+    assert root.read_text(encoding="utf-8") == ""
+    assert default.name == "env-bkt_data_files.txt"
+
+
+DAILY = {
+    f"ds/year=2024/month=01/day={day:02d}/ds_202401{day:02d}.csv": str(day).encode()
+    for day in (1, 2, 4)
+} | {"customers.csv": b"c"}
+
+
+def test_list_datasets_summarizes_bucket_root(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Verifies datasets are derived from the bucket listing, including the missing day."""
+    summaries = make_client(monkeypatch, DAILY, bucket="bkt").list_datasets()
+
+    assert [summary.name for summary in summaries] == ["customers.csv", "ds"]
+    assert summaries[1].file_count == 3
+    assert [day.isoformat() for day in summaries[1].missing_dates] == ["2024-01-03"]
+
+
+def test_download_dataset_keeps_partition_folders_within_range(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Verifies only in-range days are fetched and saved under their partition folders."""
+    client = make_client(monkeypatch, DAILY, bucket="bkt")
+
+    result = client.download_dataset("ds", tmp_path, start_date=date(2024, 1, 2), end_date=None)
+
+    expected = tmp_path / "ds/year=2024/month=01/day=02/ds_20240102.csv"
+    assert expected in result.downloaded_files
+    assert len(result.downloaded_files) == 2
+    assert expected.read_bytes() == b"2"
+    assert not (tmp_path / "ds/year=2024/month=01/day=01").exists()
+
+
+def test_download_dataset_raises_when_nothing_matches(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Verifies an unknown dataset or empty range is an error, not a silent no-op."""
+    client = make_client(monkeypatch, DAILY, bucket="bkt")
+
+    with pytest.raises(FileNotFoundError, match="ds"):
+        client.download_dataset("ds", tmp_path, start_date=date(2030, 1, 1))
+
+
+def test_save_catalog_writes_one_concept_and_format_per_line(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Verifies the catalog lists each concept once, without dates, with its format."""
+    client = make_client(monkeypatch, DAILY, bucket="bkt")
+
+    output = client.save_catalog("", client.list_datasets(), tmp_path)
+
+    assert output == tmp_path / "bkt_catalog.txt"
+    assert output.read_text(encoding="utf-8").splitlines() == ["customers | .csv", "ds | directory"]

@@ -8,11 +8,15 @@ made. Consumed by `krtr/database/s3/client.py` and, indirectly, by the CLI.
 import logging
 import os
 from enum import StrEnum
+from pathlib import Path
 
 from dotenv import load_dotenv
 from pydantic import BaseModel, SecretStr
 
 logger = logging.getLogger(__name__)
+
+# Repository-level `data/` directory where all downloaded datasets and listings are saved.
+DEFAULT_DATA_DIRECTORY = Path(__file__).resolve().parents[3] / "data"
 
 
 class S3EnvironmentVariable(StrEnum):
