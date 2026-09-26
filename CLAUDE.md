@@ -240,6 +240,25 @@ goes through the standard `logging` module.
 - Get a module-scoped logger with `logging.getLogger(__name__)`; do not configure
   logging handlers inside library/vertical code — configuration belongs in the CLI
   entrypoint (`krtr/cli/`).
+- **Exception:** the remote entrypoint under `krtr/compute/modal/` runs in a Modal
+  container, which is a separate process with no CLI entrypoint. It configures logging
+  itself, once, before dispatching the task.
+
+## Modal (remote execution) is optional
+
+`modal` is an optional dependency (the `modal` extra: `uv add --optional modal modal`),
+so a user who only loads data into Neon locally needs neither the SDK nor a token.
+
+- Import `modal` only inside the code paths that run remotely (`krtr/compute/modal/`),
+  never at module level of anything the local path imports, so `krtr database neon load`
+  without `--remote` never loads it.
+- The local path must keep working, unchanged, without Modal installed.
+
+## Local CLI state lives in `.krtr/`
+
+State that the CLI itself keeps between runs (e.g. `.krtr/runs.jsonl`, the record of
+Modal runs) lives in `.krtr/` at the repo root, which is git-ignored. `data/` is reserved
+for datasets and must not hold CLI state.
 
 ## Testing philosophy
 
