@@ -1,9 +1,12 @@
 """Tests for the Modal execution configuration and option sets."""
 
+from pathlib import Path
+
 import pytest
 from pydantic import ValidationError
 
 from krtr.compute.modal.config import (
+    IMAGE_SOURCE_IGNORE_PATTERNS,
     REPOSITORY_ROOT,
     ForwardedSecretVariable,
     ModalConfig,
@@ -54,3 +57,13 @@ def test_task_resources_reject_non_positive_limits(invalid_fields: dict[str, flo
     """Zero or negative resources would be rejected by Modal only after a wasted upload."""
     with pytest.raises(ValidationError):
         TaskResources(**invalid_fields)
+
+
+def test_image_source_patterns_keep_sql_files_and_drop_bytecode() -> None:
+    """The container needs the `.sql` files, which Modal's default filter would silently drop."""
+    file_pattern_matcher = pytest.importorskip("modal.file_pattern_matcher")
+    is_ignored = file_pattern_matcher.FilePatternMatcher(*IMAGE_SOURCE_IGNORE_PATTERNS)
+
+    assert not is_ignored(Path("database/queries/products/table.sql"))
+    assert not is_ignored(Path("database/neon/loader.py"))
+    assert is_ignored(Path("database/neon/__pycache__/loader.cpython-314.pyc"))
