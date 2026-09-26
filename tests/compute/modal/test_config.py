@@ -67,3 +67,11 @@ def test_image_source_patterns_keep_sql_files_and_drop_bytecode() -> None:
     assert not is_ignored(Path("database/queries/products/table.sql"))
     assert not is_ignored(Path("database/neon/loader.py"))
     assert is_ignored(Path("database/neon/__pycache__/loader.cpython-314.pyc"))
+
+
+def test_default_resources_are_small_and_never_include_a_gpu() -> None:
+    """Runs cost money by the second; a load waits on Neon and needs neither GPU nor a full core."""
+    resources = TaskResources()
+
+    assert (resources.cpu, resources.memory_mebibytes) == (0.25, 512)
+    assert "gpu" not in TaskResources.model_fields

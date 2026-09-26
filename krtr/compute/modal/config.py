@@ -93,13 +93,16 @@ class TaskResources(BaseModel):
     """The compute resources and limits a remote task runs with.
 
     Exists so each task declares what it needs instead of relying on Modal's
-    defaults. `retries` defaults to zero because retrying a partially applied
-    load could insert duplicate rows. Consumed by the task registry and
-    applied by the runner on every call.
+    defaults. The defaults are deliberately small (a quarter of a CPU, 512 MiB, no
+    GPU: there is no GPU field at all) because loads wait on the network, not the
+    processor; raise them per task if a run runs out of memory. `retries`
+    defaults to zero because retrying a partially applied load could insert
+    duplicate rows. Consumed by the task registry and applied by the runner on
+    every call.
     """
 
-    cpu: float = Field(default=1.0, gt=0)
-    memory_mebibytes: int = Field(default=1024, gt=0)
+    cpu: float = Field(default=0.25, gt=0)
+    memory_mebibytes: int = Field(default=512, gt=0)
     timeout_seconds: int = Field(default=3600, gt=0)
     retries: int = Field(default=0, ge=0)
 
