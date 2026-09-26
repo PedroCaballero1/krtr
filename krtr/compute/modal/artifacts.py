@@ -12,7 +12,7 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
-from krtr.compute.modal.config import RemoteTask, RunStatus
+from krtr.compute.modal.config import DoctorCheckName, RemoteTask, RunStatus
 
 
 class StagedFile(BaseModel):
@@ -104,3 +104,34 @@ class RunOutcome(BaseModel):
     call_id: str | None = None
     dashboard_url: str | None = None
     error: str | None = None
+
+
+class DoctorCheck(BaseModel):
+    """The result of one environment check.
+
+    Exists so the doctor reports what it verified and, when it failed, why.
+    Produced by the doctor and printed by the CLI.
+    """
+
+    name: DoctorCheckName
+    passed: bool
+    detail: str
+
+
+class DoctorReport(BaseModel):
+    """The results of every environment check.
+
+    Exists so the CLI prints one report and derives its exit code from it,
+    instead of stopping at the first problem. Returned by the doctor.
+    """
+
+    checks: list[DoctorCheck]
+
+    @property
+    def passed(self) -> bool:
+        """Tells whether every check passed.
+
+        Returns:
+            bool: True only if no check failed.
+        """
+        return all(check.passed for check in self.checks)

@@ -1,8 +1,10 @@
 """Fakes shared by the Modal tests: a staging volume and an executor that record their calls."""
 
+import sys
 from collections.abc import Iterator
 from contextlib import contextmanager
 from pathlib import Path, PurePosixPath
+from types import ModuleType, SimpleNamespace
 from typing import Any
 
 from krtr.compute.modal.artifacts import CallState, LaunchedCall
@@ -92,3 +94,63 @@ class FakeExecutor:
     def cancel(self, call_id: str) -> None:
         """Records the cancellation."""
         self.cancelled.append(call_id)
+
+
+class FakeSecretHandle:
+    """Stands in for a `modal.Secret` handle, recording hydration and updates."""
+
+    def __init__(self, sdk: "FakeSecretSdk") -> None:
+        """Keeps the SDK whose events and errors this handle reports to."""
+        self._sdk = sdk
+
+    def hydrate(self) -> None:
+        """Records the hydration, or raises the configured error (e.g. a missing secret)."""
+        self._sdk.events.append("hydrate")
+        if self._sdk.hydrate_error:
+            raise self._sdk.hydrate_error
+
+    def update(self, values: dict[str, str]) -> None:
+        """Records the values that overwrite the secret."""
+        self._sdk.events.append("update")
+        self._sdk.updated_values = values
+
+
+class FakeSecretSdk:
+    """Records how the Modal secret API is used, with configurable failures."""
+
+    def __init__(self) -> None:
+        """Starts with no recorded calls and no configured errors."""
+        self.events: list[str] = []
+        self.created: list[tuple[str, dict[str, str], bool]] = []
+        self.updated_values: dict[str, str] = {}
+        self.looked_up: list[tuple[str, list[str]]] = []
+        self.list_error: Exception | None = None
+        self.hydrate_error: Exception | None = None
+
+    def create(self, name: str, values: dict[str, str], allow_existing: bool = False) -> None:
+        """Records the creation request."""
+        self.events.append("create")
+        self.created.append((name, values, allow_existing))
+
+    def list(self, max_objects: int | None = None) -> list[Any]:
+        """Records the request, or raises the configured error (e.g. bad credentials)."""
+        self.events.append("list")
+        if self.list_error:
+            raise self.list_error
+        return []
+
+    def from_name(self, name: str, required_keys: list[str] | None = None) -> FakeSecretHandle:
+        """Records the lookup and returns a handle to the secret."""
+        self.looked_up.append((name, required_keys or []))
+        return FakeSecretHandle(self)
+
+
+def install_fake_secret_sdk(monkeypatch: Any) -> FakeSecretSdk:
+    """Installs a fake `modal` SDK exposing only the secret API, and returns its recorder."""
+    sdk = FakeSecretSdk()
+    modal_module = ModuleType("modal")
+    modal_module.Secret = SimpleNamespace(
+        objects=SimpleNamespace(create=sdk.create, list=sdk.list), from_name=sdk.from_name
+    )
+    monkeypatch.setitem(sys.modules, "modal", modal_module)
+    return sdk
