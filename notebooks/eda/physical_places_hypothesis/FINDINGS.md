@@ -17,6 +17,8 @@ Every number here comes from the executed notebook [branches.ipynb](branches.ipy
 | Is the network balanced with respect to customers? | **No.** Customers per branch range from **290 (Córdoba) to 869 (Rosario), a 3.0x ratio**, although customers are spread evenly across the cities of each country. |
 | Does capacity follow demand? | **No.** ATMs per branch range 2-8 but demand per branch is flat, so volume per ATM varies about four-fold purely from how many were installed. |
 | Are the branch locations and links usable? | **Largely no.** 167 of 350 coordinates are placeholders, all 175 Mexican branches carry the wrong phone prefix, and customers cannot be linked to a branch. |
+| Is there an ATM availability or teller capacity problem? | **No signal in the data.** Failure rates are the same in every channel, and load per ATM and per teller window is far below capacity at every hour and day (section 7). Availability itself (uptime, outages, queues) is not recorded. |
+| Can AI-agent automation be sized in money from this file? | **Not yet.** Only volumes exist: 92,098 human-handled jobs in 12 months, worth about 1,535 staff hours per minute of handling time per job. Handling time and labour cost are missing (section 8). |
 | Where is the opportunity? | **Repairing the data first**, then validating the density and capacity imbalances and clarifying the 14 `Temporarily Closed` branches. None can be sized in money: the files contain no cost, revenue, footfall or staffing data. |
 
 **Business idea being tested:** the physical network holds opportunities: rebalancing branches, reallocating ATM and teller
@@ -154,7 +156,98 @@ city in this data**, which is why the density imbalance of section 2 shows up in
 
 ---
 
-## 7. Business opportunities (graded)
+## 7. Is capacity a constraint? (availability and load)
+
+Two questions decide whether extra ATM or teller capacity, or an AI agent that substitutes for it, has anything to solve. A second
+streaming pass over the 1,097 files measured them. The file has no outage log, queue length or waiting time, so the checks use
+failure rates and load per unit of capacity.
+
+**Availability proxies: failure rates are the same in every channel.**
+
+| Channel | Approved | Declined | Pending | Reversed |
+|---|---:|---:|---:|---:|
+| POS | 91.98% | 5.00% | 2.00% | 1.02% |
+| ATM | 92.00% | 4.99% | 1.99% | 1.01% |
+| Web | 91.98% | 5.02% | 1.99% | 1.01% |
+| App | 92.02% | 4.96% | 2.00% | 1.01% |
+| Branch (teller) | 92.06% | 5.06% | 1.93% | 0.94% |
+| Transfer | 91.88% | 5.12% | 2.02% | 0.98% |
+
+The response codes are card and balance reasons (`05`, `14`, `51`, `54`, about 1.9% each; `00` about 87.4%; about 5% empty), equal across channels. None is an
+equipment or network outage, so **ATM unavailability is invisible in this data**: an availability measure (uptime, out-of-service or
+out-of-cash events) is not recorded.
+
+**Load per unit of capacity (all 383,950 branch-days over the full history):**
+
+| | ATM (per ATM) | Teller (per window) |
+|---|---:|---:|
+| Branch-days with no transaction | 5.1% | 72.3% |
+| Median per unit per day | 0.62 | 0.00 |
+| 95th percentile | 2.00 | 0.25 |
+| 99th percentile | 3.00 | 0.40 |
+| Maximum | 7.00 | 1.67 |
+| Branch-hours with at least one transaction | 12.75% | 1.36% |
+| Busiest branch-hour ever recorded | 5 transactions | 3 transactions |
+| Busiest hour of each branch, per unit (mean / max) | 0.81 / 2.00 | 0.30 / 1.00 |
+
+**Calendar pattern.** Monday to Friday run at 111-114% of the daily average and **Saturday and Sunday at about 67-68%** (about 60% of a weekday) (ATM and teller alike).
+Load is flat across the days of the month (lowest 93%, highest 105% of the average): there is no payday or month-end peak.
+
+**Reading.** On this data there is no capacity shortage to relieve, at ATMs or at tellers, at any hour, weekday or branch. This holds only if
+the transaction file is the complete activity of the bank, which is not known.
+
+---
+
+## 8. AI-agent lens (preliminary): what can be sized today
+
+**Your two examples, against the evidence.**
+
+| If the problem were... | What the data shows |
+|---|---|
+| ATM availability too low | No sign: failure rates equal to other channels, no outage data, and ATM load is 0.62 transactions per ATM per day at the median (maximum 7) |
+| Too few tellers for the demand | No sign: 72.3% of branch-days have no teller transaction, the busiest teller hour recorded has 3 transactions, and no branch exceeds 1.0 per window in its busiest hour |
+
+**Human-handled job pools visible today** (last 12 months, 2025-06-01 to 2026-05-31). This is a **volume** comparison only.
+
+| Job pool | Jobs in 12 months | Per business day (whole bank) | Staff hours a year per minute of handling time per job |
+|---|---:|---:|---:|
+| Teller transactions (Branch channel) | 41,999 | 115.1 | 700 |
+| Products opened through the Branch channel | 25,122 | 68.8 | 419 |
+| Complaints received via the Call Center | 11,321 | 31.0 | 189 |
+| Complaints received via Web / App | 5,540 | 15.2 | 92 |
+| Complaints received via Email | 4,490 | 12.3 | 75 |
+| Products opened through the Call Center | 2,514 | 6.9 | 42 |
+| Complaints received at a Branch | 870 | 2.4 | 14.5 |
+| Complaints received from the Regulator | 242 | 0.7 | 4 |
+| **All human-handled pools above** | **92,098** | | **1,535** |
+| ATM transactions (self-service, for reference) | 422,052 | 1,156.3 | n/a |
+
+A branch sees about a third of one teller transaction (0.33) and a fifth of a product opening (0.20) per day. The file that likely
+holds the biggest pool, `call_center_interactions`, is not available yet.
+
+**The money that is visible in the data today** (none of it is a saving):
+
+| Item | Value | Nature | Source |
+|---|---|---|---|
+| Delinquent credit balance | ~181.8 M USD-equivalent, ~153.9 M on `Active` products | Exposure / cash flow at stake, not a cost | `delinquency_hypothesis/` |
+| Compensation granted on complaints | 1,174,810 raw units over three years (currency unknown) | Direct cost tied to complaint handling | `compensations_hypothesis/` |
+| Value passing through the teller channel / ATMs | 222.5 M / 2,223.6 M USD-equivalent over three years | Transaction flows, not revenue or cost | `branches.ipynb` section 5 |
+| Labour cost of the 92,098 jobs a year | **cannot be computed** | Handling time and wage are not in any file | n/a |
+
+**How a saving would be sized (arithmetic, with inputs the data lacks).**
+
+`annual saving = jobs per year x share the agent can resolve x minutes per job x cost per minute - cost of running the agent`
+
+Only *jobs per year* exists today. Every other term has to come from outside the files.
+
+**Preliminary reading.** On this file, the automation case is **not** an ATM or teller capacity problem. The measurable candidates are
+(1) the cost of handling the human jobs (volume known, cost unknown), and (2) value or exposure elsewhere in the bank, such as
+delinquent balance and compensation, which belong to other analyses. Which of them is worth the most cannot be ranked in money until the
+missing inputs arrive.
+
+---
+
+## 9. Business opportunities (graded)
 
 | # | Opportunity | Grade | What the data supports | What it cannot tell us |
 |---|---|:---:|---|---|
@@ -177,7 +270,7 @@ city in this data**, which is why the density imbalance of section 2 shows up in
 
 ---
 
-## 8. Assumptions and caveats
+## 10. Assumptions and caveats
 
 - **Descriptive only:** no model. Group differences are judged against 95% intervals and against the spread chance alone would give.
 - **Transactions with a branch** are only the ATM and teller channels (1,387,932 of 4,425,008); other channels carry no branch.
@@ -188,11 +281,12 @@ city in this data**, which is why the density imbalance of section 2 shows up in
 
 ---
 
-## 9. Next steps
+## 11. Next steps
 
 1. **Repair** coordinates, Mexican phone prefixes, the customer-to-branch link and the complaint-to-branch attribution, and add a closure date for `Temporarily Closed` branches.
 2. **Confirm** whether the transaction file is the complete activity, so ATM and teller utilisation can be read in absolute terms.
 3. **Add cost and staffing data** (branch cost, staff, footfall, revenue). Without it no saving can be computed.
+   For AI-agent sizing specifically: **handling time per job type**, **loaded labour cost per hour**, the **share of jobs an agent could resolve**, volumes from `call_center_interactions` and `digital_events`, **ATM uptime, out-of-service and cash events**, teller staffing and queue or waiting times, and revenue per product or customer.
 4. **Datasets listed in the data catalog but not yet analysed**, which would sharpen this hypothesis if they contain what their names suggest (contents not inspected): `call_center_interactions`, `digital_events`, `service_agents`, `call_transcripts`, `marketing_campaigns`, `campaign_sends` and `daily_exchange_rates` (which would replace the implied exchange rates).
 
 ### Checklist for each new dataset
@@ -204,11 +298,11 @@ city in this data**, which is why the density imbalance of section 2 shows up in
 
 ---
 
-## 10. Reproduce
+## 12. Reproduce
 
 | Notebook | What it contains |
 |---|---|
-| [branches.ipynb](branches.ipynb) | Branch file structure and quality, coordinate and phone checks, network density, links to products/customers/complaints, full-history demand per branch (streamed, ~360 MB peak memory), channel mix and hours, closed branches, dispersion of products/complaints/delinquency, conclusions |
+| [branches.ipynb](branches.ipynb) | Branch file structure and quality, coordinate and phone checks, network density, links to products/customers/complaints, full-history demand per branch (streamed, ~360 MB peak memory), channel mix and hours, closed branches, dispersion of products/complaints/delinquency, capacity and availability checks (second streaming pass, ~400 MB), human-handled job pools, conclusions |
 
 Data lives in `data/branches.csv` and `data/transactions/` at the repo root (git-ignored). The transaction history is streamed one
 daily file at a time; charts in `figures/` are exported from the executed notebook, so re-export them if it changes.
