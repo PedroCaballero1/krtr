@@ -23,6 +23,14 @@ def _failing_neon_client() -> Any:
     raise ValueError("Missing required environment variable: NEON_DB_HOST")
 
 
+@pytest.fixture(autouse=True)
+def loaded_dotenv(monkeypatch: pytest.MonkeyPatch) -> list[str]:
+    """Replaces `load_dotenv` with a recorder, so the real `.env` never enters the tests."""
+    calls: list[str] = []
+    monkeypatch.setattr(doctor, "load_dotenv", lambda: calls.append("load_dotenv"))
+    return calls
+
+
 @pytest.fixture
 def sdk(monkeypatch: pytest.MonkeyPatch) -> FakeSecretSdk:
     """A working fake Modal SDK, with a Neon client that connects."""
@@ -108,3 +116,12 @@ def test_a_missing_modal_sdk_is_reported_with_the_install_command(
     assert checks[DoctorCheckName.NEON_CONNECTION].passed
     assert "uv sync --extra modal" in checks[DoctorCheckName.MODAL_CREDENTIALS].detail
     assert not run_doctor(ModalConfig()).passed
+
+
+def test_the_doctor_loads_dotenv_so_the_token_it_checks_is_the_one_in_it(
+    sdk: FakeSecretSdk, loaded_dotenv: list[str]
+) -> None:
+    """Without this, a token written in `.env` would be ignored and a stale profile checked."""
+    run_doctor(ModalConfig())
+
+    assert loaded_dotenv == ["load_dotenv"]

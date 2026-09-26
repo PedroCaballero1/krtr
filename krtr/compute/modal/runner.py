@@ -13,6 +13,8 @@ import uuid
 from pathlib import PurePosixPath
 from typing import Any
 
+from dotenv import load_dotenv
+
 from krtr.compute.modal.artifacts import CallState, RunOutcome, RunRecord, StagingResult
 from krtr.compute.modal.config import ExecutionMode, ModalConfig, RemoteTask, RunStatus
 from krtr.compute.modal.dispatch import run_registered_task
@@ -349,6 +351,8 @@ def build_modal_runner() -> RemoteRunner:
 
     Exists so the Modal SDK is reached only when a command actually runs
     remotely: the executor and volume classes import it when used, not here.
+    It also loads `.env` first, so `MODAL_TOKEN_ID` and `MODAL_TOKEN_SECRET`
+    set there are in the environment before the SDK reads them.
 
     Returns:
         RemoteRunner: a runner using the default `ModalConfig`.
@@ -356,6 +360,7 @@ def build_modal_runner() -> RemoteRunner:
     Raises:
         RemoteExecutionError: if the optional `modal` SDK is not installed.
     """
+    load_dotenv()
     config = ModalConfig()
     try:
         volume = ModalStagingVolume(config.staging_volume_name)

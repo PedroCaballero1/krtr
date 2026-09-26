@@ -10,6 +10,8 @@ only for `--remote` and `--detach`. Consumed by the
 
 import logging
 
+from dotenv import load_dotenv
+
 from krtr.compute.modal.artifacts import DoctorCheck, DoctorReport
 from krtr.compute.modal.config import DoctorCheckName, ForwardedSecretVariable, ModalConfig
 from krtr.compute.modal.errors import MODAL_MISSING_HINT
@@ -23,6 +25,7 @@ def run_doctor(config: ModalConfig) -> DoctorReport:
 
     Exists so one bad check never hides the others: each check reports its own
     failure, and the Modal secret is only looked up once the credentials work.
+    `.env` is loaded first so the Modal token set there is what gets checked.
 
     Args:
         config: The Modal names to check, such as the secret's name.
@@ -30,6 +33,7 @@ def run_doctor(config: ModalConfig) -> DoctorReport:
     Returns:
         DoctorReport: the result of every check, in the order they ran.
     """
+    load_dotenv()
     neon_check = _check_neon_connection()
     credentials_check = _check_modal_credentials()
     if credentials_check.passed:
