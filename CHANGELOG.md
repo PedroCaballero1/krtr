@@ -2,6 +2,33 @@
 
 <!-- version list -->
 
+## v1.2.0 (2026-09-26)
+
+### Bug Fixes
+
+- **repo**: Sync uv.lock with the released version and keep it in sync
+  ([#2](https://github.com/PedroCaballero1/krtr/pull/2),
+  [`72636af`](https://github.com/PedroCaballero1/krtr/commit/72636af243b67953958fe0140146449fe0dc810a))
+
+### Features
+
+- **database/s3**: Add dataset catalog and date-range downloads
+  ([#2](https://github.com/PedroCaballero1/krtr/pull/2),
+  [`72636af`](https://github.com/PedroCaballero1/krtr/commit/72636af243b67953958fe0140146449fe0dc810a))
+
+- **database/s3**: Add list_files method and list-files CLI command
+  ([#2](https://github.com/PedroCaballero1/krtr/pull/2),
+  [`72636af`](https://github.com/PedroCaballero1/krtr/commit/72636af243b67953958fe0140146449fe0dc810a))
+
+- **database/s3**: Add S3 client and download CLI commands
+  ([#2](https://github.com/PedroCaballero1/krtr/pull/2),
+  [`72636af`](https://github.com/PedroCaballero1/krtr/commit/72636af243b67953958fe0140146449fe0dc810a))
+
+- **database/s3**: Default to the bucket from BUCKET_NAME
+  ([#2](https://github.com/PedroCaballero1/krtr/pull/2),
+  [`72636af`](https://github.com/PedroCaballero1/krtr/commit/72636af243b67953958fe0140146449fe0dc810a))
+
+
 ## v1.1.0 (2026-09-26)
 
 ### Features
