@@ -97,16 +97,18 @@ def test_insert_rows_skips_the_database_call_when_empty(monkeypatch: pytest.Monk
 
 
 def test_insert_rows_calls_execute_values_and_commits(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Verifies a non-empty batch is passed to execute_values and committed."""
+    """Verifies a batch goes to execute_values as one page (one round trip) and is committed."""
     client, connection = make_client(monkeypatch)
     recorded = []
     monkeypatch.setattr(
-        client_module, "execute_values", lambda cursor, stmt, rows: recorded.append((stmt, rows))
+        client_module,
+        "execute_values",
+        lambda cursor, stmt, rows, page_size: recorded.append((stmt, rows, page_size)),
     )
 
     client.insert_rows("INSERT INTO t (a) VALUES %s", [(1,), (2,)])
 
-    assert recorded == [("INSERT INTO t (a) VALUES %s", [(1,), (2,)])]
+    assert recorded == [("INSERT INTO t (a) VALUES %s", [(1,), (2,)], 2)]
     assert connection.committed == 1
 
 

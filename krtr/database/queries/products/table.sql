@@ -7,7 +7,7 @@ CREATE TABLE IF NOT EXISTS products (
     product_id VARCHAR(20) PRIMARY KEY,                        -- Unique product ID.
     customer_id VARCHAR(20) NOT NULL,  -- Owner customer ID.
     product_type VARCHAR(50) NOT NULL,                         -- Product type (Checking Account, Savings Account, Credit Card, Debit Card, Personal Loan, Mortgage, Investment, ...).
-    product_number VARCHAR(30) NOT NULL UNIQUE,                -- Account/card/policy number.
+    product_number VARCHAR(30) NOT NULL,                       -- Account/card/policy number (not unique in the source data).
     currency VARCHAR(3) NOT NULL,                              -- Currency (MXN, COP, ARS, USD).
     current_balance DECIMAL(15, 2) NOT NULL,                   -- Current balance.
     credit_limit DECIMAL(15, 2),                               -- Credit limit (for credit products).

@@ -120,7 +120,7 @@ class NeonClient:
         if not rows:
             return
         with self._connection.cursor() as cursor:
-            execute_values(cursor, insert_statement, rows)
+            execute_values(cursor, insert_statement, rows, page_size=len(rows))
         self._connection.commit()
 
     def get_column_specs(self, table_name: str) -> list[ColumnSpec]:

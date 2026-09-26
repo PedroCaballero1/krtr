@@ -10,7 +10,7 @@ def test_load_sql_reads_the_products_table_ddl() -> None:
     contents = load_sql("products", "table.sql")
 
     assert "CREATE TABLE IF NOT EXISTS products" in contents
-    assert "REFERENCES branches (branch_id)" in contents
+    assert "product_id VARCHAR(20) PRIMARY KEY" in contents
 
 
 def test_load_sql_reads_the_products_insert_query() -> None:
@@ -19,6 +19,13 @@ def test_load_sql_reads_the_products_insert_query() -> None:
 
     assert contents.strip().startswith("--")
     assert "INSERT INTO products" in contents
+
+
+def test_products_insert_query_has_exactly_one_placeholder() -> None:
+    """Verifies query.sql (comments included) has one %s, as execute_values requires."""
+    contents = load_sql("products", "query.sql")
+
+    assert contents.count("%s") == 1
 
 
 def test_load_sql_raises_for_a_missing_file() -> None:

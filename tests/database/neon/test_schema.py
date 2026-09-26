@@ -25,7 +25,7 @@ def test_create_table_schema_runs_that_tables_table_sql() -> None:
 
     assert len(client.executed) == 1
     assert "CREATE TABLE IF NOT EXISTS products" in client.executed[0]
-    assert "REFERENCES customers (customer_id)" in client.executed[0]
+    assert "product_id VARCHAR(20) PRIMARY KEY" in client.executed[0]
 
 
 def test_create_table_schema_raises_for_a_table_with_no_sql_file() -> None:
