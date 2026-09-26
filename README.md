@@ -139,6 +139,24 @@ Parquet (or CSV) source file into it, for any table — not just one hardcoded t
 
 2. Run any `krtr database neon ...` command from the repo root; `.env` is loaded automatically.
 
+## Modal (remote execution)
+
+Commands can optionally run on [Modal](https://modal.com) instead of your machine. Modal is an
+optional dependency: without it, every command keeps running locally exactly as before.
+
+### Credentials
+
+Install the extra and set the Modal token in `.env` (see `.env.example`):
+
+```bash
+uv sync --extra modal
+```
+
+```dotenv
+MODAL_TOKEN_ID=...             # required only for --remote / --detach
+MODAL_TOKEN_SECRET=...         # required only for --remote / --detach
+```
+
 ### Adding a table
 
 A table is defined entirely by its SQL, under `krtr/database/queries/<table>/`:
