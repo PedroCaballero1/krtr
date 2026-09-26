@@ -187,6 +187,46 @@ This repository uses `pydantic` (`BaseModel`) for exactly two purposes:
 Do not introduce `pydantic` models for internal, throwaway, or purely local data —
 plain classes or built-in types are fine there.
 
+## SQL statements live in `.sql` files, never as Python string literals
+
+Never declare a SQL statement (DDL or DML: `CREATE TABLE`, `CREATE INDEX`,
+`INSERT`, `SELECT`, ...) as a Python string constant or inline literal,
+including in an `artifacts.py`. All SQL text lives in `.sql` files under
+`krtr/database/queries/<table>/`, one subdirectory per table:
+
+- `krtr/database/queries/<table>/table.sql` — that table's schema DDL
+  (`CREATE TABLE`, its indexes, etc.).
+- `krtr/database/queries/<table>/query.sql` — that table's data-manipulation
+  query (e.g. the `INSERT` template a loader uses).
+
+Example: the `products` table's DDL lives at
+`krtr/database/queries/products/table.sql` and its load query at
+`krtr/database/queries/products/query.sql`.
+
+Python code never builds or concatenates SQL strings for these cases; it
+reads the `.sql` file (e.g. via `krtr.database.queries.load_sql`) and passes
+the text straight to the database client. This keeps SQL reviewable and
+editable as SQL, and keeps a table's schema and query in one discoverable
+place per table.
+
+Do not create indexes unless the user explicitly asks for them for that
+table; a table's `.sql` files ship with no indexes by default.
+
+### SQL docstrings
+
+Every `.sql` file must open with a docstring-style comment block (`--`
+lines) explaining, like a Python module docstring, why the file exists and
+where it is consumed — and every CTE (`WITH <name> AS (...)`) must have its
+own short `--` comment immediately above it explaining what that CTE
+computes.
+
+`table.sql` files must additionally document every column: its type and its
+business meaning, one `--` line per column, immediately above or beside its
+definition. This column documentation must come from the user (or from
+existing, user-provided documentation of the table) — never invented or
+inferred from the column name alone. If a table's full column documentation
+has not been provided, ask the user for it before writing the `table.sql`.
+
 ## Logging
 
 Never use `print` for output. All output — status updates, progress, results, errors —
@@ -214,6 +254,15 @@ Tests must verify the actual behavior and intent of the code, not just exercise 
   happy path.
 - A test that would still pass after the underlying logic is broken is worse than no
   test — it should be rewritten or removed.
+
+## Dependency management: always use `uv`
+
+Never hand-edit `pyproject.toml`'s `dependencies` (or `uv.lock`) to add,
+remove, or change the version of a package. Always use `uv` for this
+(`uv add <package>`, `uv remove <package>`, `uv add --upgrade-package
+<package>`, etc.), so `pyproject.toml` and `uv.lock` stay resolved and
+consistent. If `uv` is not installed in the working environment, install it
+first rather than falling back to a manual edit.
 
 ## Commit messages
 

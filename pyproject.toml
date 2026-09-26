@@ -10,9 +10,13 @@ dependencies = [
     "dotenv>=0.9.9",
     "flake8>=7.4.1",
     "isort>=9.0.1",
+    "polars>=1.44.2",
+    "psycopg2-binary>=2.9.13",
+    "pyarrow>=25.0.1",
     "pydantic>=2.13.5",
     "pytest>=9.1.1",
     "ruff>=0.16.8",
+    "tqdm>=4.70.1",
     "typer>=0.27.2",
 ]
 

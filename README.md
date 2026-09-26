@@ -1,5 +1,27 @@
 # krtr
 
+## Cómo inicializar
+
+Requisitos previos: Python 3.13+ and [uv](https://docs.astral.sh/uv/).
+
+1. Instalar dependencias:
+
+   ```bash
+   uv sync
+   ```
+
+2. Copiar `.env.example` a `.env` y completar las variables que necesites (ver
+   [S3 downloads](#s3-downloads) y [Neon Postgres](#neon-postgres) más abajo
+   para el detalle de cada una). Nunca commitear `.env` (ya está en
+   `.gitignore`).
+
+3. Correr cualquier comando `krtr ...` (o `uv run krtr ...` si no activaste el
+   virtualenv) desde la raíz del repo; `.env` se carga automáticamente.
+
+La carpeta `data/` (en la raíz del repo, también ignorada por git) es donde
+se guardan y buscan por defecto los archivos descargados/cargados: listados y
+catálogos de S3, y los `.parquet`/`.csv` que carga `krtr database neon load`.
+
 ## S3 downloads
 
 `krtr` can download a single file or a whole "directory" (key prefix) from S3.
@@ -98,3 +120,70 @@ print(result.downloaded_files)
 Directory downloads paginate through all objects, skip folder marker keys, only match the exact
 prefix (`data` never matches `data2/`), and refuse keys that would be written outside the local
 directory.
+
+## Neon Postgres
+
+`krtr` can create a table's schema in the [Neon](https://neon.tech) Postgres database and load a
+Parquet (or CSV) source file into it, for any table — not just one hardcoded table.
+
+### Credentials
+
+1. In `.env`, set `NEON_DB_HOST` to the **full connection string** Neon gives you, e.g.:
+
+   ```dotenv
+   NEON_DB_HOST=postgresql://user:password@host/dbname?sslmode=require&channel_binding=require
+   ```
+
+   (Despite the name, this must be the complete `postgresql://...` URL, not just a hostname — see
+   `.env.example`.)
+
+2. Run any `krtr database neon ...` command from the repo root; `.env` is loaded automatically.
+
+### Adding a table
+
+A table is defined entirely by its SQL, under `krtr/database/queries/<table>/`:
+
+- `table.sql` — the table's `CREATE TABLE` DDL (required for `create-schema`).
+- `query.sql` — the table's `INSERT` template, in the same column order as `table.sql` (required
+  for `load`).
+
+There is no per-table Python or CLI code: `krtr database neon create-schema products` and
+`krtr database neon load products` work because `krtr/database/queries/products/table.sql` and
+`query.sql` already exist. Adding another table (e.g. `customers`) only means adding its own
+`krtr/database/queries/customers/` directory with those same two files.
+
+`products` assumes `customers` and `branches` already exist in the database, since it references
+both by foreign key — this repository does not create them.
+
+### CLI
+
+```bash
+# Create the products table (and, once you add their SQL, any other table) in Neon
+krtr database neon create-schema products
+
+# Load data/products.parquet (or data/products.csv, converted to Parquet automatically
+# and cached back to data/products.parquet) into the products table
+krtr database neon load products
+
+# Truncate the table first, so a retry never duplicates rows
+krtr database neon load products --truncate
+
+# Read from a different directory
+krtr database neon load products --source /path/to/data
+
+# Force-reconvert data/products.csv to Parquet even if data/products.parquet is already cached
+# (e.g. after the CSV changed)
+krtr database neon load products --force-convert
+
+# Stop at the first invalid row instead of skipping it and continuing
+krtr database neon load products --strict
+
+# Rows read/inserted per round trip to Postgres (default 5000)
+krtr database neon load products --batch-size 10000
+```
+
+`load` streams the Parquet file in row-group batches via pyarrow (never loading the whole file
+into memory), validates and coerces each row's values against the table's *live* column types and
+nullability (read from Postgres itself, not redeclared in Python), and bulk-inserts each batch with
+`psycopg2.extras.execute_values`. A progress bar shows rows loaded; invalid rows are logged and
+skipped (unless `--strict`) and are counted separately from successfully loaded rows.
