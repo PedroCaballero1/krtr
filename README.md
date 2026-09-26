@@ -139,24 +139,6 @@ Parquet (or CSV) source file into it, for any table — not just one hardcoded t
 
 2. Run any `krtr database neon ...` command from the repo root; `.env` is loaded automatically.
 
-## Modal (remote execution)
-
-Commands can optionally run on [Modal](https://modal.com) instead of your machine. Modal is an
-optional dependency: without it, every command keeps running locally exactly as before.
-
-### Credentials
-
-Install the extra and set the Modal token in `.env` (see `.env.example`):
-
-```bash
-uv sync --extra modal
-```
-
-```dotenv
-MODAL_TOKEN_ID=...             # required only for --remote / --detach
-MODAL_TOKEN_SECRET=...         # required only for --remote / --detach
-```
-
 ### Adding a table
 
 A table is defined entirely by its SQL, under `krtr/database/queries/<table>/`:
@@ -198,6 +180,10 @@ krtr database neon load products --strict
 
 # Rows read/inserted per round trip to Postgres (default 5000)
 krtr database neon load products --batch-size 10000
+
+# Run the load on Modal instead of this machine (see "Modal (remote execution)" below)
+krtr database neon load products --remote    # upload the file, wait for the result
+krtr database neon load products --detach    # upload the file, return once it has started
 ```
 
 `load` streams the Parquet file in row-group batches via pyarrow (never loading the whole file
@@ -205,3 +191,95 @@ into memory), validates and coerces each row's values against the table's *live*
 nullability (read from Postgres itself, not redeclared in Python), and bulk-inserts each batch with
 `psycopg2.extras.execute_values`. A progress bar shows rows loaded; invalid rows are logged and
 skipped (unless `--strict`) and are counted separately from successfully loaded rows.
+
+## Modal (remote execution)
+
+Commands can optionally run on [Modal](https://modal.com) instead of your machine. Modal is an
+optional dependency: without it, every command keeps running locally exactly as before, and
+merely starting `krtr` never imports the Modal SDK.
+
+There are two independent routes into Neon:
+
+| Route | Command | Uses Modal |
+| --- | --- | --- |
+| Local → Neon | `krtr database neon load products` | Never |
+| Local → Modal → Neon | `krtr database neon load products --remote` (or `--detach`) | Yes |
+
+Both call the very same `run_table_load` function, so they cannot diverge. Only `neon load` can
+run on Modal so far; `krtr compute modal tasks` lists the tasks that can.
+
+### Setup
+
+1. Install the optional dependency:
+
+   ```bash
+   uv sync --extra modal
+   ```
+
+2. Put your Modal token in `.env` (see `.env.example`), or run `modal token new` once:
+
+   ```dotenv
+   MODAL_TOKEN_ID=...             # required only for --remote / --detach
+   MODAL_TOKEN_SECRET=...         # required only for --remote / --detach
+   ```
+
+3. Copy the Neon connection string from `.env` into a Modal secret. Only `NEON_DB_HOST` is ever
+   sent, never the whole `.env`. Run it again whenever that value changes:
+
+   ```bash
+   krtr compute modal secrets sync
+   ```
+
+4. Check everything at once. It reports Neon (needed by every run) apart from the Modal checks
+   (needed only for `--remote` / `--detach`), so one failing does not hide the other:
+
+   ```bash
+   krtr compute modal doctor
+   ```
+
+### Running on Modal
+
+```bash
+# Upload data/products.parquet (or the converted CSV), load it from Modal, and wait for the result
+krtr database neon load products --remote
+
+# Same, but return as soon as the run has started; the load keeps going after the CLI exits
+krtr database neon load products --detach
+```
+
+`--remote` and `--detach` cannot be combined. Because the container cannot see your disk, the
+source file is first uploaded to a named Modal Volume (`krtr-staging`) and the task receives its
+path there. Retries are off by default (`retries=0`): a retried load could insert the same rows
+twice, so use `--truncate` when re-running a load.
+
+### Following a run
+
+```bash
+krtr compute modal runs                 # every run launched from this machine
+krtr compute modal status <call-id>     # running, succeeded or failed (with the reason)
+krtr compute modal result <call-id>     # wait for the run and print its result as JSON
+krtr compute modal cancel <call-id>     # stop the run and its container
+```
+
+Runs are recorded in `.krtr/runs.jsonl` (git-ignored), so a `--detach` run can be found again
+without copying its call id.
+
+### Staged files
+
+A run that succeeds deletes its staged file. One that fails or is cancelled **keeps it**, so it
+can be launched again without uploading it twice:
+
+```bash
+krtr compute modal staging list             # what runs have left on the volume
+krtr compute modal staging clean            # remove the files of every finished run
+krtr compute modal staging clean <run-id>   # remove one run's files
+```
+
+A run that is still going is never cleaned.
+
+### Adding another task
+
+A task runs on Modal by registering it in `krtr/compute/modal/registry.py`: its function (which
+takes plain values only), its resources, and which arguments are local files to upload. The
+Modal app needs no change. The command then adds `--remote` / `--detach` with the shared options
+in `krtr/cli/compute/modal/options.py` and calls `run_task(...)`, as `neon load` does.
