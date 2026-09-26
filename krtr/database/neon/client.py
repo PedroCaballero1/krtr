@@ -1,0 +1,151 @@
+"""Implements a thin Postgres client for the Neon-hosted warehouse tables.
+
+Exists so every table loader executes DDL and batched inserts through one
+connection wrapper instead of touching psycopg2 directly. Consumed by
+`krtr/database/neon/products/schema.py` and `krtr/database/neon/products/loader.py`.
+"""
+
+import logging
+from types import TracebackType
+from typing import Any, Sequence
+
+import psycopg2
+from psycopg2.extras import execute_values
+
+from krtr.database.neon.artifacts import ColumnSpec
+from krtr.database.neon.config import NeonConfig
+from krtr.database.queries import load_sql
+
+logger = logging.getLogger(__name__)
+
+
+class NeonClient:
+    """Executes DDL and batched inserts against the Neon Postgres database.
+
+    Exists to centralize connection handling and give table loaders a small,
+    reusable interface (`execute`, `insert_rows`, `truncate_table`) instead of
+    each one managing its own psycopg2 connection and cursor. Consumed by the
+    `neon` CLI commands and any table-specific loader under
+    `krtr/database/neon/`.
+    """
+
+    def __init__(self, config: NeonConfig | None = None) -> None:
+        """Opens a connection to Neon using the given or environment config.
+
+        Args:
+            config: NeonConfig with the connection string. When None, it is
+                loaded from the environment / `.env` via `NeonConfig.from_environment`.
+        """
+        resolved_config = config or NeonConfig.from_environment()
+        self._connection = psycopg2.connect(resolved_config.connection_string.get_secret_value())
+
+    def __enter__(self) -> "NeonClient":
+        """Returns this client, allowing use as a context manager.
+
+        Returns:
+            NeonClient: this instance.
+        """
+        return self
+
+    def __exit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc: BaseException | None,
+        traceback: TracebackType | None,
+    ) -> None:
+        """Closes the connection when the context manager block exits.
+
+        Args:
+            exc_type: The exception type raised in the block, if any.
+            exc: The exception instance raised in the block, if any.
+            traceback: The exception traceback, if any.
+
+        Returns:
+            None.
+        """
+        self.close()
+
+    def close(self) -> None:
+        """Closes the underlying database connection.
+
+        Returns:
+            None.
+        """
+        self._connection.close()
+
+    def execute(self, statement: str) -> None:
+        """Runs a single SQL statement and commits it.
+
+        Exists for DDL (`CREATE TABLE`, `CREATE INDEX`, `TRUNCATE`) where no
+        rows are returned.
+
+        Args:
+            statement: The SQL statement to execute.
+
+        Returns:
+            None.
+        """
+        with self._connection.cursor() as cursor:
+            cursor.execute(statement)
+        self._connection.commit()
+        logger.debug("Executed statement: %s", statement.strip().splitlines()[0])
+
+    def truncate_table(self, table_name: str) -> None:
+        """Removes every row from a table.
+
+        Exists so loads can be restarted without duplicating rows.
+
+        Args:
+            table_name: Name of the table to truncate.
+
+        Returns:
+            None.
+        """
+        self.execute(f"TRUNCATE TABLE {table_name}")
+        logger.info("Truncated table %s", table_name)
+
+    def insert_rows(self, insert_statement: str, rows: Sequence[tuple[Any, ...]]) -> None:
+        """Bulk-inserts rows using a single `execute_values` call.
+
+        Exists so loaders insert a batch in one round trip instead of one
+        `INSERT` per row.
+
+        Args:
+            insert_statement: An `INSERT INTO table (...) VALUES %s` template.
+            rows: The row tuples to insert, in column order.
+
+        Returns:
+            None.
+        """
+        if not rows:
+            return
+        with self._connection.cursor() as cursor:
+            execute_values(cursor, insert_statement, rows, page_size=len(rows))
+        self._connection.commit()
+
+    def get_column_specs(self, table_name: str) -> list[ColumnSpec]:
+        """Reads a table's columns, in order, with their type and nullability.
+
+        Exists so a loader learns the table's shape from the live database -
+        which was built from that table's own `table.sql` - instead of a
+        Python declaration duplicating it.
+
+        Args:
+            table_name: Name of the table to introspect.
+
+        Returns:
+            list[ColumnSpec]: the table's columns, in creation order.
+
+        Raises:
+            ValueError: if the table has no columns (it does not exist).
+        """
+        statement = load_sql("shared", "column_specs.sql")
+        with self._connection.cursor() as cursor:
+            cursor.execute(statement, {"table_name": table_name})
+            rows = cursor.fetchall()
+        if not rows:
+            raise ValueError(f"Table '{table_name}' has no columns; does it exist?")
+        return [
+            ColumnSpec(name=name, data_type=data_type, is_nullable=(is_nullable == "YES"))
+            for name, data_type, is_nullable in rows
+        ]
