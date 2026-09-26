@@ -1,6 +1,6 @@
 # Business opportunities across everything analysed so far
 
-_Last updated: 2026-09-26 · Covers the two hypotheses under `notebooks/eda/`: [delinquency](delinquency_hypothesis/FINDINGS.md) and [compensations / complaints](compensations_hypothesis/FINDINGS.md)_
+_Last updated: 2026-09-26 · Sections 1-5 cover the first two hypotheses under `notebooks/eda/`: [delinquency](delinquency_hypothesis/FINDINGS.md) and [compensations / complaints](compensations_hypothesis/FINDINGS.md). A third hypothesis, [physical places / branches](physical_places_hypothesis/FINDINGS.md), has its own graded opportunities in its findings file and is summarised in section 7._
 
 **How to read this.** Every number below comes from an executed notebook; the *Source* column says which. Nothing is
 extrapolated beyond what the notebooks show. Where the data cannot answer something, it says so. Opportunities are graded:
@@ -222,3 +222,21 @@ and deposit accounts (assets), totals per customer, breakdowns by product type a
   in the "all customers" row.
 - Means sit far above medians for limits and balances (for example a balance mean of 5.6 k against a median of 2.4 k) because
   mortgages are much larger than cards; medians describe a typical product better.
+
+---
+
+## 7. Physical places (branches): summary
+
+Full evidence in [physical_places_hypothesis/FINDINGS.md](physical_places_hypothesis/FINDINGS.md), from
+[branches.ipynb](physical_places_hypothesis/branches.ipynb). No branch stands out: transactions, products opened, complaints and
+delinquency per branch vary as much as chance predicts and do not follow branch type, capacity, city, status or age.
+
+| # | Opportunity | Grade | Evidence |
+|---|---|:---:|---|
+| **P1** | Repair location and link data | Prerequisite | 167 of 350 coordinates are placeholders; all 175 Mexican branches carry the wrong phone prefix; 5 of 150,000 customers link to a branch |
+| **B1** | Validate and, if real, rebalance branch density | B | Customers per branch range 290 (Córdoba) to 869 (Rosario), 3.0x; customers do not use their city's branch in this data |
+| **B2** | Reallocate or standardise ATM and teller capacity | B | 2-8 ATMs per branch with flat demand: 0.39-1.71 transactions per ATM per day (relative only) |
+| **B3** | Clarify the 14 `Temporarily Closed` branches | A (verify status) | Same activity as open branches; 15,967 products opened there, 13,574 `Active` |
+| **B4** | Reassess the branch as an acquisition channel | B | Teller channel is 3.0% of transactions; the Branch opens 50.0% of products |
+
+Not supported: ranking branches, branch-type strategy, opening-hours optimisation, underwriting or collections by branch, geospatial analysis.
