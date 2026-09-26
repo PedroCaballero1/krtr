@@ -246,21 +246,29 @@ def test_cancel_raises_when_modal_rejects_it(sdk: FakeSdk) -> None:
 # --- session --------------------------------------------------------------------------------
 
 
-@pytest.mark.parametrize("detach", [True, False])
-def test_the_session_streams_logs_and_runs_the_app_with_the_detach_flag(
-    sdk: FakeSdk, detach: bool
-) -> None:
-    """`detach` is what keeps the task alive after the CLI exits, so it must reach Modal."""
-    with ModalExecutor().open_session(detach):
+def test_an_attached_session_streams_logs_while_the_app_runs(sdk: FakeSdk) -> None:
+    """--remote waits for the result, so it shows the image build and the container's logs."""
+    with ModalExecutor().open_session(detach=False):
         sdk.events.append("inside")
 
     assert sdk.events == [
         "output on",
-        f"app.run detach={detach}",
+        "app.run detach=False",
         "inside",
         "app closed",
         "output off",
     ]
+
+
+def test_a_detached_session_does_not_stream_logs_so_it_returns_at_once(sdk: FakeSdk) -> None:
+    """On exit the SDK waits for the log stream to end, which would block --detach until done.
+
+    `detach=True` still reaches Modal, and that is what keeps the task alive after the CLI exits.
+    """
+    with ModalExecutor().open_session(detach=True):
+        sdk.events.append("inside")
+
+    assert sdk.events == ["app.run detach=True", "inside", "app closed"]
 
 
 def test_the_session_reports_bad_credentials_with_a_hint(sdk: FakeSdk) -> None:

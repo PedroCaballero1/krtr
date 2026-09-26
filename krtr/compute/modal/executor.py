@@ -8,7 +8,7 @@ level. Consumed by `krtr/compute/modal/runner.py`.
 
 import logging
 from collections.abc import Iterator
-from contextlib import AbstractContextManager, contextmanager
+from contextlib import AbstractContextManager, contextmanager, nullcontext
 from typing import Any, Protocol
 
 from krtr.compute.modal.artifacts import CallState, LaunchedCall
@@ -161,7 +161,9 @@ class ModalExecutor:
 
         Exists because `detach=True` is what keeps a launched task running
         after the CLI exits, and `enable_output` is what shows the image build
-        and container logs while waiting.
+        and container logs while waiting. Output is enabled only when not
+        detaching: on a normal exit the SDK waits for the app's log stream to
+        end, which would make `--detach` block until the task finished.
 
         Args:
             detach: When True, launched tasks keep running after the session closes.
@@ -177,8 +179,9 @@ class ModalExecutor:
 
         from krtr.compute.modal.app import app
 
+        output = nullcontext() if detach else modal.enable_output()
         try:
-            with modal.enable_output(), app.run(detach=detach):
+            with output, app.run(detach=detach):
                 yield ModalRunSession()
         except AuthError as error:
             raise RemoteExecutionError(
