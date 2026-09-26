@@ -111,8 +111,7 @@ class DatabaseBackend(str, Enum):
     SNOWFLAKE = "snowflake"
 
 
-def get_client(backend: Literal[DatabaseBackend.S3, DatabaseBackend.SNOWFLAKE]) -> Client:
-    ...
+def get_client(backend: Literal[DatabaseBackend.S3, DatabaseBackend.SNOWFLAKE]) -> Client: ...
 ```
 
 ## No nested functions or methods
@@ -227,3 +226,9 @@ Commits must follow Conventional Commits: `<type>(<scope>): <description>`.
 - `description` is a short, imperative summary (e.g. "add", not "added"/"adds").
 
 Example: `feat(database/snowflake): add connection pooling`.
+
+## Downloaded datasets
+
+All downloaded datasets must be saved under `C:\Users\pcaba\krtr\data` (the `data/` directory
+at the repo root). Use it as the `local_path` whenever downloading data (e.g. from S3) instead
+of any other location.

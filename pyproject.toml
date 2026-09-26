@@ -6,6 +6,7 @@ readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
     "black>=26.5.1",
+    "boto3>=1.43.103",
     "dotenv>=0.9.9",
     "flake8>=7.4.1",
     "isort>=9.0.1",
@@ -39,6 +40,7 @@ packages = ["krtr"]
 
 [tool.semantic_release]
 version_toml = ["pyproject.toml:project.version"]
+build_command = "uv lock --upgrade-package krtr && git add uv.lock"
 commit_parser = "conventional"
 tag_format = "v{version}"
 major_on_zero = false
