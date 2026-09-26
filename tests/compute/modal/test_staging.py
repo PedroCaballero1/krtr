@@ -12,28 +12,7 @@ from krtr.compute.modal.staging import (
     remove_run_staging,
     stage_task_files,
 )
-
-
-class FakeVolume:
-    """Stands in for a staging volume, recording what was uploaded and removed."""
-
-    def __init__(self, files: list[PurePosixPath] | None = None) -> None:
-        """Starts with the given files already in the volume."""
-        self.uploads: list[tuple[Path, PurePosixPath]] = []
-        self.removed_directories: list[PurePosixPath] = []
-        self._files = files or []
-
-    def upload_file(self, local_path: Path, remote_path: PurePosixPath) -> None:
-        """Records the upload instead of sending it anywhere."""
-        self.uploads.append((local_path, remote_path))
-
-    def remove_directory(self, remote_directory: PurePosixPath) -> None:
-        """Records the removed directory."""
-        self.removed_directories.append(remote_directory)
-
-    def list_files(self) -> list[PurePosixPath]:
-        """Returns the files the volume was created with."""
-        return self._files
+from tests.compute.modal.fakes import FakeVolume
 
 
 def _task(*local_file_arguments: str) -> TaskDefinition:

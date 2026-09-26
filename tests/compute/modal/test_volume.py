@@ -86,12 +86,12 @@ def volume_handle(monkeypatch: pytest.MonkeyPatch) -> FakeVolumeHandle:
         return handle
 
     modal_module = ModuleType("modal")
-    modal_module.Volume = SimpleNamespace(from_name=from_name)  # type: ignore[attr-defined]
+    modal_module.Volume = SimpleNamespace(from_name=from_name)
     volume_module = ModuleType("modal.volume")
-    volume_module.FileEntryType = FakeFileEntryType  # type: ignore[attr-defined]
+    volume_module.FileEntryType = FakeFileEntryType
     monkeypatch.setitem(sys.modules, "modal", modal_module)
     monkeypatch.setitem(sys.modules, "modal.volume", volume_module)
-    handle.created = created  # type: ignore[attr-defined]
+    handle.created = created
     return handle
 
 
@@ -99,7 +99,7 @@ def test_the_volume_is_created_on_first_use(volume_handle: FakeVolumeHandle) -> 
     """Staging must work on a fresh Modal account without creating the volume by hand."""
     ModalStagingVolume("krtr-staging")
 
-    assert volume_handle.created == [("krtr-staging", True)]  # type: ignore[attr-defined]
+    assert volume_handle.created == [("krtr-staging", True)]
 
 
 def test_upload_overwrites_an_existing_file(volume_handle: FakeVolumeHandle) -> None:
