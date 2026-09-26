@@ -76,6 +76,19 @@ class RunStatus(StrEnum):
     CANCELLED = "cancelled"
 
 
+class DoctorCheckName(StrEnum):
+    """The checks `krtr compute modal doctor` runs, by the name it reports them under.
+
+    Exists so the report and its tests refer to each check by one value instead
+    of repeating display strings. Consumed by the doctor and the CLI command
+    that prints its report.
+    """
+
+    NEON_CONNECTION = "Neon connection"  # Needed by local and remote runs alike.
+    MODAL_CREDENTIALS = "Modal credentials"  # Needed only for --remote / --detach.
+    MODAL_SECRET = "Modal secret"  # Needed only for --remote / --detach.
+
+
 class TaskResources(BaseModel):
     """The compute resources and limits a remote task runs with.
 
