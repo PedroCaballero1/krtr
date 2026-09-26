@@ -20,6 +20,20 @@ def test_parse_bucket_only_yields_empty_key() -> None:
     assert (location.bucket, location.key) == ("my-bucket", "")
 
 
+def test_parse_uses_default_bucket_for_bare_keys() -> None:
+    """Verifies a path without `s3://` is a key inside the default bucket."""
+    location = S3Location.parse("data/file.csv", default_bucket="default-bkt")
+
+    assert (location.bucket, location.key) == ("default-bkt", "data/file.csv")
+
+
+def test_parse_bucket_in_path_overrides_default_bucket() -> None:
+    """Verifies an explicit bucket in the path wins over the default."""
+    location = S3Location.parse("s3://other-bkt/file.csv", default_bucket="default-bkt")
+
+    assert (location.bucket, location.key) == ("other-bkt", "file.csv")
+
+
 @pytest.mark.parametrize("bad_path", ["my-bucket/file.csv", "https://x/y", "s3://", "s3:///key"])
 def test_parse_rejects_malformed_paths(bad_path: str) -> None:
     """Verifies missing scheme or bucket fails fast instead of hitting S3."""

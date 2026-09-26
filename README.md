@@ -31,6 +31,7 @@ AWS_SECRET_ACCESS_KEY=...      # required
 AWS_SESSION_TOKEN=...          # optional, for temporary credentials
 AWS_DEFAULT_REGION=...         # optional
 AWS_ENDPOINT_URL=...           # optional, for S3-compatible services such as MinIO
+BUCKET_NAME=...                # optional, default bucket for paths without `s3://bucket`
 ```
 
 ### CLI
@@ -42,6 +43,10 @@ krtr database s3 download-file s3://my-bucket/data/report.csv ./downloads/report
 # Every object under a prefix, preserving the sub-structure
 krtr database s3 download-directory s3://my-bucket/data ./downloads/data
 ```
+
+When `BUCKET_NAME` is set you can omit the bucket and pass just the key or prefix
+(`krtr database s3 download-file data/report.csv ./report.csv`). A bucket written in the path
+(`s3://other-bucket/...`) always overrides the default.
 
 Parent directories are created as needed. Add `--verbose` before the subcommand
 (`krtr --verbose database s3 ...`) for debug logging. Failures (bad path, missing credentials,

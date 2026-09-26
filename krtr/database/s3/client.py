@@ -29,8 +29,10 @@ class S3Client:
         Args:
             config: S3Config with credentials and settings. When None, it is
                 loaded from the environment / `.env` via `S3Config.from_environment`.
+                Its `bucket`, if set, is the default for paths without `s3://`.
         """
         resolved_config = config or S3Config.from_environment()
+        self._default_bucket = resolved_config.bucket
         self._boto_client = boto3.client(
             "s3",
             aws_access_key_id=resolved_config.access_key_id,
@@ -51,7 +53,8 @@ class S3Client:
         is needed rather than a whole prefix.
 
         Args:
-            s3_path: Full `s3://bucket/key` path of the object.
+            s3_path: `s3://bucket/key` path of the object, or just the key when a
+                default bucket is configured (a bucket in the path overrides it).
             local_path: Local file path to write. Parent directories are created.
 
         Returns:
@@ -60,7 +63,7 @@ class S3Client:
         Raises:
             ValueError: if `s3_path` is malformed or has no object key.
         """
-        location = S3Location.parse(s3_path)
+        location = S3Location.parse(s3_path, self._default_bucket)
         if not location.key or location.key.endswith("/"):
             raise ValueError(
                 f"S3 path '{s3_path}' does not point to a file; use a directory download"
@@ -75,8 +78,9 @@ class S3Client:
         useful for datasets split across many objects.
 
         Args:
-            s3_path: `s3://bucket/prefix` path of the directory (empty prefix
-                means the entire bucket).
+            s3_path: `s3://bucket/prefix` path of the directory, or just the prefix when
+                a default bucket is configured (a bucket in the path overrides it).
+                An empty prefix means the entire bucket.
             local_path: Local directory to write into; created if missing.
 
         Returns:
@@ -86,7 +90,7 @@ class S3Client:
             ValueError: if `s3_path` is malformed.
             FileNotFoundError: if no objects exist under the prefix.
         """
-        location = S3Location.parse(s3_path)
+        location = S3Location.parse(s3_path, self._default_bucket)
         prefix = self._as_directory_prefix(location.key)
         keys = [key for key in self._list_keys(location.bucket, prefix) if not key.endswith("/")]
         if not keys:

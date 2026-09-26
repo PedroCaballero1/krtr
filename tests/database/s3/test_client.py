@@ -17,6 +17,7 @@ class FakeBotoClient:
         """Stores the fake bucket content and the listing page size."""
         self.objects = objects
         self.page_size = page_size
+        self.buckets_used: list[str] = []
 
     def get_paginator(self, operation: str) -> "FakeBotoClient":
         """Returns itself as the paginator."""
@@ -29,14 +30,17 @@ class FakeBotoClient:
         return [{"Contents": [{"Key": key} for key in page]} for page in pages] or [{}]
 
     def download_file(self, bucket: str, key: str, filename: str) -> None:
-        """Writes the object's bytes to `filename`."""
+        """Records the bucket used and writes the object's bytes to `filename`."""
+        self.buckets_used.append(bucket)
         Path(filename).write_bytes(self.objects[key])
 
 
-def make_client(monkeypatch: pytest.MonkeyPatch, objects: dict[str, bytes]) -> S3Client:
+def make_client(
+    monkeypatch: pytest.MonkeyPatch, objects: dict[str, bytes], bucket: str | None = None
+) -> S3Client:
     """Builds an S3Client backed by a FakeBotoClient holding the given objects."""
     monkeypatch.setattr(client_module.boto3, "client", lambda *a, **k: FakeBotoClient(objects))
-    return S3Client(S3Config(access_key_id="id", secret_access_key="secret"))
+    return S3Client(S3Config(access_key_id="id", secret_access_key="secret", bucket=bucket))
 
 
 def test_download_file_writes_content_and_creates_parents(
@@ -109,3 +113,37 @@ def test_download_directory_blocks_path_traversal(
         )
 
     assert not (tmp_path / "evil.txt").exists()
+
+
+def test_download_file_uses_default_bucket_for_bare_key(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Verifies the configured bucket is used when the path has no `s3://bucket`."""
+    client = make_client(monkeypatch, {"data/f.txt": b"x"}, bucket="env-bkt")
+
+    client.download_file("data/f.txt", tmp_path / "f.txt")
+
+    assert client._boto_client.buckets_used == ["env-bkt"]
+
+
+def test_download_file_bucket_in_path_overrides_default(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Verifies a bucket written in the path wins over the configured one."""
+    client = make_client(monkeypatch, {"data/f.txt": b"x"}, bucket="env-bkt")
+
+    client.download_file("s3://manual-bkt/data/f.txt", tmp_path / "f.txt")
+
+    assert client._boto_client.buckets_used == ["manual-bkt"]
+
+
+def test_download_directory_uses_default_bucket_for_bare_prefix(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Verifies directory downloads also fall back to the configured bucket."""
+    client = make_client(monkeypatch, {"data/a.txt": b"a"}, bucket="env-bkt")
+
+    result = client.download_directory("data", tmp_path)
+
+    assert result.downloaded_files == [tmp_path / "a.txt"]
+    assert client._boto_client.buckets_used == ["env-bkt"]

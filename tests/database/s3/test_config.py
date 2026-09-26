@@ -21,6 +21,7 @@ def test_from_environment_reads_all_variables(monkeypatch: pytest.MonkeyPatch) -
     monkeypatch.setenv(S3EnvironmentVariable.SESSION_TOKEN, "token")
     monkeypatch.setenv(S3EnvironmentVariable.REGION, "eu-west-1")
     monkeypatch.setenv(S3EnvironmentVariable.ENDPOINT_URL, "http://localhost:9000")
+    monkeypatch.setenv(S3EnvironmentVariable.BUCKET_NAME, "my-bucket")
 
     config = S3Config.from_environment()
 
@@ -29,6 +30,7 @@ def test_from_environment_reads_all_variables(monkeypatch: pytest.MonkeyPatch) -
     assert config.session_token.get_secret_value() == "token"
     assert config.region == "eu-west-1"
     assert config.endpoint_url == "http://localhost:9000"
+    assert config.bucket == "my-bucket"
 
 
 def test_from_environment_leaves_optional_settings_unset(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -38,7 +40,12 @@ def test_from_environment_leaves_optional_settings_unset(monkeypatch: pytest.Mon
 
     config = S3Config.from_environment()
 
-    assert (config.session_token, config.region, config.endpoint_url) == (None, None, None)
+    assert (config.session_token, config.region, config.endpoint_url, config.bucket) == (
+        None,
+        None,
+        None,
+        None,
+    )
 
 
 def test_from_environment_names_every_missing_credential(monkeypatch: pytest.MonkeyPatch) -> None:

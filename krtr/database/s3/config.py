@@ -26,6 +26,7 @@ class S3EnvironmentVariable(StrEnum):
     SECRET_ACCESS_KEY = "AWS_SECRET_ACCESS_KEY"
     SESSION_TOKEN = "AWS_SESSION_TOKEN"  # Optional; only for temporary credentials.
     REGION = "AWS_DEFAULT_REGION"  # Optional; falls back to boto3's own resolution.
+    BUCKET_NAME = "BUCKET_NAME"  # Optional; default bucket for paths without `s3://bucket`.
     ENDPOINT_URL = "AWS_ENDPOINT_URL"  # Optional; for S3-compatible services (MinIO, ...).
 
 
@@ -41,6 +42,7 @@ class S3Config(BaseModel):
     session_token: SecretStr | None = None
     region: str | None = None
     endpoint_url: str | None = None
+    bucket: str | None = None
 
     @classmethod
     def from_environment(cls) -> "S3Config":
@@ -70,4 +72,5 @@ class S3Config(BaseModel):
             session_token=os.environ.get(S3EnvironmentVariable.SESSION_TOKEN) or None,
             region=os.environ.get(S3EnvironmentVariable.REGION) or None,
             endpoint_url=os.environ.get(S3EnvironmentVariable.ENDPOINT_URL) or None,
+            bucket=os.environ.get(S3EnvironmentVariable.BUCKET_NAME) or None,
         )
