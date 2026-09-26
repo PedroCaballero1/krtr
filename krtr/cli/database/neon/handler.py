@@ -17,7 +17,7 @@ import psycopg2
 import typer
 
 from krtr.database.neon.client import NeonClient
-from krtr.database.neon.loader import DEFAULT_BATCH_SIZE, load_table
+from krtr.database.neon.loader import DEFAULT_BATCH_SIZE, run_table_load
 from krtr.database.neon.schema import create_table_schema
 from krtr.database.neon.source import resolve_table_source
 from krtr.database.neon.validation import RowValidationError
@@ -110,13 +110,27 @@ def load(
 
     Returns:
         None.
+
+    Examples:
+        Load data/products.parquet (or data/products.csv, converted and cached)::
+
+            krtr database neon load products
+
+        Restart a load from scratch, so a retry never duplicates rows::
+
+            krtr database neon load products --truncate
+
+        Read from another directory and force the CSV to be reconverted::
+
+            krtr database neon load products --source /path/to/data --force-convert
+
+        Stop at the first invalid row, with larger batches::
+
+            krtr database neon load products --strict --batch-size 10000
     """
     try:
         parquet_path = resolve_table_source(table, source, force_convert)
-        with NeonClient() as client:
-            if truncate:
-                client.truncate_table(table)
-            summary = load_table(table, parquet_path, client, batch_size, strict)
+        summary = run_table_load(table, parquet_path, truncate, strict, batch_size)
     except HANDLED_ERRORS as error:
         raise _exit_with_error(error) from error
     logger.info(
