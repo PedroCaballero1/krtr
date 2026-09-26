@@ -111,8 +111,7 @@ class DatabaseBackend(str, Enum):
     SNOWFLAKE = "snowflake"
 
 
-def get_client(backend: Literal[DatabaseBackend.S3, DatabaseBackend.SNOWFLAKE]) -> Client:
-    ...
+def get_client(backend: Literal[DatabaseBackend.S3, DatabaseBackend.SNOWFLAKE]) -> Client: ...
 ```
 
 ## No nested functions or methods
