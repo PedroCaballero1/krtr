@@ -26,6 +26,13 @@ class RecordingClient:
         """Records the call, or raises the configured error."""
         return self._record("directory", s3_path, local_path)
 
+    def list_files(self, s3_path: str) -> list[str]:
+        """Returns fixed file names, or raises the configured error."""
+        if self.error:
+            raise self.error
+        self.calls.append(("list", s3_path, Path()))
+        return ["a.txt", "sub/b.txt"]
+
     def _record(self, kind: str, s3_path: str, local_path: Path) -> DownloadResult:
         """Stores the call arguments and returns a one-file result."""
         if self.error:
@@ -59,6 +66,15 @@ def test_download_directory_passes_paths_to_client() -> None:
     assert RecordingClient.calls == [("directory", "s3://b/d", Path("out"))]
 
 
+def test_list_files_prints_one_file_name_per_line() -> None:
+    """Verifies each listed file is printed on its own line so output can be piped."""
+    result = runner.invoke(app, ["database", "s3", "list-files", "s3://b/d"])
+
+    assert result.exit_code == 0
+    assert result.stdout.splitlines() == ["a.txt", "sub/b.txt"]
+    assert RecordingClient.calls == [("list", "s3://b/d", Path())]
+
+
 @pytest.mark.parametrize("command", ["download-file", "download-directory"])
 def test_client_errors_exit_with_code_one(command: str) -> None:
     """Verifies failures become a clean exit code 1 instead of a traceback."""
@@ -68,3 +84,13 @@ def test_client_errors_exit_with_code_one(command: str) -> None:
 
     assert result.exit_code == 1
     assert isinstance(result.exception, SystemExit)
+
+
+def test_list_files_error_exits_with_code_one() -> None:
+    """Verifies a listing failure becomes exit code 1 with nothing printed to stdout."""
+    RecordingClient.error = ValueError("bad path")
+
+    result = runner.invoke(app, ["database", "s3", "list-files", "s3://b/d"])
+
+    assert result.exit_code == 1
+    assert result.stdout == ""

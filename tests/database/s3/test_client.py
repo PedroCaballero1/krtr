@@ -147,3 +147,34 @@ def test_download_directory_uses_default_bucket_for_bare_prefix(
 
     assert result.downloaded_files == [tmp_path / "a.txt"]
     assert client._boto_client.buckets_used == ["env-bkt"]
+
+
+def test_list_files_returns_names_relative_to_directory_across_pages(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Verifies nested files are listed relative to the prefix, skipping markers and siblings."""
+    objects = {
+        "data/": b"",
+        "data/a.txt": b"",
+        "data/sub/b.txt": b"",
+        "data/sub/c.txt": b"",
+        "data2/x.txt": b"",
+    }
+
+    files = make_client(monkeypatch, objects).list_files("s3://bkt/data")
+
+    assert files == ["a.txt", "sub/b.txt", "sub/c.txt"]
+
+
+def test_list_files_returns_empty_list_for_missing_directory(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Verifies an empty directory yields no files instead of an error."""
+    assert make_client(monkeypatch, {"other/x.txt": b""}).list_files("s3://bkt/data") == []
+
+
+def test_list_files_uses_default_bucket_for_bare_prefix(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Verifies listing resolves a bare prefix inside the configured bucket."""
+    client = make_client(monkeypatch, {"data/a.txt": b""}, bucket="env-bkt")
+
+    assert client.list_files("data") == ["a.txt"]

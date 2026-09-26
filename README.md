@@ -37,6 +37,9 @@ BUCKET_NAME=...                # optional, default bucket for paths without `s3:
 ### CLI
 
 ```bash
+# List the files under a directory (one per line, relative to it)
+krtr database s3 list-files s3://my-bucket/data
+
 # One file
 krtr database s3 download-file s3://my-bucket/data/report.csv ./downloads/report.csv
 

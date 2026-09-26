@@ -92,7 +92,7 @@ class S3Client:
         """
         location = S3Location.parse(s3_path, self._default_bucket)
         prefix = self._as_directory_prefix(location.key)
-        keys = [key for key in self._list_keys(location.bucket, prefix) if not key.endswith("/")]
+        keys = self._list_file_keys(location.bucket, prefix)
         if not keys:
             raise FileNotFoundError(f"No objects found under '{s3_path}'")
         logger.info("Downloading %d objects from %s to %s", len(keys), s3_path, local_path)
@@ -103,6 +103,30 @@ class S3Client:
             for key in keys
         ]
         return DownloadResult(downloaded_files=downloaded_files)
+
+    def list_files(self, s3_path: str) -> list[str]:
+        """Lists the names of all files under an S3 directory.
+
+        Exists to let callers inspect what a directory contains before (or
+        instead of) downloading it; useful for picking specific files.
+
+        Args:
+            s3_path: `s3://bucket/prefix` path of the directory, or just the
+                prefix when a default bucket is configured (a bucket in the
+                path overrides it). An empty prefix means the entire bucket.
+
+        Returns:
+            list[str]: file names relative to the directory, including any
+                sub-directory (e.g. `sub/file.csv`); empty if none exist.
+
+        Raises:
+            ValueError: if `s3_path` is malformed.
+        """
+        location = S3Location.parse(s3_path, self._default_bucket)
+        prefix = self._as_directory_prefix(location.key)
+        keys = self._list_file_keys(location.bucket, prefix)
+        logger.info("Found %d files under %s", len(keys), s3_path)
+        return [key.removeprefix(prefix) for key in keys]
 
     @staticmethod
     def _as_directory_prefix(key: str) -> str:
@@ -133,6 +157,20 @@ class S3Client:
         paginator = self._boto_client.get_paginator("list_objects_v2")
         pages = paginator.paginate(Bucket=bucket, Prefix=prefix)
         return [item["Key"] for page in pages for item in page.get("Contents", [])]
+
+    def _list_file_keys(self, bucket: str, prefix: str) -> list[str]:
+        """Lists object keys under a prefix, excluding folder marker keys.
+
+        Exists so listing and downloading agree on what counts as a file.
+
+        Args:
+            bucket: Bucket name.
+            prefix: Key prefix to list.
+
+        Returns:
+            list[str]: every matching key that does not end with `/`.
+        """
+        return [key for key in self._list_keys(bucket, prefix) if not key.endswith("/")]
 
     @staticmethod
     def _resolve_destination(local_directory: Path, key: str, prefix: str) -> Path:
