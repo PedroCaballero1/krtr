@@ -1,6 +1,7 @@
 """Tests the `krtr database neon` commands: argument wiring and error exits."""
 
 from pathlib import Path
+from typing import Any
 
 import psycopg2
 import pytest
@@ -8,6 +9,9 @@ from typer.testing import CliRunner
 
 from krtr.cli.database.neon import handler
 from krtr.cli.main import app
+from krtr.compute.modal.artifacts import RunOutcome
+from krtr.compute.modal.config import ExecutionMode, RemoteTask, RunStatus
+from krtr.compute.modal.errors import RemoteExecutionError
 from krtr.database.neon.artifacts import LoadSummary
 from krtr.database.neon.loader import DEFAULT_BATCH_SIZE
 from krtr.database.neon.validation import RowValidationError
@@ -63,30 +67,49 @@ def test_create_schema_error_exits_with_code_one(monkeypatch: pytest.MonkeyPatch
 
 
 def _record_load_calls(
-    monkeypatch: pytest.MonkeyPatch, parquet_path: Path
+    monkeypatch: pytest.MonkeyPatch, parquet_path: Path, status: RunStatus = RunStatus.SUCCEEDED
 ) -> list[tuple[object, ...]]:
-    """Replaces source resolution and the load with recorders, returning the shared call log."""
+    """Replaces source resolution, the runner and the launch report with recorders."""
     calls: list[tuple[object, ...]] = []
 
     def _resolve(table: str, source: Path, force_convert: bool) -> Path:
         calls.append(("resolve", table, source, force_convert))
         return parquet_path
 
-    def _load(
-        table_name: str, path: Path, truncate: bool, strict: bool, batch_size: int
-    ) -> LoadSummary:
-        calls.append(("load", table_name, path, truncate, strict, batch_size))
-        return LoadSummary(rows_read=2, rows_loaded=2)
+    def _run(task: RemoteTask, arguments: dict[str, Any], mode: ExecutionMode) -> RunOutcome:
+        calls.append(("run", task, arguments, mode))
+        return RunOutcome(
+            status=status,
+            result=LoadSummary(rows_read=2, rows_loaded=2),
+            run_id="run-1",
+            call_id="fc-1",
+        )
+
+    def _report(outcome: RunOutcome) -> None:
+        calls.append(("report", outcome.call_id))
 
     monkeypatch.setattr(handler, "resolve_table_source", _resolve)
-    monkeypatch.setattr(handler, "run_table_load", _load)
+    monkeypatch.setattr(handler, "run_task", _run)
+    monkeypatch.setattr(handler, "report_launched", _report)
     return calls
 
 
-def test_load_loads_the_resolved_file_with_the_default_options(
+def _load_arguments(parquet_path: Path, **overrides: object) -> dict[str, Any]:
+    """The arguments `neon load` must hand to the `neon-load` task."""
+    arguments = {
+        "table_name": "products",
+        "parquet_path": parquet_path,
+        "truncate": False,
+        "strict": False,
+        "batch_size": DEFAULT_BATCH_SIZE,
+    }
+    return {**arguments, **overrides}
+
+
+def test_load_runs_locally_with_the_default_options(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """Verifies the default load hands the resolved file to the load without truncating."""
+    """Without --remote or --detach the load must run locally, exactly as it always has."""
     parquet_path = tmp_path / "products.parquet"
     calls = _record_load_calls(monkeypatch, parquet_path)
 
@@ -95,7 +118,7 @@ def test_load_loads_the_resolved_file_with_the_default_options(
     assert result.exit_code == 0
     assert calls == [
         ("resolve", "products", tmp_path, False),
-        ("load", "products", parquet_path, False, False, DEFAULT_BATCH_SIZE),
+        ("run", RemoteTask.NEON_LOAD, _load_arguments(parquet_path), ExecutionMode.LOCAL),
     ]
 
 
@@ -126,23 +149,74 @@ def test_load_passes_truncate_force_convert_strict_and_batch_size(
     assert result.exit_code == 0
     assert calls == [
         ("resolve", "products", tmp_path, True),
-        ("load", "products", parquet_path, True, True, 10),
+        (
+            "run",
+            RemoteTask.NEON_LOAD,
+            _load_arguments(parquet_path, truncate=True, strict=True, batch_size=10),
+            ExecutionMode.LOCAL,
+        ),
     ]
 
 
-@pytest.mark.parametrize("error", [psycopg2.Error("connection lost"), RowValidationError("bad")])
+def test_load_remote_runs_on_modal_and_reports_the_result_not_a_launch(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """--remote waits for the load, so there is no "started, follow it" report."""
+    calls = _record_load_calls(monkeypatch, tmp_path / "products.parquet")
+
+    result = runner.invoke(
+        app, ["database", "neon", "load", "products", "--source", str(tmp_path), "--remote"]
+    )
+
+    assert result.exit_code == 0
+    assert [call[0] for call in calls] == ["resolve", "run"]
+    assert calls[1][3] is ExecutionMode.REMOTE
+
+
+def test_load_detach_runs_on_modal_and_tells_the_user_how_to_follow_it(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """--detach returns before the load finishes, so the user must be told what to do next."""
+    calls = _record_load_calls(monkeypatch, tmp_path / "products.parquet", RunStatus.RUNNING)
+
+    result = runner.invoke(
+        app, ["database", "neon", "load", "products", "--source", str(tmp_path), "--detach"]
+    )
+
+    assert result.exit_code == 0
+    assert calls[1][3] is ExecutionMode.DETACHED
+    assert calls[2] == ("report", "fc-1")
+
+
+def test_load_rejects_remote_and_detach_together_before_touching_anything(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """The two flags contradict each other; nothing must be resolved, uploaded or run."""
+    calls = _record_load_calls(monkeypatch, tmp_path / "products.parquet")
+
+    result = runner.invoke(
+        app,
+        ["database", "neon", "load", "products", "--source", str(tmp_path), "--remote", "--detach"],
+    )
+
+    assert result.exit_code == 2
+    assert calls == []
+
+
+@pytest.mark.parametrize(
+    "error",
+    [psycopg2.Error("connection lost"), RowValidationError("bad"), RemoteExecutionError("failed")],
+)
 def test_load_failure_exits_with_code_one(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path, error: Exception
 ) -> None:
-    """Verifies a database or validation failure during the load becomes exit code 1."""
+    """Verifies a database, validation or Modal failure becomes exit code 1."""
 
-    def _raise(
-        table_name: str, path: Path, truncate: bool, strict: bool, batch_size: int
-    ) -> LoadSummary:
+    def _raise(task: RemoteTask, arguments: dict[str, Any], mode: ExecutionMode) -> RunOutcome:
         raise error
 
     monkeypatch.setattr(handler, "resolve_table_source", lambda table, source, force: tmp_path)
-    monkeypatch.setattr(handler, "run_table_load", _raise)
+    monkeypatch.setattr(handler, "run_task", _raise)
 
     result = runner.invoke(app, ["database", "neon", "load", "products", "--source", str(tmp_path)])
 

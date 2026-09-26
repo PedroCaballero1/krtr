@@ -12,11 +12,10 @@ import logging
 
 from krtr.compute.modal.artifacts import DoctorCheck, DoctorReport
 from krtr.compute.modal.config import DoctorCheckName, ForwardedSecretVariable, ModalConfig
+from krtr.compute.modal.errors import MODAL_MISSING_HINT
 from krtr.database.neon.client import NeonClient
 
 logger = logging.getLogger(__name__)
-
-MODAL_MISSING_HINT = "The modal SDK is not installed; run `uv sync --extra modal`"
 
 
 def run_doctor(config: ModalConfig) -> DoctorReport:

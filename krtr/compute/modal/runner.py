@@ -10,16 +10,22 @@ the CLI commands (through `run_task`) and by the `krtr compute modal` commands
 
 import logging
 import uuid
+from pathlib import PurePosixPath
 from typing import Any
 
 from krtr.compute.modal.artifacts import CallState, RunOutcome, RunRecord, StagingResult
 from krtr.compute.modal.config import ExecutionMode, ModalConfig, RemoteTask, RunStatus
 from krtr.compute.modal.dispatch import run_registered_task
-from krtr.compute.modal.errors import RemoteExecutionError
+from krtr.compute.modal.errors import MODAL_MISSING_HINT, RemoteExecutionError
 from krtr.compute.modal.executor import ModalExecutor, RunSession, TaskExecutor
 from krtr.compute.modal.registry import get_task_definition
 from krtr.compute.modal.runs import RunRegistry
-from krtr.compute.modal.staging import StagingVolume, remove_run_staging, stage_task_files
+from krtr.compute.modal.staging import (
+    StagingVolume,
+    list_staged_files,
+    remove_run_staging,
+    stage_task_files,
+)
 from krtr.compute.modal.volume import ModalStagingVolume
 
 logger = logging.getLogger(__name__)
@@ -149,6 +155,61 @@ class RemoteRunner:
         self._executor.cancel(call_id)
         self._registry.update_status(call_id, RunStatus.CANCELLED)
         return self._outcome(record, RunStatus.CANCELLED)
+
+    def list_staging(self) -> list[PurePosixPath]:
+        """Lists the files currently held in the staging volume.
+
+        Exists for the `staging list` command, so users can see what failed or
+        cancelled runs left behind.
+
+        Returns:
+            list[PurePosixPath]: the path of each staged file inside the volume.
+        """
+        return list_staged_files(self._volume)
+
+    def clean_staging(self, run_id: str | None) -> list[str]:
+        """Removes the staged files of one run, or of every run that has finished.
+
+        Exists for the `staging clean` command. A run that is still going is
+        never cleaned, since its container may still be reading the file.
+
+        Args:
+            run_id: The run to clean, or None to clean every recorded run that
+                is not running and has staged files.
+
+        Returns:
+            list[str]: the ids of the runs whose staged files were removed.
+
+        Raises:
+            ValueError: if `run_id` belongs to a run that is still running.
+        """
+        records = self._registry.list_runs()
+        if run_id is None:
+            run_ids = [
+                record.run_id
+                for record in records
+                if record.staged_files and record.status is not RunStatus.RUNNING
+            ]
+        else:
+            self._require_not_running(records, run_id)
+            run_ids = [run_id]
+        for cleaned_run_id in run_ids:
+            remove_run_staging(self._volume, cleaned_run_id)
+        return run_ids
+
+    def _require_not_running(self, records: list[RunRecord], run_id: str) -> None:
+        """Refuses to clean the staged files of a run that is still going.
+
+        Args:
+            records: Every recorded run.
+            run_id: The run whose staged files are about to be removed.
+
+        Raises:
+            ValueError: if the run is recorded as running.
+        """
+        for record in records:
+            if record.run_id == run_id and record.status is RunStatus.RUNNING:
+                raise ValueError(f"Run {run_id} is still running; cancel it before cleaning")
 
     def _launch(
         self,
@@ -291,13 +352,16 @@ def build_modal_runner() -> RemoteRunner:
 
     Returns:
         RemoteRunner: a runner using the default `ModalConfig`.
+
+    Raises:
+        RemoteExecutionError: if the optional `modal` SDK is not installed.
     """
     config = ModalConfig()
-    return RemoteRunner(
-        ModalExecutor(),
-        ModalStagingVolume(config.staging_volume_name),
-        RunRegistry(config.runs_file),
-    )
+    try:
+        volume = ModalStagingVolume(config.staging_volume_name)
+    except ImportError as error:
+        raise RemoteExecutionError(MODAL_MISSING_HINT) from error
+    return RemoteRunner(ModalExecutor(), volume, RunRegistry(config.runs_file))
 
 
 def run_task(task: RemoteTask, arguments: dict[str, Any], mode: ExecutionMode) -> RunOutcome:

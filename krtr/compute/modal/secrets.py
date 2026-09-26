@@ -12,6 +12,7 @@ import os
 from dotenv import load_dotenv
 
 from krtr.compute.modal.config import ForwardedSecretVariable
+from krtr.compute.modal.errors import MODAL_MISSING_HINT, RemoteExecutionError
 
 logger = logging.getLogger(__name__)
 
@@ -52,8 +53,14 @@ def push_secret(secret_name: str, values: dict[str, str]) -> None:
 
     Returns:
         None.
+
+    Raises:
+        RemoteExecutionError: if the optional `modal` SDK is not installed.
     """
-    import modal
+    try:
+        import modal
+    except ImportError as error:
+        raise RemoteExecutionError(MODAL_MISSING_HINT) from error
 
     modal.Secret.objects.create(secret_name, values, allow_existing=True)
     secret = modal.Secret.from_name(secret_name)

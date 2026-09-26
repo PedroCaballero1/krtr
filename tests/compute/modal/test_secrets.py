@@ -1,10 +1,12 @@
 """Tests for copying the allowed environment variables into the Modal secret."""
 
 import logging
+import sys
 
 import pytest
 
 from krtr.compute.modal import secrets
+from krtr.compute.modal.errors import RemoteExecutionError
 from krtr.compute.modal.secrets import push_secret, read_forwarded_variables, sync_secret
 from tests.compute.modal.fakes import install_fake_secret_sdk
 
@@ -90,3 +92,14 @@ def test_sync_fails_before_contacting_modal_when_a_variable_is_missing(
         sync_secret("krtr-neon")
 
     assert sdk.events == []
+
+
+def test_sync_without_the_modal_sdk_explains_how_to_install_it(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A user without the extra must be told what to install, not shown an ImportError."""
+    monkeypatch.setitem(sys.modules, "modal", None)
+    monkeypatch.setenv("NEON_DB_HOST", CONNECTION_STRING)
+
+    with pytest.raises(RemoteExecutionError, match="uv sync --extra modal"):
+        sync_secret("krtr-neon")
