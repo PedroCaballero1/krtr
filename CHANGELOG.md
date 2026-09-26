@@ -2,6 +2,21 @@
 
 <!-- version list -->
 
+## v1.3.0 (2026-09-26)
+
+### Chores
+
+- **deps**: Add pandas and matplotlib as dev dependencies and notebook
+  ([#4](https://github.com/PedroCaballero1/krtr/pull/4),
+  [`623c83e`](https://github.com/PedroCaballero1/krtr/commit/623c83e8bed241824aae8f9f3a317a090a96fb65))
+
+### Features
+
+- **eda**: Add delinquency and complaints hypothesis analyses
+  ([#4](https://github.com/PedroCaballero1/krtr/pull/4),
+  [`623c83e`](https://github.com/PedroCaballero1/krtr/commit/623c83e8bed241824aae8f9f3a317a090a96fb65))
+
+
 ## v1.2.0 (2026-09-26)
 
 ### Bug Fixes
