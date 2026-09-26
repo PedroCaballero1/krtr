@@ -4,7 +4,8 @@ Exists to read the source file in bounded-memory batches, validate each row
 against the target table's live schema, and insert valid rows in bulk,
 without ever materializing the whole file in memory, for any table under
 `krtr/database/queries/` - not just one hardcoded table. Consumed by the
-`krtr database neon load` CLI command.
+`krtr database neon load` CLI command, both when it runs locally and when it is
+dispatched to Modal.
 """
 
 import logging
@@ -21,6 +22,44 @@ from krtr.database.queries import load_sql
 logger = logging.getLogger(__name__)
 
 DEFAULT_BATCH_SIZE = 5_000
+
+
+def run_table_load(
+    table_name: str,
+    parquet_path: Path,
+    truncate: bool = False,
+    strict: bool = False,
+    batch_size: int = DEFAULT_BATCH_SIZE,
+) -> LoadSummary:
+    """Loads a Parquet file into a Neon table over its own connection.
+
+    Exists so a whole load (connect, optionally truncate, load, disconnect) is
+    one call that takes only plain values. The local CLI command and the
+    remote Modal task both call it, so they cannot diverge, and a remote task
+    can build its own connection inside the container instead of receiving an
+    open client.
+
+    Args:
+        table_name: Name of the target table, matching the directory
+            `krtr/database/queries/<table_name>/`.
+        parquet_path: The Parquet file to load.
+        truncate: When True, truncate the table before loading, so a retry
+            never duplicates rows.
+        strict: When True, raise on the first invalid row instead of skipping
+            and logging it.
+        batch_size: Rows read and inserted per round trip.
+
+    Returns:
+        LoadSummary: rows read, rows loaded and any validation failures.
+
+    Raises:
+        RowValidationError: if `strict` is True and a row is invalid.
+        FileNotFoundError: if no `query.sql` exists for `table_name`.
+    """
+    with NeonClient() as client:
+        if truncate:
+            client.truncate_table(table_name)
+        return load_table(table_name, parquet_path, client, batch_size, strict)
 
 
 def load_table(
