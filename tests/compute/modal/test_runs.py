@@ -14,6 +14,7 @@ def _record(call_id: str, status: RunStatus = RunStatus.RUNNING) -> RunRecord:
     return RunRecord(
         run_id=f"run-{call_id}",
         call_id=call_id,
+        dashboard_url=f"https://modal.com/apps/krtr/{call_id}",
         task=RemoteTask.NEON_LOAD,
         arguments={"table_name": "products"},
         status=status,

@@ -15,6 +15,7 @@ def _build_record(**overrides: object) -> RunRecord:
     fields = {
         "run_id": "run-1",
         "call_id": "fc-123",
+        "dashboard_url": "https://modal.com/apps/krtr/fc-123",
         "task": RemoteTask.NEON_LOAD,
         "arguments": {"table": "products", "parquet_path": Path("data/products.parquet")},
         "staged_files": [

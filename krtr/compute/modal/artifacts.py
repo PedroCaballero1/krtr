@@ -53,6 +53,7 @@ class RunRecord(BaseModel):
 
     run_id: str
     call_id: str
+    dashboard_url: str
     task: RemoteTask
     arguments: dict[str, Any]
     staged_files: list[StagedFile] = []
@@ -60,16 +61,46 @@ class RunRecord(BaseModel):
     status: RunStatus
 
 
-class RemoteRunResult(BaseModel):
-    """What a run on Modal reports back to the CLI.
+class LaunchedCall(BaseModel):
+    """A task that Modal has accepted and started.
 
-    Exists so callers get a typed outcome instead of parsing log output.
-    `result` is whatever the task returned, e.g. a `LoadSummary`, and is None
-    while the run is still going or after it failed. Returned by the runner
-    and the `status` / `result` operations.
+    Exists so the runner learns the call id and dashboard link the moment a
+    task is launched, before it finishes, and can record the run right away.
+    Returned by the executor when it spawns a task.
     """
 
     call_id: str
     dashboard_url: str
+
+
+class CallState(BaseModel):
+    """What Modal currently reports about one call.
+
+    Exists so the runner reads a call's progress without touching the Modal
+    SDK. `result` is set once the call succeeded and `error` once it failed.
+    Returned by the executor when a call is inspected.
+    """
+
+    status: RunStatus
+    dashboard_url: str
+    result: Any = None
+    error: str | None = None
+
+
+class RunOutcome(BaseModel):
+    """What running a task reports back to the CLI, locally or on Modal.
+
+    Exists so every command reports a run the same way whatever the mode.
+    `result` is the task's return value (a pydantic model such as a
+    `LoadSummary`), set once it has finished. `run_id`, `call_id` and
+    `dashboard_url` are None for a local run, which has no Modal call, and
+    `error` says why a run failed. Returned by the runner and by the `status`,
+    `result` and `cancel` operations.
+    """
+
     status: RunStatus
     result: BaseModel | None = None
+    run_id: str | None = None
+    call_id: str | None = None
+    dashboard_url: str | None = None
+    error: str | None = None
