@@ -47,4 +47,13 @@ def serve(
     """
     resolved_port = port if port is not None else int(os.environ.get("PORT", DEFAULT_PORT))
     logger.info("Starting krtr-web on %s:%d (reload=%s)", host, resolved_port, reload)
-    uvicorn.run("krtr.back.web.app:app", host=host, port=resolved_port, reload=reload)
+    # server_header=False: uvicorn otherwise adds its own `Server: uvicorn`
+    # header after the app responds, which our security-headers middleware
+    # (krtr/back/security/headers/) cannot see or strip.
+    uvicorn.run(
+        "krtr.back.web.app:app",
+        host=host,
+        port=resolved_port,
+        reload=reload,
+        server_header=False,
+    )

@@ -10,6 +10,8 @@ import logging
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 
+from krtr.back.security.headers.config import HeadersConfig
+from krtr.back.security.headers.middleware import add_security_headers
 from krtr.back.web.config import WebConfig
 from krtr.back.web.middleware import log_request
 from krtr.back.web.routers.health import health_router
@@ -18,21 +20,26 @@ from krtr.back.web.routers.spa import spa_router
 logger = logging.getLogger(__name__)
 
 
-def create_app(config: WebConfig | None = None) -> FastAPI:
+def create_app(
+    config: WebConfig | None = None, headers_config: HeadersConfig | None = None
+) -> FastAPI:
     """Builds and configures the krtr-web FastAPI application.
 
     Exists so the app is assembled the same way whether it is run via
     `krtr back web serve`, imported by uvicorn in Docker/Cloud Run, or built
-    in a test with a custom `WebConfig`.
+    in a test with a custom `WebConfig`/`HeadersConfig`.
 
     Args:
         config: The configuration to build the app with. When None, it is
             loaded from the environment via `WebConfig.from_environment`.
+        headers_config: The security-headers configuration. When None, it is
+            loaded from the environment via `HeadersConfig.from_environment`.
 
     Returns:
         FastAPI: the configured application, ready to serve.
     """
     resolved_config = config or WebConfig.from_environment()
+    resolved_headers_config = headers_config or HeadersConfig.from_environment()
     app = FastAPI(
         title="krtr",
         docs_url="/docs" if resolved_config.docs_enabled else None,
@@ -40,6 +47,8 @@ def create_app(config: WebConfig | None = None) -> FastAPI:
         openapi_url="/openapi.json" if resolved_config.docs_enabled else None,
     )
     app.state.config = resolved_config
+    app.state.headers_config = resolved_headers_config
+    app.middleware("http")(add_security_headers)
     app.middleware("http")(log_request)
     app.include_router(health_router)
     _mount_frontend_assets(app, resolved_config)

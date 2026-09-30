@@ -33,6 +33,7 @@ def test_serve_defaults_to_the_app_import_path_and_default_host_port(
     assert kwargs["host"] == handler.DEFAULT_HOST
     assert kwargs["port"] == handler.DEFAULT_PORT
     assert kwargs["reload"] is False
+    assert kwargs["server_header"] is False
 
 
 def test_serve_passes_through_host_port_and_reload(
