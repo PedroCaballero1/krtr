@@ -1,19 +1,6 @@
-import { Language } from "@/i18n/languages";
+import { isSupportedLanguage, type Language } from "@/i18n/languages";
 
 const LANGUAGE_STORAGE_KEY = "krtr.language";
-
-/**
- * Checks whether a stored string is one of the supported languages.
- *
- * Exists so a value read from localStorage (which could hold anything, or
- * nothing) is only trusted once it is verified against the known set.
- *
- * @param value - The raw string read from storage, or null.
- * @returns Whether `value` is a valid `Language`.
- */
-function isSupportedLanguage(value: string | null): value is Language {
-  return value === Language.Spanish || value === Language.Portuguese;
-}
 
 /**
  * Reads the persisted language preference, if any (D14).
