@@ -3,5 +3,10 @@
   "login_landing_tagline": "Segurança e suporte para seus produtos financeiros.",
   "login_button": "Entrar",
   "support_button": "Suporte",
-  "logout_button": "Sair"
+  "logout_button": "Sair",
+  "session_idle_warning": "Sua sessão será encerrada em {{seconds}} segundos por inatividade.",
+  "session_absolute_warning": "Sua sessão será encerrada em {{seconds}} segundos porque atingiu o tempo máximo.",
+  "session_stay_connected": "Continuar conectado",
+  "session_expired_idle_message": "Sessão encerrada por inatividade.",
+  "session_expired_absolute_message": "Sessão encerrada por tempo máximo atingido."
 }

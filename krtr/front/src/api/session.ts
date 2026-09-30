@@ -22,6 +22,20 @@ export async function fetchCurrentSession(): Promise<CurrentSession> {
 }
 
 /**
+ * Reports user activity, extending the idle timeout (G15).
+ *
+ * Exists as the one place that calls `POST /api/session/activity`, called
+ * by the session manager (task 5.6) at most every 60 s and whenever
+ * "Seguir conectado" is clicked.
+ *
+ * @returns The refreshed session, with updated expiry timestamps.
+ */
+export async function reportActivity(): Promise<CurrentSession> {
+  const response = await apiFetch("/api/session/activity", { method: "POST" });
+  return (await response.json()) as CurrentSession;
+}
+
+/**
  * Logs the user out: calls `POST /auth/logout`, then always returns to the
  * landing page, whether or not the request succeeded.
  *

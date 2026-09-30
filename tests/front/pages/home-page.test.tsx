@@ -5,6 +5,7 @@ import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import * as session from "@/api/session";
 import { HomePage } from "@/pages/home-page";
+import { makeSession } from "../api/fixtures";
 
 function SupportPlaceholder(): JSX.Element {
   return <p>support screen</p>;
@@ -27,11 +28,7 @@ describe("HomePage", () => {
   });
 
   it("shows the customer's number once /api/me resolves", async () => {
-    vi.spyOn(session, "fetchCurrentSession").mockResolvedValue({
-      customer_id: "12345",
-      idle_expires_at: "2026-01-01T00:05:00Z",
-      absolute_expires_at: "2026-01-01T00:30:00Z",
-    });
+    vi.spyOn(session, "fetchCurrentSession").mockResolvedValue(makeSession());
 
     renderHomePage();
 
@@ -39,11 +36,7 @@ describe("HomePage", () => {
   });
 
   it("navigates to /app/support when Soporte is clicked", async () => {
-    vi.spyOn(session, "fetchCurrentSession").mockResolvedValue({
-      customer_id: "12345",
-      idle_expires_at: "2026-01-01T00:05:00Z",
-      absolute_expires_at: "2026-01-01T00:30:00Z",
-    });
+    vi.spyOn(session, "fetchCurrentSession").mockResolvedValue(makeSession());
     const user = userEvent.setup();
     renderHomePage();
 
@@ -53,14 +46,11 @@ describe("HomePage", () => {
   });
 
   it("calls logout() when Cerrar sesión is clicked", async () => {
-    vi.spyOn(session, "fetchCurrentSession").mockResolvedValue({
-      customer_id: "12345",
-      idle_expires_at: "2026-01-01T00:05:00Z",
-      absolute_expires_at: "2026-01-01T00:30:00Z",
-    });
+    vi.spyOn(session, "fetchCurrentSession").mockResolvedValue(makeSession());
     const logoutSpy = vi.spyOn(session, "logout").mockResolvedValue(undefined);
     const user = userEvent.setup();
     renderHomePage();
+    await screen.findByText("#12345");
 
     await user.click(screen.getByRole("button", { name: "Cerrar sesión" }));
 
