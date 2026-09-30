@@ -1,5 +1,6 @@
 import type { JSX } from "react";
 import { BrowserRouter, Route, Routes } from "react-router-dom";
+import { HomePage } from "@/pages/home-page";
 import { LandingPage } from "@/pages/landing-page";
 import "@/i18n/config";
 
@@ -14,6 +15,7 @@ function App(): JSX.Element {
     <BrowserRouter>
       <Routes>
         <Route path="/" element={<LandingPage />} />
+        <Route path="/app" element={<HomePage />} />
       </Routes>
     </BrowserRouter>
   );

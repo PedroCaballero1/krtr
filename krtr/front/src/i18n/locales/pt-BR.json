@@ -1,5 +1,7 @@
 {
   "app_name": "krtr",
   "login_landing_tagline": "Segurança e suporte para seus produtos financeiros.",
-  "login_button": "Entrar"
+  "login_button": "Entrar",
+  "support_button": "Suporte",
+  "logout_button": "Sair"
 }
