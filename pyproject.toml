@@ -23,15 +23,22 @@ dependencies = [
 
 [tool.black]
 line-length = 100
+extend-exclude = '''
+/(
+  krtr/front
+)/
+'''
 
 [tool.ruff]
 line-length = 100
+extend-exclude = ["krtr/front"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+norecursedirs = ["krtr/front", "node_modules", "dist", ".venv"]
 
 [project.scripts]
 krtr = "krtr.cli.main:app"
@@ -53,6 +60,7 @@ dev = [
 
 [tool.hatch.build.targets.wheel]
 packages = ["krtr"]
+exclude = ["krtr/front", "**/node_modules", "**/dist"]
 
 [tool.semantic_release]
 version_toml = ["pyproject.toml:project.version"]
