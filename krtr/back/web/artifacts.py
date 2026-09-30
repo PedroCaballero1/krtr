@@ -1,13 +1,15 @@
-"""Defines the structured response contracts krtr-web's endpoints return.
+"""Defines the structured request/response contracts krtr-web's endpoints use.
 
-Exists to keep an endpoint's response shape discoverable apart from its
-implementation, per the §3.4 API contract in docs/guia-web-seguridad.md.
+Exists to keep an endpoint's request/response shape discoverable apart from
+its implementation, per the §3.4 API contract in docs/guia-web-seguridad.md.
 Consumed by `krtr/back/web/routers/`.
 """
 
-from typing import Literal
+from typing import Any, Literal
 
 from pydantic import BaseModel
+
+from krtr.back.security.audit.event_names import EventName
 
 
 class HealthStatus(BaseModel):
@@ -18,3 +20,17 @@ class HealthStatus(BaseModel):
     """
 
     status: Literal["ok"] = "ok"
+
+
+class RecordEventRequest(BaseModel):
+    """The `POST /api/events` request body.
+
+    Exists so the frontend can only submit an event name from the
+    documented catalog (an invalid name fails validation with 422 before
+    any handler code runs) and can never set `customer_id` itself — it is
+    added server-side, from the session, once sessions exist (task 4.4).
+    Consumed by `krtr/back/web/routers/events.py`.
+    """
+
+    event_name: EventName
+    properties: dict[str, Any] = {}
