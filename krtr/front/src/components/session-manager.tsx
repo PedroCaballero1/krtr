@@ -1,6 +1,8 @@
 import type { JSX, RefObject } from "react";
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { EventName } from "@/api/event-names";
+import { trackEvent } from "@/api/events";
 import { logout, reportActivity, type CurrentSession } from "@/api/session";
 import { Button } from "@/components/ui/button";
 
@@ -50,11 +52,20 @@ async function reportActivityAndRefresh(
   }
 }
 
+/** The event each phase is entered under, for the §3.5 catalog — phases with no event (e.g. "active") are omitted. */
+const PHASE_ENTERED_EVENTS: Partial<Record<SessionPhase, EventName>> = {
+  idle_warning: EventName.SessionIdleWarningShown,
+  absolute_warning: EventName.SessionAbsoluteWarningShown,
+  expired_idle: EventName.SessionExpiredIdle,
+  expired_absolute: EventName.SessionExpiredAbsolute,
+};
+
 /**
  * Ticks once per second, so time-based UI (the countdowns) stays current,
- * and logs out exactly once, the moment the session's phase becomes
- * expired — checked and acted on directly inside the tick, rather than in
- * a separate effect keyed off the derived phase, so it fires deterministically
+ * records the §3.5 event for each phase the session enters (once each), and
+ * logs out exactly once, the moment the session's phase becomes expired —
+ * all checked and acted on directly inside the tick, rather than in a
+ * separate effect keyed off the derived phase, so it fires deterministically
  * under both real and fake timers.
  *
  * @param session - The current session, or null before it has loaded.
@@ -64,6 +75,7 @@ function useSessionClock(session: CurrentSession | null): number {
   const [now, setNow] = useState(() => Date.now());
   const sessionRef = useRef(session);
   const hasExpiredRef = useRef(false);
+  const lastPhaseRef = useRef<SessionPhase>("active");
 
   useEffect(() => {
     sessionRef.current = session;
@@ -76,6 +88,11 @@ function useSessionClock(session: CurrentSession | null): number {
       const currentSession = sessionRef.current;
       if (!currentSession || hasExpiredRef.current) return;
       const phase = computeSessionPhase(currentSession, currentNow);
+      if (phase !== lastPhaseRef.current) {
+        lastPhaseRef.current = phase;
+        const eventName = PHASE_ENTERED_EVENTS[phase];
+        if (eventName) void trackEvent(eventName);
+      }
       if (phase === "expired_idle" || phase === "expired_absolute") {
         hasExpiredRef.current = true;
         void logout();
@@ -192,6 +209,7 @@ function renderSessionOverlay(
         secondsRemaining={secondsRemaining}
         onStayConnected={() => {
           lastReportedAtRef.current = Date.now();
+          void trackEvent(EventName.SessionExtended);
           void reportActivityAndRefresh(onSessionRefreshed);
         }}
       />

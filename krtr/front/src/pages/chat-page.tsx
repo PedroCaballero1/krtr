@@ -4,6 +4,8 @@ import { useTranslation } from "react-i18next";
 import { useParams } from "react-router-dom";
 import { MAX_MESSAGE_LENGTH, sendChatMessage } from "@/api/chat";
 import { ApiError } from "@/api/client";
+import { EventName } from "@/api/event-names";
+import { trackEvent } from "@/api/events";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { VoiceRecorder } from "@/components/voice-recorder";
@@ -54,10 +56,16 @@ async function sendChatText(
   if (!trimmedText) return;
   handlers.setIsSending(true);
   handlers.setErrorMessage(null);
+  void trackEvent(EventName.ChatMessageSent, { incident_id: incidentId });
+  const startedAt = Date.now();
   try {
     const response = await sendChatMessage(incidentId, trimmedText, resolveLanguage(i18n.language));
     handlers.appendExchange(trimmedText, response.reply);
     handlers.clearInput();
+    void trackEvent(EventName.ChatResponseReceived, {
+      incident_id: incidentId,
+      latency_ms: Date.now() - startedAt,
+    });
   } catch (error) {
     handlers.setErrorMessage(resolveChatErrorMessage(error));
   } finally {
@@ -90,7 +98,10 @@ function useTypingIndicator(isSending: boolean): boolean {
   const [showTyping, setShowTyping] = useState(false);
   useEffect(() => {
     if (!isSending) return;
-    const timeout = setTimeout(() => setShowTyping(true), TYPING_INDICATOR_DELAY_MS);
+    const timeout = setTimeout(() => {
+      setShowTyping(true);
+      void trackEvent(EventName.TypingIndicatorShown);
+    }, TYPING_INDICATOR_DELAY_MS);
     return () => {
       clearTimeout(timeout);
       setShowTyping(false);

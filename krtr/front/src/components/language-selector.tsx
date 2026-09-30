@@ -1,6 +1,8 @@
 import type { i18n as I18nInstance } from "i18next";
 import type { JSX } from "react";
 import { useTranslation } from "react-i18next";
+import { EventName } from "@/api/event-names";
+import { trackEvent } from "@/api/events";
 import { Button } from "@/components/ui/button";
 import { LANGUAGE_LABELS, Language } from "@/i18n/languages";
 import { storeLanguage } from "@/i18n/storage";
@@ -19,6 +21,7 @@ import { storeLanguage } from "@/i18n/storage";
 function selectLanguage(i18nInstance: I18nInstance, language: Language): void {
   void i18nInstance.changeLanguage(language);
   storeLanguage(language);
+  void trackEvent(EventName.LanguageChanged, { language });
 }
 
 /**

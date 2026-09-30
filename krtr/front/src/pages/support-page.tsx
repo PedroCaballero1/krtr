@@ -4,10 +4,13 @@ import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router-dom";
 import { createCase, listOpenCases, resumeCase, type CaseSummary } from "@/api/cases";
 import { ApiError } from "@/api/client";
+import { EventName } from "@/api/event-names";
+import { trackEvent } from "@/api/events";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 
 type SupportMode = "choice" | "existing";
+type CaseMode = "new" | "existing";
 
 const MAX_CASE_ID_LENGTH = 64;
 
@@ -16,19 +19,34 @@ function buildChatPath(incidentId: string): string {
   return `/app/chat/${encodeURIComponent(incidentId)}`;
 }
 
+/** Records which mode the user picked, per the §3.5 catalog. */
+function selectCaseMode(mode: CaseMode, setMode: (mode: SupportMode) => void): void {
+  void trackEvent(EventName.CaseModeSelected, { mode });
+  if (mode === "existing") setMode("existing");
+}
+
 /** Creates a new case and navigates to its chat, for "Caso nuevo". */
 async function startNewCase(navigate: (path: string) => void): Promise<void> {
   const { incident_id } = await createCase();
+  void trackEvent(EventName.CaseCreated, { incident_id });
   navigate(buildChatPath(incident_id));
 }
 
 /** Loads the customer's open cases for the "Caso existente" list. */
 async function loadOpenCases(setCases: (cases: CaseSummary[]) => void): Promise<void> {
   try {
-    setCases(await listOpenCases());
+    const cases = await listOpenCases();
+    setCases(cases);
+    void trackEvent(EventName.CaseListViewed, { count: cases.length });
   } catch {
     setCases([]);
   }
+}
+
+/** Navigates to a case picked directly from the open-cases list. */
+function selectListedCase(incidentId: string, navigate: (path: string) => void): void {
+  void trackEvent(EventName.CaseResumeSucceeded, { incident_id: incidentId });
+  navigate(buildChatPath(incidentId));
 }
 
 /**
@@ -45,10 +63,12 @@ async function submitCaseId(
   setNotFound(false);
   try {
     const { incident_id } = await resumeCase(trimmedValue);
+    void trackEvent(EventName.CaseResumeSucceeded, { incident_id });
     navigate(buildChatPath(incident_id));
   } catch (error) {
     if (error instanceof ApiError && error.status === 404) {
       setNotFound(true);
+      void trackEvent(EventName.CaseResumeFailed);
       return;
     }
     throw error;
@@ -156,7 +176,7 @@ function ExistingCaseChooser({ navigate }: CaseIdFormProps): JSX.Element {
     <div className="flex flex-col gap-6">
       <div>
         <h2 className="mb-2 font-medium">{t("support_open_cases_heading")}</h2>
-        <CaseList cases={cases} onSelect={(incidentId) => navigate(buildChatPath(incidentId))} />
+        <CaseList cases={cases} onSelect={(incidentId) => selectListedCase(incidentId, navigate)} />
       </div>
       <CaseIdForm navigate={navigate} />
     </div>
@@ -179,8 +199,11 @@ export function SupportPage(): JSX.Element {
   }
   return (
     <ModeChoice
-      onSelectNew={() => void startNewCase(navigate)}
-      onSelectExisting={() => setMode("existing")}
+      onSelectNew={() => {
+        selectCaseMode("new", setMode);
+        void startNewCase(navigate);
+      }}
+      onSelectExisting={() => selectCaseMode("existing", setMode)}
     />
   );
 }

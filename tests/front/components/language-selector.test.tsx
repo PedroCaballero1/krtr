@@ -1,7 +1,9 @@
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import App from "@/App";
+import { EventName } from "@/api/event-names";
+import * as events from "@/api/events";
 import i18n from "@/i18n/config";
 import { Language } from "@/i18n/languages";
 import es from "@/i18n/locales/es.json";
@@ -12,10 +14,12 @@ describe("LanguageSelector, through the app", () => {
     // i18next is a module-level singleton, so each test starts from a known
     // language regardless of what an earlier test switched to.
     await i18n.changeLanguage(Language.Spanish);
+    vi.spyOn(events, "trackEvent").mockResolvedValue(undefined);
   });
 
   afterEach(() => {
     localStorage.clear();
+    vi.restoreAllMocks();
   });
 
   it("switches every translated text on the page when Português is picked", async () => {
@@ -58,5 +62,16 @@ describe("LanguageSelector, through the app", () => {
       "aria-pressed",
       "false",
     );
+  });
+
+  it("records a language_changed event with the picked language", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+
+    await user.click(screen.getByRole("button", { name: "Português" }));
+
+    expect(events.trackEvent).toHaveBeenCalledWith(EventName.LanguageChanged, {
+      language: "pt-BR",
+    });
   });
 });

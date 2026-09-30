@@ -3,6 +3,8 @@ import userEvent from "@testing-library/user-event";
 import type { JSX } from "react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { EventName } from "@/api/event-names";
+import * as events from "@/api/events";
 import * as session from "@/api/session";
 import { HomePage } from "@/pages/home-page";
 import { makeSession } from "../api/fixtures";
@@ -23,6 +25,10 @@ function renderHomePage() {
 }
 
 describe("HomePage", () => {
+  beforeEach(() => {
+    vi.spyOn(events, "trackEvent").mockResolvedValue(undefined);
+  });
+
   afterEach(() => {
     vi.restoreAllMocks();
   });
@@ -43,6 +49,7 @@ describe("HomePage", () => {
     await user.click(screen.getByRole("button", { name: "Soporte" }));
 
     expect(await screen.findByText("support screen")).toBeInTheDocument();
+    expect(events.trackEvent).toHaveBeenCalledWith(EventName.SupportClicked);
   });
 
   it("calls logout() when Cerrar sesión is clicked", async () => {

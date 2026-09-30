@@ -1,12 +1,21 @@
 import type { JSX } from "react";
+import type { NavigateFunction } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router-dom";
+import { EventName } from "@/api/event-names";
+import { trackEvent } from "@/api/events";
 import { logout } from "@/api/session";
 import { SessionManager } from "@/components/session-manager";
 import { Button } from "@/components/ui/button";
 import { useSession } from "@/hooks/use-session";
 
 const SUPPORT_PATH = "/app/support";
+
+/** Records support_clicked and navigates to the case selection screen. */
+function handleSupportClick(navigate: NavigateFunction): void {
+  void trackEvent(EventName.SupportClicked);
+  navigate(SUPPORT_PATH);
+}
 
 /**
  * The authenticated home screen (`/app`): header with the customer's
@@ -28,7 +37,7 @@ export function HomePage(): JSX.Element {
           {session ? `#${session.customer_id}` : ""}
         </span>
         <div className="flex gap-2">
-          <Button variant="outline" onClick={() => navigate(SUPPORT_PATH)}>
+          <Button variant="outline" onClick={() => handleSupportClick(navigate)}>
             {t("support_button")}
           </Button>
           <Button variant="outline" onClick={() => void logout()}>

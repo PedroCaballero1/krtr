@@ -2,9 +2,11 @@ import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { JSX } from "react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import * as cases from "@/api/cases";
 import { ApiError } from "@/api/client";
+import { EventName } from "@/api/event-names";
+import * as events from "@/api/events";
 import { SupportPage } from "@/pages/support-page";
 
 function ChatPlaceholder(): JSX.Element {
@@ -23,6 +25,10 @@ function renderSupportPage() {
 }
 
 describe("SupportPage", () => {
+  beforeEach(() => {
+    vi.spyOn(events, "trackEvent").mockResolvedValue(undefined);
+  });
+
   afterEach(() => {
     vi.restoreAllMocks();
   });
@@ -35,6 +41,12 @@ describe("SupportPage", () => {
     await user.click(screen.getByRole("button", { name: "Caso nuevo" }));
 
     expect(await screen.findByText("chat screen")).toBeInTheDocument();
+    expect(events.trackEvent).toHaveBeenCalledWith(EventName.CaseModeSelected, {
+      mode: "new",
+    });
+    expect(events.trackEvent).toHaveBeenCalledWith(EventName.CaseCreated, {
+      incident_id: "new-1",
+    });
   });
 
   it('route "elegir de la lista": shows open cases and navigates on click', async () => {
@@ -50,10 +62,22 @@ describe("SupportPage", () => {
     await user.click(screen.getByRole("button", { name: "Caso existente" }));
     expect(await screen.findByText("case-1")).toBeInTheDocument();
     expect(screen.getByText(/Tarjeta bloqueada/)).toBeInTheDocument();
+    expect(events.trackEvent).toHaveBeenCalledWith(EventName.CaseModeSelected, {
+      mode: "existing",
+    });
+    expect(events.trackEvent).toHaveBeenCalledWith(EventName.CaseListViewed, {
+      count: 1,
+    });
 
     await user.click(screen.getByRole("button", { name: /case-1/ }));
 
     expect(await screen.findByText("chat screen")).toBeInTheDocument();
+    expect(events.trackEvent).toHaveBeenCalledWith(
+      EventName.CaseResumeSucceeded,
+      {
+        incident_id: "case-1",
+      },
+    );
   });
 
   it('route "escribir el ID": resumes a valid case and navigates', async () => {
@@ -71,6 +95,12 @@ describe("SupportPage", () => {
 
     expect(await screen.findByText("chat screen")).toBeInTheDocument();
     expect(cases.resumeCase).toHaveBeenCalledWith("typed-1");
+    expect(events.trackEvent).toHaveBeenCalledWith(
+      EventName.CaseResumeSucceeded,
+      {
+        incident_id: "typed-1",
+      },
+    );
   });
 
   it('shows "Caso no encontrado" for an unknown or foreign id, without navigating', async () => {
@@ -92,6 +122,7 @@ describe("SupportPage", () => {
       "Caso no encontrado",
     );
     expect(screen.queryByText("chat screen")).not.toBeInTheDocument();
+    expect(events.trackEvent).toHaveBeenCalledWith(EventName.CaseResumeFailed);
   });
 
   it("trims leading and trailing spaces from the typed id", async () => {

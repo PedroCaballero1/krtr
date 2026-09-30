@@ -2,7 +2,16 @@ import { fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { EventName } from "@/api/event-names";
+import * as events from "@/api/events";
 import { ChatPage } from "@/pages/chat-page";
+
+// Instrumentation (task 5.10) posts to /api/events through the same global
+// fetch these tests mock for /api/chat/*; stub trackEvent directly so it
+// never adds an extra fetch call for these tests to account for.
+beforeEach(() => {
+  vi.spyOn(events, "trackEvent").mockResolvedValue(undefined);
+});
 
 function renderChatPage() {
   return render(
@@ -73,6 +82,9 @@ describe("ChatPage — typing indicator timing (fake clock)", () => {
     await vi.advanceTimersByTimeAsync(2000);
     await vi.advanceTimersByTimeAsync(0); // Flush the indicator's own effect-driven state update.
     expect(screen.getByText("Escribiendo…")).toBeInTheDocument();
+    expect(events.trackEvent).toHaveBeenCalledWith(
+      EventName.TypingIndicatorShown,
+    );
 
     // Switched to real timers before resolving: clearing the indicator
     // depends on a passive effect (useTypingIndicator's cleanup), which
@@ -117,6 +129,13 @@ describe("ChatPage — composer behavior", () => {
 
     expect(await screen.findByText("assistant reply")).toBeInTheDocument();
     expect(screen.getByText("user message")).toBeInTheDocument();
+    expect(events.trackEvent).toHaveBeenCalledWith(EventName.ChatMessageSent, {
+      incident_id: "case-1",
+    });
+    expect(events.trackEvent).toHaveBeenCalledWith(
+      EventName.ChatResponseReceived,
+      expect.objectContaining({ incident_id: "case-1" }),
+    );
   });
 
   it("Enter sends the message; Shift+Enter inserts a newline instead", async () => {
