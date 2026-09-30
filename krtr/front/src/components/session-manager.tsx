@@ -1,10 +1,13 @@
 import type { JSX, RefObject } from "react";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { EventName } from "@/api/event-names";
 import { trackEvent } from "@/api/events";
-import { logout, reportActivity, type CurrentSession } from "@/api/session";
+import { LogoutReason, logout, reportActivity, type CurrentSession } from "@/api/session";
 import { Button } from "@/components/ui/button";
+import { Kicker } from "@/components/ui/kicker";
+import { Notice } from "@/components/ui/notice";
+import { formatMinutesSeconds } from "@/lib/format";
 
 const TICK_INTERVAL_MS = 1000;
 const WARNING_LEAD_MS = 30_000;
@@ -95,7 +98,9 @@ function useSessionClock(session: CurrentSession | null): number {
       }
       if (phase === "expired_idle" || phase === "expired_absolute") {
         hasExpiredRef.current = true;
-        void logout();
+        void logout(
+          phase === "expired_idle" ? LogoutReason.IdleTimeout : LogoutReason.AbsoluteTimeout,
+        );
       }
     }, TICK_INTERVAL_MS);
     return () => clearInterval(interval);
@@ -140,43 +145,66 @@ interface ExpiryWarningModalProps {
   onStayConnected?: () => void;
 }
 
-/** The 30-second countdown modal shown before an idle or absolute expiry. */
+/** The translation keys for each warning kind's title and body. */
+const WARNING_TEXT_KEYS = {
+  idle: { title: "session_idle_warning_title", body: "session_idle_warning_body" },
+  absolute: { title: "session_absolute_warning_title", body: "session_absolute_warning_body" },
+} as const;
+
+/**
+ * The 30-second countdown modal shown before an idle or absolute expiry:
+ * a large `0:SS` countdown, the reason, and the way out ("Seguir conectado"
+ * only for idle, since the absolute limit can't be extended; Cerrar sesión
+ * always).
+ */
 function ExpiryWarningModal({
   secondsRemaining,
   kind,
   onStayConnected,
 }: ExpiryWarningModalProps): JSX.Element {
   const { t } = useTranslation();
+  const titleId = useId();
   return (
-    <div
-      role="alertdialog"
-      aria-modal="true"
-      className="fixed inset-0 flex items-center justify-center bg-black/50"
-    >
-      <div className="rounded-lg bg-background p-6 text-center shadow-lg">
-        <p>
-          {t(kind === "idle" ? "session_idle_warning" : "session_absolute_warning", {
-            seconds: secondsRemaining,
-          })}
-        </p>
-        {onStayConnected && (
-          <Button type="button" className="mt-4" onClick={onStayConnected}>
-            {t("session_stay_connected")}
+    <div className="fixed inset-0 z-50 grid place-items-center bg-neutral-900/50 p-4">
+      <div
+        role="alertdialog"
+        aria-modal="true"
+        aria-labelledby={titleId}
+        className="flex w-full max-w-[480px] flex-col gap-4 border-t-4 border-primary bg-background p-6 shadow-lg"
+      >
+        <Kicker>{t("header_session")}</Kicker>
+        <div className="font-heading text-7xl leading-none font-extrabold tracking-[-0.03em] tabular-nums">
+          {formatMinutesSeconds(secondsRemaining)}
+        </div>
+        <h2 id={titleId} className="m-0 text-[22px]">
+          {t(WARNING_TEXT_KEYS[kind].title)}
+        </h2>
+        <p className="m-0 text-[15px] leading-normal">{t(WARNING_TEXT_KEYS[kind].body)}</p>
+        <div className="mt-2 flex flex-wrap gap-2">
+          {onStayConnected && (
+            <Button size="lg" className="min-w-50 justify-start" onClick={onStayConnected}>
+              {t("session_stay_connected")}
+            </Button>
+          )}
+          <Button variant="outline" size="lg" onClick={() => void logout()}>
+            {t("logout_button")}
           </Button>
-        )}
+        </div>
       </div>
     </div>
   );
 }
 
-/** The full-screen message shown once a session has expired. */
+/** The full-screen message shown once a session has expired, until the landing page loads. */
 function ExpiredNotice({ kind }: { kind: "idle" | "absolute" }): JSX.Element {
   const { t } = useTranslation();
   const messageKey =
     kind === "idle" ? "session_expired_idle_message" : "session_expired_absolute_message";
   return (
-    <div role="alert" className="fixed inset-0 flex items-center justify-center bg-background">
-      <p>{t(messageKey)}</p>
+    <div className="fixed inset-0 z-50 grid place-items-center bg-background p-4">
+      <Notice role="alert" className="text-base">
+        {t(messageKey)}
+      </Notice>
     </div>
   );
 }

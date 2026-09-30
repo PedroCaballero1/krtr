@@ -4,6 +4,7 @@ import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { EventName } from "@/api/event-names";
 import * as events from "@/api/events";
+import es from "@/i18n/locales/es.json";
 import { ChatPage } from "@/pages/chat-page";
 
 // Instrumentation (task 5.10) posts to /api/events through the same global
@@ -36,7 +37,7 @@ function delayedJsonResponse(
 }
 
 function typeAndSend(text: string): void {
-  fireEvent.change(screen.getByPlaceholderText("Escribe tu mensaje…"), {
+  fireEvent.change(screen.getByPlaceholderText(es.chat_placeholder), {
     target: { value: text },
   });
   fireEvent.click(screen.getByRole("button", { name: "Enviar" }));
@@ -65,7 +66,9 @@ describe("ChatPage — typing indicator timing (fake clock)", () => {
     await vi.advanceTimersByTimeAsync(500);
     await vi.advanceTimersByTimeAsync(0); // Flush the state update the resolved promise scheduled.
 
-    expect(screen.queryByText("Escribiendo…")).not.toBeInTheDocument();
+    expect(
+      screen.queryByText(es.chat_typing_indicator),
+    ).not.toBeInTheDocument();
     expect(screen.getByText("reply-fast")).toBeInTheDocument();
   });
 
@@ -81,7 +84,7 @@ describe("ChatPage — typing indicator timing (fake clock)", () => {
     typeAndSend("pregunta");
     await vi.advanceTimersByTimeAsync(2000);
     await vi.advanceTimersByTimeAsync(0); // Flush the indicator's own effect-driven state update.
-    expect(screen.getByText("Escribiendo…")).toBeInTheDocument();
+    expect(screen.getByText(es.chat_typing_indicator)).toBeInTheDocument();
     expect(events.trackEvent).toHaveBeenCalledWith(
       EventName.TypingIndicatorShown,
     );
@@ -103,7 +106,9 @@ describe("ChatPage — typing indicator timing (fake clock)", () => {
     );
 
     expect(await screen.findByText("reply-slow")).toBeInTheDocument();
-    expect(screen.queryByText("Escribiendo…")).not.toBeInTheDocument();
+    expect(
+      screen.queryByText(es.chat_typing_indicator),
+    ).not.toBeInTheDocument();
   });
 });
 
@@ -152,7 +157,7 @@ describe("ChatPage — composer behavior", () => {
       ),
     );
     renderChatPage();
-    const textarea = screen.getByPlaceholderText("Escribe tu mensaje…");
+    const textarea = screen.getByPlaceholderText(es.chat_placeholder);
 
     fireEvent.change(textarea, { target: { value: "line one" } });
     fireEvent.keyDown(textarea, { key: "Enter", shiftKey: true });
@@ -172,7 +177,7 @@ describe("ChatPage — composer behavior", () => {
     const user = userEvent.setup();
     renderChatPage();
 
-    await user.type(screen.getByPlaceholderText("Escribe tu mensaje…"), "hola");
+    await user.type(screen.getByPlaceholderText(es.chat_placeholder), "hola");
     await user.click(screen.getByRole("button", { name: "Enviar" }));
 
     expect(screen.getByRole("button", { name: "Enviar" })).toBeDisabled();
@@ -192,7 +197,7 @@ describe("ChatPage — composer behavior", () => {
     // text again — the input is cleared after a successful send.
     await screen.findByText("ok");
     await user.type(
-      screen.getByPlaceholderText("Escribe tu mensaje…"),
+      screen.getByPlaceholderText(es.chat_placeholder),
       "otro mensaje",
     );
     expect(screen.getByRole("button", { name: "Enviar" })).toBeEnabled();
@@ -250,9 +255,28 @@ describe("ChatPage — composer behavior", () => {
     renderChatPage();
 
     const textarea = screen.getByPlaceholderText(
-      "Escribe tu mensaje…",
+      es.chat_placeholder,
     ) as HTMLTextAreaElement;
 
     expect(textarea.maxLength).toBe(2000);
+  });
+});
+
+describe("ChatPage — header", () => {
+  it('shows the case id and goes back to the case selection from "Casos"', async () => {
+    const user = userEvent.setup();
+    render(
+      <MemoryRouter initialEntries={["/app/chat/case-1"]}>
+        <Routes>
+          <Route path="/app/chat/:incidentId" element={<ChatPage />} />
+          <Route path="/app/support" element={<p>support screen</p>} />
+        </Routes>
+      </MemoryRouter>,
+    );
+    expect(screen.getByText("case-1")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Casos" }));
+
+    expect(await screen.findByText("support screen")).toBeInTheDocument();
   });
 });

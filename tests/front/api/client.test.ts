@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ApiError, ApiEvent, apiFetch } from "@/api/client";
+import es from "@/i18n/locales/es.json";
 
 function jsonResponse(status: number, body: unknown): Response {
   return new Response(JSON.stringify(body), {
@@ -105,9 +106,7 @@ describe("apiFetch", () => {
     expect((error as ApiError).status).toBe(400);
     expect((error as ApiError).code).toBe("invalid_text");
     // Translated (not the raw key): the Spanish tagline text, per es.json.
-    expect((error as ApiError).message).toBe(
-      "Seguridad y soporte para tus productos financieros.",
-    );
+    expect((error as ApiError).message).toBe(es.login_landing_tagline);
   });
 
   it("falls back to the status text when the body has no message_key", async () => {

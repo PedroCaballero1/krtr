@@ -44,7 +44,12 @@ describe("SessionManager", () => {
     render(<SessionManager session={session} onSessionRefreshed={vi.fn()} />);
 
     await vi.advanceTimersByTimeAsync(4 * 60 * 1000 + 30 * 1000); // 4:30
-    expect(screen.getByRole("alertdialog")).toBeInTheDocument();
+    expect(
+      screen.getByRole("alertdialog", {
+        name: "Tu sesión se cerrará por inactividad",
+      }),
+    ).toBeInTheDocument();
+    expect(screen.getByText("0:30")).toBeInTheDocument();
     expect(
       screen.getByRole("button", { name: "Seguir conectado" }),
     ).toBeInTheDocument();
@@ -58,6 +63,9 @@ describe("SessionManager", () => {
       "Sesión cerrada por inactividad.",
     );
     expect(sessionApi.logout).toHaveBeenCalledOnce();
+    expect(sessionApi.logout).toHaveBeenCalledWith(
+      sessionApi.LogoutReason.IdleTimeout,
+    );
     expect(events.trackEvent).toHaveBeenCalledWith(
       EventName.SessionExpiredIdle,
     );
@@ -76,7 +84,11 @@ describe("SessionManager", () => {
     render(<SessionManager session={session} onSessionRefreshed={vi.fn()} />);
 
     await vi.advanceTimersByTimeAsync(29 * 60 * 1000 + 30 * 1000); // 29:30
-    expect(screen.getByRole("alertdialog")).toBeInTheDocument();
+    expect(
+      screen.getByRole("alertdialog", {
+        name: "Tu sesión llegará a su límite",
+      }),
+    ).toBeInTheDocument();
     expect(
       screen.queryByRole("button", { name: "Seguir conectado" }),
     ).not.toBeInTheDocument();
@@ -90,6 +102,9 @@ describe("SessionManager", () => {
       "Sesión cerrada por tiempo máximo alcanzado.",
     );
     expect(sessionApi.logout).toHaveBeenCalledOnce();
+    expect(sessionApi.logout).toHaveBeenCalledWith(
+      sessionApi.LogoutReason.AbsoluteTimeout,
+    );
     expect(events.trackEvent).toHaveBeenCalledWith(
       EventName.SessionExpiredAbsolute,
     );
@@ -140,5 +155,18 @@ describe("SessionManager", () => {
     window.dispatchEvent(new Event("keydown"));
     await vi.advanceTimersByTimeAsync(0);
     expect(sessionApi.reportActivity).toHaveBeenCalledTimes(2);
+  });
+
+  it("lets the user log out right away from the warning", async () => {
+    const session = makeSession({
+      idle_expires_at: new Date(Date.now() + FIVE_MINUTES_MS).toISOString(),
+    });
+    render(<SessionManager session={session} onSessionRefreshed={vi.fn()} />);
+    await vi.advanceTimersByTimeAsync(4 * 60 * 1000 + 30 * 1000); // 4:30
+
+    fireEvent.click(screen.getByRole("button", { name: "Cerrar sesión" }));
+
+    expect(sessionApi.logout).toHaveBeenCalledOnce();
+    expect(sessionApi.logout).toHaveBeenCalledWith();
   });
 });

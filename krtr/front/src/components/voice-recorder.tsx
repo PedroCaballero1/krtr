@@ -1,13 +1,16 @@
 import type { JSX, RefObject } from "react";
 import { useEffect, useRef, useState } from "react";
+import { Mic, Send, X } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { ApiError } from "@/api/client";
 import { EventName } from "@/api/event-names";
 import { trackEvent } from "@/api/events";
 import { sendVoiceMessage } from "@/api/voice";
 import { Button } from "@/components/ui/button";
+import { Notice } from "@/components/ui/notice";
 import i18n from "@/i18n/config";
 import { resolveLanguage } from "@/i18n/languages";
+import { formatMinutesSeconds } from "@/lib/format";
 
 const MAX_RECORDING_SECONDS = 60;
 const TICK_INTERVAL_MS = 1000;
@@ -79,6 +82,7 @@ async function finishRecording(
   action: "send" | "cancel",
 ): Promise<void> {
   const handles = refs.handles.current;
+  const durationSeconds = Math.max(refs.elapsedSeconds.current, 1);
   teardownRecording(refs);
   callbacks.setStatus("idle");
   if (!handles) return;
@@ -90,7 +94,10 @@ async function finishRecording(
   void trackEvent(EventName.VoiceRecordingSent);
   try {
     const response = await sendVoiceMessage(incidentId, audio, resolveLanguage(i18n.language));
-    callbacks.onSent(i18n.t("chat_voice_message_label"), response.reply);
+    const label = i18n.t("chat_voice_message_label", {
+      duration: formatMinutesSeconds(durationSeconds),
+    });
+    callbacks.onSent(label, response.reply);
   } catch (error) {
     callbacks.onError(resolveVoiceErrorMessage(error));
   }
@@ -139,18 +146,103 @@ async function startRecording(
   }
 }
 
+/** The mic icon button that starts a recording. */
+function RecordButton({
+  disabled,
+  onClick,
+}: {
+  disabled: boolean;
+  onClick: () => void;
+}): JSX.Element {
+  const { t } = useTranslation();
+  return (
+    <Button
+      type="button"
+      variant="outline"
+      size="icon"
+      aria-label={t("voice_record")}
+      title={t("voice_record")}
+      disabled={disabled}
+      onClick={onClick}
+    >
+      <Mic aria-hidden className="size-5" />
+    </Button>
+  );
+}
+
+interface RecordingBarProps {
+  seconds: number;
+  onCancel: () => void;
+  onSend: () => void;
+}
+
+/** The red bar that replaces the composer while recording: clock, progress, Cancelar, Enviar audio. */
+function RecordingBar({ seconds, onCancel, onSend }: RecordingBarProps): JSX.Element {
+  const { t } = useTranslation();
+  return (
+    <div className="flex flex-wrap items-center gap-4 bg-primary px-4 py-4 text-primary-foreground md:px-8">
+      <span
+        aria-hidden
+        className="inline-block size-3 animate-recording-pulse bg-primary-foreground"
+      />
+      <strong className="text-[15px]">{t("voice_recording_status")}</strong>
+      <span className="font-heading text-[28px] font-extrabold tabular-nums">
+        {formatMinutesSeconds(seconds)}
+      </span>
+      <span className="text-sm">/ {formatMinutesSeconds(MAX_RECORDING_SECONDS)}</span>
+      <progress
+        value={seconds}
+        max={MAX_RECORDING_SECONDS}
+        aria-label={t("voice_recording_status")}
+        className="h-1 min-w-30 flex-1 appearance-none bg-primary-foreground/35 [&::-moz-progress-bar]:bg-primary-foreground [&::-webkit-progress-bar]:bg-primary-foreground/35 [&::-webkit-progress-value]:bg-primary-foreground"
+      />
+      <Button
+        variant="outline"
+        className="h-11 border-primary-foreground text-primary-foreground hover:bg-primary-foreground/15"
+        onClick={onCancel}
+      >
+        <X aria-hidden />
+        {t("voice_cancel")}
+      </Button>
+      <Button
+        className="h-11 bg-primary-foreground text-brand-700 hover:bg-primary-foreground/90"
+        onClick={onSend}
+      >
+        <Send aria-hidden />
+        {t("voice_send")}
+      </Button>
+    </div>
+  );
+}
+
+/** Default idle layout: just the record button, for callers with no composer around it. */
+function renderRecordButtonOnly(recordButton: JSX.Element): JSX.Element {
+  return recordButton;
+}
+
 interface VoiceRecorderProps {
   incidentId: string;
   onSent: (userText: string, reply: string) => void;
   onError: (message: string) => void;
+  /** Disables the record button (e.g. while a text message is awaiting its reply). */
+  disabled?: boolean;
+  /** Lays out the idle state around the record button (the chat composer places it next to Enviar). */
+  renderIdle?: (recordButton: JSX.Element) => JSX.Element;
 }
 
 /**
- * The voice note button (G8): records with `MediaRecorder`, auto-cutting at
- * 60 s, with Cancelar/Enviar while recording and a message on denied
- * microphone permission.
+ * The voice note control (G8): records with `MediaRecorder`, auto-cutting at
+ * 60 s. While recording it replaces whatever `renderIdle` laid out with the
+ * recording bar (Cancelar / Enviar audio); a denied microphone permission
+ * shows a message under the idle layout, and the button can be retried.
  */
-export function VoiceRecorder({ incidentId, onSent, onError }: VoiceRecorderProps): JSX.Element {
+export function VoiceRecorder({
+  incidentId,
+  onSent,
+  onError,
+  disabled = false,
+  renderIdle = renderRecordButtonOnly,
+}: VoiceRecorderProps): JSX.Element {
   const { t } = useTranslation();
   const [status, setStatus] = useState<RecordingStatus>("idle");
   const [seconds, setSeconds] = useState(0);
@@ -165,36 +257,29 @@ export function VoiceRecorder({ incidentId, onSent, onError }: VoiceRecorderProp
   // intentionally left out of the dependency array.
   useEffect(() => () => teardownRecording({ handles, interval, elapsedSeconds }), []);
 
-  if (status === "permission_denied") {
-    return <p role="alert">{t("voice_permission_denied")}</p>;
-  }
   if (status === "recording") {
     return (
-      <div className="flex items-center gap-2">
-        <span>{t("voice_recording_status", { seconds, maxSeconds: MAX_RECORDING_SECONDS })}</span>
-        <Button
-          type="button"
-          variant="outline"
-          onClick={() => void finishRecording(refs, callbacks, incidentId, "cancel")}
-        >
-          {t("voice_cancel")}
-        </Button>
-        <Button
-          type="button"
-          onClick={() => void finishRecording(refs, callbacks, incidentId, "send")}
-        >
-          {t("voice_send")}
-        </Button>
-      </div>
+      <RecordingBar
+        seconds={seconds}
+        onCancel={() => void finishRecording(refs, callbacks, incidentId, "cancel")}
+        onSend={() => void finishRecording(refs, callbacks, incidentId, "send")}
+      />
     );
   }
-  return (
-    <Button
-      type="button"
-      variant="outline"
+  const recordButton = (
+    <RecordButton
+      disabled={disabled}
       onClick={() => void startRecording(refs, callbacks, incidentId)}
-    >
-      {t("voice_record")}
-    </Button>
+    />
+  );
+  return (
+    <>
+      {renderIdle(recordButton)}
+      {status === "permission_denied" && (
+        <Notice role="alert" className="px-4 md:px-8">
+          {t("voice_permission_denied")}
+        </Notice>
+      )}
+    </>
   );
 }

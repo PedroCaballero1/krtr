@@ -1,5 +1,6 @@
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import type { JSX } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { EventName } from "@/api/event-names";
 import * as events from "@/api/events";
@@ -38,6 +39,16 @@ function renderRecorder(onSent = vi.fn(), onError = vi.fn()) {
   return { onSent, onError };
 }
 
+/** A stand-in composer that places the record button next to a text field. */
+function renderAsComposer(recordButton: JSX.Element): JSX.Element {
+  return (
+    <div>
+      <textarea aria-label="composer" />
+      {recordButton}
+    </div>
+  );
+}
+
 describe("VoiceRecorder", () => {
   beforeEach(() => {
     vi.stubGlobal("MediaRecorder", FakeMediaRecorder);
@@ -62,7 +73,8 @@ describe("VoiceRecorder", () => {
       screen.getByRole("button", { name: "Grabar nota de voz" }),
     );
 
-    expect(await screen.findByText("Grabando… 0s de 60s")).toBeInTheDocument();
+    expect(await screen.findByText("Grabando")).toBeInTheDocument();
+    expect(screen.getByText("0:00")).toBeInTheDocument();
     expect(events.trackEvent).toHaveBeenCalledWith(
       EventName.VoiceRecordingStarted,
     );
@@ -82,7 +94,7 @@ describe("VoiceRecorder", () => {
     await vi.runAllTimersAsync();
 
     expect(voiceApi.sendVoiceMessage).toHaveBeenCalledOnce();
-    expect(onSent).toHaveBeenCalledWith("🎤 Nota de voz", "voice reply");
+    expect(onSent).toHaveBeenCalledWith("Nota de voz · 1:00", "voice reply");
     expect(events.trackEvent).toHaveBeenCalledWith(
       EventName.VoiceRecordingSent,
     );
@@ -124,10 +136,78 @@ describe("VoiceRecorder", () => {
     );
 
     expect(await screen.findByRole("alert")).toHaveTextContent(
-      "No se pudo acceder al micrófono. Revisa los permisos del navegador.",
+      "No tenemos permiso para usar el micrófono. Actívalo en tu navegador o escribe tu mensaje.",
     );
     expect(events.trackEvent).toHaveBeenCalledWith(
       EventName.VoicePermissionDenied,
     );
+  });
+
+  it("replaces the surrounding composer with the recording bar while recording", async () => {
+    const user = userEvent.setup();
+    render(
+      <VoiceRecorder
+        incidentId="case-1"
+        onSent={vi.fn()}
+        onError={vi.fn()}
+        renderIdle={renderAsComposer}
+      />,
+    );
+    expect(screen.getByLabelText("composer")).toBeInTheDocument();
+
+    await user.click(
+      screen.getByRole("button", { name: "Grabar nota de voz" }),
+    );
+
+    expect(await screen.findByText("Grabando")).toBeInTheDocument();
+    expect(screen.queryByLabelText("composer")).not.toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "Enviar audio" }),
+    ).toBeInTheDocument();
+  });
+
+  it("keeps the composer and the record button usable after a denied permission", async () => {
+    Object.defineProperty(navigator, "mediaDevices", {
+      configurable: true,
+      value: {
+        getUserMedia: vi
+          .fn()
+          .mockRejectedValue(new DOMException("denied", "NotAllowedError")),
+      },
+    });
+    const user = userEvent.setup();
+    render(
+      <VoiceRecorder
+        incidentId="case-1"
+        onSent={vi.fn()}
+        onError={vi.fn()}
+        renderIdle={renderAsComposer}
+      />,
+    );
+
+    await user.click(
+      screen.getByRole("button", { name: "Grabar nota de voz" }),
+    );
+
+    expect(await screen.findByRole("alert")).toBeInTheDocument();
+    expect(screen.getByLabelText("composer")).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "Grabar nota de voz" }),
+    ).toBeEnabled();
+  });
+
+  it("disables the record button when asked to", () => {
+    render(
+      <VoiceRecorder
+        incidentId="case-1"
+        onSent={vi.fn()}
+        onError={vi.fn()}
+        disabled
+      />,
+    );
+
+    expect(
+      screen.getByRole("button", { name: "Grabar nota de voz" }),
+    ).toBeDisabled();
   });
 });

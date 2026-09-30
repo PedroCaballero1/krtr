@@ -5,6 +5,7 @@ import { EventName } from "@/api/event-names";
 import * as events from "@/api/events";
 import i18n from "@/i18n/config";
 import { Language } from "@/i18n/languages";
+import es from "@/i18n/locales/es.json";
 import { LandingPage } from "@/pages/landing-page";
 
 describe("LandingPage", () => {
@@ -29,12 +30,17 @@ describe("LandingPage", () => {
     vi.restoreAllMocks();
   });
 
-  it("shows the brand, tagline and the Spanish login button by default", () => {
+  it("shows the brand, headline, tagline and the Spanish login button by default", () => {
     render(<LandingPage />);
 
-    expect(screen.getByRole("heading", { name: "krtr" })).toBeInTheDocument();
+    expect(screen.getByText("krtr")).toBeInTheDocument();
     expect(
-      screen.getByText("Seguridad y soporte para tus productos financieros."),
+      screen.getByRole("heading", { name: "Tu banco, cuando lo necesitas." }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        "Inicia sesión con tu número de cliente para abrir un caso o retomar uno que ya tengas abierto.",
+      ),
     ).toBeInTheDocument();
     expect(
       screen.getByRole("button", { name: "Iniciar sesión" }),
@@ -73,6 +79,35 @@ describe("LandingPage", () => {
 
     expect(events.trackEvent).toHaveBeenCalledWith(EventName.PageView, {
       path: "/",
+    });
+  });
+
+  describe("logout reason notice", () => {
+    function renderWithSearch(search: string) {
+      Object.defineProperty(window, "location", {
+        configurable: true,
+        value: { ...originalLocation, assign: assignSpy, search },
+      });
+      return render(<LandingPage />);
+    }
+
+    it.each([
+      ["?logout=idle", es.session_expired_idle_message],
+      ["?logout=absolute", es.session_expired_absolute_message],
+      ["?logout=user", es.logout_message_user],
+    ])("shows the message matching %s", (search, expectedMessage) => {
+      renderWithSearch(search);
+
+      expect(screen.getByRole("status")).toHaveTextContent(expectedMessage);
+    });
+
+    it("shows nothing without a reason, or for an unknown one", () => {
+      const { unmount } = renderWithSearch("");
+      expect(screen.queryByRole("status")).not.toBeInTheDocument();
+      unmount();
+
+      renderWithSearch("?logout=<script>");
+      expect(screen.queryByRole("status")).not.toBeInTheDocument();
     });
   });
 });

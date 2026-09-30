@@ -1,28 +1,36 @@
 import type { FormEvent, JSX } from "react";
-import { useEffect, useState } from "react";
+import { useId, useState } from "react";
+import { ArrowRight } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router-dom";
-import { createCase, listOpenCases, resumeCase, type CaseSummary } from "@/api/cases";
+import { createCase, resumeCase } from "@/api/cases";
 import { ApiError } from "@/api/client";
 import { EventName } from "@/api/event-names";
 import { trackEvent } from "@/api/events";
+import { OpenCaseList } from "@/components/open-case-list";
+import { useOpenCases } from "@/hooks/use-open-cases";
+import { CaseListLayout } from "@/lib/case-list-layout";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Kicker } from "@/components/ui/kicker";
+import { Notice } from "@/components/ui/notice";
+import { cn } from "cn";
+import { buildChatPath } from "@/lib/routes";
 
-type SupportMode = "choice" | "existing";
-type CaseMode = "new" | "existing";
+/** The two ways into support (§3.2/G18); also the `case_mode_selected` payload. */
+const CaseMode = {
+  New: "new",
+  Existing: "existing",
+} as const;
+
+type CaseMode = (typeof CaseMode)[keyof typeof CaseMode];
 
 const MAX_CASE_ID_LENGTH = 64;
 
-/** Builds the chat route for a confirmed incident_id (task 5.8 implements it). */
-function buildChatPath(incidentId: string): string {
-  return `/app/chat/${encodeURIComponent(incidentId)}`;
-}
-
-/** Records which mode the user picked, per the §3.5 catalog. */
-function selectCaseMode(mode: CaseMode, setMode: (mode: SupportMode) => void): void {
+/** Records which mode the user picked, per the §3.5 catalog, and shows its panel. */
+function selectCaseMode(mode: CaseMode, setMode: (mode: CaseMode) => void): void {
   void trackEvent(EventName.CaseModeSelected, { mode });
-  if (mode === "existing") setMode("existing");
+  setMode(mode);
 }
 
 /** Creates a new case and navigates to its chat, for "Caso nuevo". */
@@ -30,23 +38,6 @@ async function startNewCase(navigate: (path: string) => void): Promise<void> {
   const { incident_id } = await createCase();
   void trackEvent(EventName.CaseCreated, { incident_id });
   navigate(buildChatPath(incident_id));
-}
-
-/** Loads the customer's open cases for the "Caso existente" list. */
-async function loadOpenCases(setCases: (cases: CaseSummary[]) => void): Promise<void> {
-  try {
-    const cases = await listOpenCases();
-    setCases(cases);
-    void trackEvent(EventName.CaseListViewed, { count: cases.length });
-  } catch {
-    setCases([]);
-  }
-}
-
-/** Navigates to a case picked directly from the open-cases list. */
-function selectListedCase(incidentId: string, navigate: (path: string) => void): void {
-  void trackEvent(EventName.CaseResumeSucceeded, { incident_id: incidentId });
-  navigate(buildChatPath(incidentId));
 }
 
 /**
@@ -75,111 +66,151 @@ async function submitCaseId(
   }
 }
 
-interface ModeChoiceProps {
-  onSelectNew: () => void;
-  onSelectExisting: () => void;
+interface ModeTileProps {
+  marker: string;
+  title: string;
+  description: string;
+  isSelected: boolean;
+  onSelect: () => void;
+  className?: string;
 }
 
-/** The initial choice: "Caso nuevo" or "Caso existente" (§3.2). */
-function ModeChoice({ onSelectNew, onSelectExisting }: ModeChoiceProps): JSX.Element {
+/** One of the two big A/B choice tiles; inverted (ink on paper → paper on ink) when selected. */
+function ModeTile(props: ModeTileProps): JSX.Element {
+  const titleId = useId();
+  const descriptionId = useId();
+  return (
+    <button
+      type="button"
+      aria-pressed={props.isSelected}
+      aria-labelledby={titleId}
+      aria-describedby={descriptionId}
+      className={cn(
+        "flex cursor-pointer flex-col gap-2 px-4 py-6 text-left md:px-8",
+        props.isSelected ? "bg-foreground text-background" : "hover:bg-surface",
+        props.className,
+      )}
+      onClick={props.onSelect}
+    >
+      <span aria-hidden className="text-[13px] font-bold tracking-[0.08em]">
+        {props.marker}
+      </span>
+      <strong id={titleId} className="font-heading text-[28px] font-extrabold tracking-[-0.02em]">
+        {props.title}
+      </strong>
+      <span id={descriptionId} className="text-[15px] leading-snug">
+        {props.description}
+      </span>
+    </button>
+  );
+}
+
+interface ModeChoiceProps {
+  mode: CaseMode | null;
+  onSelect: (mode: CaseMode) => void;
+}
+
+/** The choice between "Caso nuevo" (A) and "Caso existente" (B). */
+function ModeChoice({ mode, onSelect }: ModeChoiceProps): JSX.Element {
   const { t } = useTranslation();
   return (
-    <div className="flex gap-4">
-      <Button type="button" onClick={onSelectNew}>
-        {t("support_new_case")}
-      </Button>
-      <Button type="button" variant="outline" onClick={onSelectExisting}>
-        {t("support_existing_case")}
-      </Button>
+    <div className="grid border-b-2 md:grid-cols-2">
+      <ModeTile
+        marker="A"
+        title={t("support_new_case")}
+        description={t("support_new_case_description")}
+        isSelected={mode === CaseMode.New}
+        onSelect={() => onSelect(CaseMode.New)}
+        className="border-b-2 md:border-r-2 md:border-b-0"
+      />
+      <ModeTile
+        marker="B"
+        title={t("support_existing_case")}
+        description={t("support_existing_case_description")}
+        isSelected={mode === CaseMode.Existing}
+        onSelect={() => onSelect(CaseMode.Existing)}
+      />
     </div>
   );
 }
 
-interface CaseListProps {
-  cases: CaseSummary[];
-  onSelect: (incidentId: string) => void;
-}
-
-/** The list of open cases (ID, date, summary), each clickable to resume it directly. */
-function CaseList({ cases, onSelect }: CaseListProps): JSX.Element {
-  const { t } = useTranslation();
-  if (cases.length === 0) {
-    return <p className="text-muted-foreground">{t("support_no_open_cases")}</p>;
-  }
-  return (
-    <ul className="flex flex-col gap-2">
-      {cases.map((caseSummary) => (
-        <li key={caseSummary.incident_id}>
-          <button
-            type="button"
-            className="w-full rounded border p-2 text-left hover:bg-accent"
-            onClick={() => onSelect(caseSummary.incident_id)}
-          >
-            <span className="block font-medium">{caseSummary.incident_id}</span>
-            <span className="block text-sm text-muted-foreground">
-              {new Date(caseSummary.opened_at).toLocaleDateString()} — {caseSummary.summary}
-            </span>
-          </button>
-        </li>
-      ))}
-    </ul>
-  );
-}
-
-interface CaseIdFormProps {
+interface NavigateProps {
   navigate: (path: string) => void;
 }
 
+/** "Caso nuevo": explains the new case gets its own ID, then creates it on confirm. */
+function NewCasePanel({ navigate }: NavigateProps): JSX.Element {
+  const { t } = useTranslation();
+  return (
+    <section className="flex max-w-[640px] flex-col gap-4 p-4 md:p-8">
+      <p className="m-0 text-base leading-normal">{t("support_new_case_explanation")}</p>
+      <Button
+        size="lg"
+        className="min-w-70 justify-between self-start"
+        onClick={() => void startNewCase(navigate)}
+      >
+        {t("support_start_chat")}
+        <ArrowRight aria-hidden className="size-[18px]" />
+      </Button>
+    </section>
+  );
+}
+
 /** The free-text incident_id field, verified server-side via resumeCase. */
-function CaseIdForm({ navigate }: CaseIdFormProps): JSX.Element {
+function CaseIdForm({ navigate }: NavigateProps): JSX.Element {
   const { t } = useTranslation();
   const [value, setValue] = useState("");
   const [notFound, setNotFound] = useState(false);
 
   return (
     <form
-      className="flex flex-col gap-2"
+      className="flex flex-col gap-3 p-4 md:p-8"
       onSubmit={(event: FormEvent) => {
         event.preventDefault();
         void submitCaseId(value, navigate, setNotFound);
       }}
     >
-      <label htmlFor="case-id" className="text-sm font-medium">
+      <label htmlFor="case-id" className="text-[13px] font-extrabold tracking-[0.08em] uppercase">
         {t("support_case_id_label")}
       </label>
-      <Input
-        id="case-id"
-        value={value}
-        maxLength={MAX_CASE_ID_LENGTH}
-        onChange={(event) => setValue(event.target.value)}
-      />
-      <Button type="submit">{t("support_case_id_submit")}</Button>
+      <div className="flex">
+        <Input
+          id="case-id"
+          value={value}
+          maxLength={MAX_CASE_ID_LENGTH}
+          className="flex-1 border-r-0"
+          onChange={(event) => setValue(event.target.value)}
+        />
+        <Button type="submit" size="lg" className="px-6">
+          {t("support_case_id_submit")}
+        </Button>
+      </div>
       {notFound && (
-        <p role="alert" className="text-sm text-destructive">
+        <Notice role="alert" className="font-semibold">
           {t("support_case_not_found")}
-        </p>
+        </Notice>
       )}
+      <span className="text-[13px] text-neutral-700">{t("support_case_id_hint")}</span>
     </form>
   );
 }
 
-/** "Caso existente": the open-cases list plus the free-text id field. */
-function ExistingCaseChooser({ navigate }: CaseIdFormProps): JSX.Element {
+/** "Caso existente": the open-cases list beside the free-text id field. */
+function ExistingCaseChooser({ navigate }: NavigateProps): JSX.Element {
   const { t } = useTranslation();
-  const [cases, setCases] = useState<CaseSummary[]>([]);
-
-  useEffect(() => {
-    void loadOpenCases(setCases);
-  }, []);
+  const cases = useOpenCases();
 
   return (
-    <div className="flex flex-col gap-6">
-      <div>
-        <h2 className="mb-2 font-medium">{t("support_open_cases_heading")}</h2>
-        <CaseList cases={cases} onSelect={(incidentId) => selectListedCase(incidentId, navigate)} />
+    <section className="grid md:grid-cols-2">
+      <div className="flex flex-col gap-4 border-b-2 p-4 md:border-r-2 md:border-b-0 md:p-8">
+        <h2 className="m-0 text-[13px] tracking-[0.08em] uppercase">
+          {t("support_open_cases_heading")}
+          {cases && ` · ${cases.length}`}
+        </h2>
+        {cases && <OpenCaseList cases={cases} layout={CaseListLayout.Stacked} />}
       </div>
       <CaseIdForm navigate={navigate} />
-    </div>
+    </section>
   );
 }
 
@@ -187,23 +218,25 @@ function ExistingCaseChooser({ navigate }: CaseIdFormProps): JSX.Element {
  * Case selection (`/app/support`, §3.2/G18): "Caso nuevo" or "Caso
  * existente" (list of open cases, or a typed incident_id).
  *
- * Exists as the screen `HomePage`'s Soporte button navigates to; every
- * path ends by navigating to `/app/chat/:incidentId` (task 5.8).
+ * Exists as the screen the Soporte buttons navigate to; every path ends by
+ * navigating to `/app/chat/:incidentId` (task 5.8).
  */
 export function SupportPage(): JSX.Element {
-  const [mode, setMode] = useState<SupportMode>("choice");
+  const { t } = useTranslation();
+  const [mode, setMode] = useState<CaseMode | null>(null);
   const navigate = useNavigate();
 
-  if (mode === "existing") {
-    return <ExistingCaseChooser navigate={navigate} />;
-  }
   return (
-    <ModeChoice
-      onSelectNew={() => {
-        selectCaseMode("new", setMode);
-        void startNewCase(navigate);
-      }}
-      onSelectExisting={() => selectCaseMode("existing", setMode)}
-    />
+    <main className="flex flex-1 flex-col">
+      <section className="flex flex-col gap-3 border-b-2 p-4 pt-10 md:p-8 md:pt-12">
+        <Kicker>{t("support_button")}</Kicker>
+        <h1 className="m-0 text-[clamp(36px,4.5vw,56px)] leading-none tracking-[-0.03em]">
+          {t("support_title")}
+        </h1>
+      </section>
+      <ModeChoice mode={mode} onSelect={(selected) => selectCaseMode(selected, setMode)} />
+      {mode === CaseMode.New && <NewCasePanel navigate={navigate} />}
+      {mode === CaseMode.Existing && <ExistingCaseChooser navigate={navigate} />}
+    </main>
   );
 }

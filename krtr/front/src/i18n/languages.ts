@@ -45,3 +45,9 @@ export const LANGUAGE_LABELS: Record<Language, string> = {
   [Language.Spanish]: "Español",
   [Language.Portuguese]: "Português",
 };
+
+/** The compact code the selector shows on screen (its accessible name stays the full label). */
+export const LANGUAGE_SHORT_LABELS: Record<Language, string> = {
+  [Language.Spanish]: "ES",
+  [Language.Portuguese]: "PT",
+};

@@ -74,4 +74,15 @@ describe("LanguageSelector, through the app", () => {
       language: "pt-BR",
     });
   });
+
+  it("shows the compact ES / PT codes while keeping the full names accessible", () => {
+    render(<App />);
+
+    expect(screen.getByRole("button", { name: "Español" })).toHaveTextContent(
+      "ES",
+    );
+    expect(screen.getByRole("button", { name: "Português" })).toHaveTextContent(
+      "PT",
+    );
+  });
 });

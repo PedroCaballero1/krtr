@@ -1,11 +1,11 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { JSX } from "react";
-import { MemoryRouter, Route, Routes } from "react-router-dom";
+import { MemoryRouter, Outlet, Route, Routes } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import * as cases from "@/api/cases";
 import { EventName } from "@/api/event-names";
 import * as events from "@/api/events";
-import * as session from "@/api/session";
 import { HomePage } from "@/pages/home-page";
 import { makeSession } from "../api/fixtures";
 
@@ -13,12 +13,24 @@ function SupportPlaceholder(): JSX.Element {
   return <p>support screen</p>;
 }
 
+function ChatPlaceholder(): JSX.Element {
+  return <p>chat screen</p>;
+}
+
+/** Stands in for AppShell: hands the session to HomePage through the outlet context. */
+function FakeShell(): JSX.Element {
+  return <Outlet context={makeSession()} />;
+}
+
 function renderHomePage() {
   return render(
     <MemoryRouter initialEntries={["/app"]}>
       <Routes>
-        <Route path="/app" element={<HomePage />} />
+        <Route element={<FakeShell />}>
+          <Route path="/app" element={<HomePage />} />
+        </Route>
         <Route path="/app/support" element={<SupportPlaceholder />} />
+        <Route path="/app/chat/:incidentId" element={<ChatPlaceholder />} />
       </Routes>
     </MemoryRouter>,
   );
@@ -27,78 +39,50 @@ function renderHomePage() {
 describe("HomePage", () => {
   beforeEach(() => {
     vi.spyOn(events, "trackEvent").mockResolvedValue(undefined);
+    vi.spyOn(cases, "listOpenCases").mockResolvedValue([
+      {
+        incident_id: "case-7",
+        opened_at: "2026-09-27T10:00:00Z",
+        summary: "Cargo no reconocido",
+      },
+    ]);
   });
 
   afterEach(() => {
     vi.restoreAllMocks();
   });
 
-  it("shows the customer's number once /api/me resolves", async () => {
-    vi.spyOn(session, "fetchCurrentSession").mockResolvedValue(makeSession());
-
+  it("greets the customer by the number from the shell's session", () => {
     renderHomePage();
 
-    expect(await screen.findByText("#12345")).toBeInTheDocument();
+    expect(
+      screen.getByRole("heading", { level: 1, name: "Hola, 12345" }),
+    ).toBeInTheDocument();
   });
 
-  it("navigates to /app/support when Soporte is clicked", async () => {
-    vi.spyOn(session, "fetchCurrentSession").mockResolvedValue(makeSession());
+  it('navigates to /app/support from the "Ir a soporte" tile', async () => {
     const user = userEvent.setup();
     renderHomePage();
 
-    await user.click(screen.getByRole("button", { name: "Soporte" }));
+    await user.click(screen.getByRole("button", { name: "Ir a soporte" }));
 
     expect(await screen.findByText("support screen")).toBeInTheDocument();
     expect(events.trackEvent).toHaveBeenCalledWith(EventName.SupportClicked);
   });
 
-  it("calls logout() when Cerrar sesión is clicked", async () => {
-    vi.spyOn(session, "fetchCurrentSession").mockResolvedValue(makeSession());
-    const logoutSpy = vi.spyOn(session, "logout").mockResolvedValue(undefined);
+  it("lists the open cases with their count, and opens one on click", async () => {
     const user = userEvent.setup();
     renderHomePage();
-    await screen.findByText("#12345");
 
-    await user.click(screen.getByRole("button", { name: "Cerrar sesión" }));
+    expect(await screen.findByText("Cargo no reconocido")).toBeInTheDocument();
+    expect(screen.getByText("1")).toBeInTheDocument();
 
-    expect(logoutSpy).toHaveBeenCalledOnce();
-  });
+    await user.click(screen.getByRole("button", { name: /case-7/ }));
 
-  describe("without a session", () => {
-    const originalLocation = window.location;
-    let assignSpy: ReturnType<typeof vi.fn>;
-
-    beforeEach(() => {
-      assignSpy = vi.fn();
-      Object.defineProperty(window, "location", {
-        configurable: true,
-        value: { ...originalLocation, assign: assignSpy },
-      });
-    });
-
-    afterEach(() => {
-      Object.defineProperty(window, "location", {
-        configurable: true,
-        value: originalLocation,
-      });
-    });
-
-    it("redirects to the landing page (via apiFetch's 401 handling)", async () => {
-      // fetchCurrentSession is left un-mocked here, so it goes through the
-      // real apiFetch -> the actual mechanism that redirects on 401.
-      vi.spyOn(globalThis, "fetch").mockResolvedValue(
-        new Response(
-          JSON.stringify({
-            error: "unauthorized",
-            message_key: "errors.unauthorized",
-          }),
-          { status: 401 },
-        ),
-      );
-
-      renderHomePage();
-
-      await waitFor(() => expect(assignSpy).toHaveBeenCalledWith("/"));
-    });
+    expect(await screen.findByText("chat screen")).toBeInTheDocument();
+    expect(events.trackEvent).toHaveBeenCalledWith(
+      EventName.CaseResumeSucceeded,
+      { incident_id: "case-7" },
+    );
   });
 });

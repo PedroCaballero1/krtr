@@ -18,6 +18,20 @@ export interface CaseReference {
  * @returns The open cases, as the backend orders them.
  */
 export async function listOpenCases(): Promise<CaseSummary[]> {
+  // TEMP DEMO MOCK — revert before continuing real work.
+  return [
+    {
+      incident_id: "CASE-2026-0142",
+      opened_at: "2026-09-25T14:30:00Z",
+      summary: "Tarjeta de crédito bloqueada por consumo inusual",
+    },
+    {
+      incident_id: "CASE-2026-0158",
+      opened_at: "2026-09-28T09:15:00Z",
+      summary: "Solicitud de aumento de cupo de crédito",
+    },
+  ];
+  // eslint-disable-next-line no-unreachable
   const response = await apiFetch("/api/cases?status=open");
   return (await response.json()) as CaseSummary[];
 }
@@ -28,6 +42,9 @@ export async function listOpenCases(): Promise<CaseSummary[]> {
  * @returns The new case's incident_id.
  */
 export async function createCase(): Promise<CaseReference> {
+  // TEMP DEMO MOCK — revert before continuing real work.
+  return { incident_id: `CASE-2026-${Math.floor(Math.random() * 9000 + 1000)}` };
+  // eslint-disable-next-line no-unreachable
   const response = await apiFetch("/api/cases", { method: "POST" });
   return (await response.json()) as CaseReference;
 }
@@ -44,6 +61,13 @@ export async function createCase(): Promise<CaseReference> {
  * @returns The confirmed case's incident_id.
  */
 export async function resumeCase(incidentId: string): Promise<CaseReference> {
+  // TEMP DEMO MOCK — revert before continuing real work.
+  const { ApiError } = await import("@/api/client");
+  if (incidentId.toLowerCase().includes("wrong")) {
+    throw new ApiError(404, "not_found", "Caso no encontrado");
+  }
+  return { incident_id: incidentId };
+  // eslint-disable-next-line no-unreachable
   const response = await apiFetch("/api/cases/resume", {
     method: "POST",
     headers: { "Content-Type": "application/json" },

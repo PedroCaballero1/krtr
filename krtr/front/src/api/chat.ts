@@ -28,6 +28,17 @@ export async function sendChatMessage(
   text: string,
   language: Language,
 ): Promise<ChatMessageResponse> {
+  // TEMP DEMO MOCK — revert before continuing real work.
+  await new Promise((resolve) => setTimeout(resolve, 900));
+  return {
+    incident_id: incidentId,
+    reply:
+      language === "es"
+        ? `Gracias por tu mensaje: "${text}". Un asesor revisará tu caso pronto.`
+        : `Obrigado pela sua mensagem: "${text}". Um consultor analisará seu caso em breve.`,
+    responded_at: new Date().toISOString(),
+  };
+  // eslint-disable-next-line no-unreachable
   const controller = new AbortController();
   // A plain setTimeout (not AbortSignal.timeout) so the timeout is driven
   // by the same timer primitive tests fake with vi.useFakeTimers().

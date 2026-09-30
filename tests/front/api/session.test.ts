@@ -1,5 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { fetchCurrentSession, logout } from "@/api/session";
+import {
+  LogoutReason,
+  fetchCurrentSession,
+  logout,
+  parseLogoutReason,
+} from "@/api/session";
 
 describe("fetchCurrentSession", () => {
   afterEach(() => {
@@ -44,7 +49,7 @@ describe("logout", () => {
     vi.restoreAllMocks();
   });
 
-  it("posts to /auth/logout and returns to the landing page", async () => {
+  it("posts to /auth/logout and returns to the landing page, as a user logout by default", async () => {
     const fetchSpy = vi
       .spyOn(globalThis, "fetch")
       .mockResolvedValue(new Response(null, { status: 204 }));
@@ -52,7 +57,17 @@ describe("logout", () => {
     await logout();
 
     expect(fetchSpy.mock.calls[0][0]).toBe("/auth/logout");
-    expect(assignSpy).toHaveBeenCalledWith("/");
+    expect(assignSpy).toHaveBeenCalledWith("/?logout=user");
+  });
+
+  it("forwards the given reason to the landing page", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(null, { status: 204 }),
+    );
+
+    await logout(LogoutReason.IdleTimeout);
+
+    expect(assignSpy).toHaveBeenCalledWith("/?logout=idle");
   });
 
   it("still returns to the landing page when the request fails", async () => {
@@ -60,6 +75,20 @@ describe("logout", () => {
 
     await logout();
 
-    expect(assignSpy).toHaveBeenCalledWith("/");
+    expect(assignSpy).toHaveBeenCalledWith("/?logout=user");
+  });
+});
+
+describe("parseLogoutReason", () => {
+  it("accepts every reason logout() emits", () => {
+    for (const reason of Object.values(LogoutReason)) {
+      expect(parseLogoutReason(reason)).toBe(reason);
+    }
+  });
+
+  it("rejects a missing or unknown value", () => {
+    expect(parseLogoutReason(null)).toBeNull();
+    expect(parseLogoutReason("")).toBeNull();
+    expect(parseLogoutReason("IDLE")).toBeNull();
   });
 });

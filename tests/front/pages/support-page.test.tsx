@@ -39,11 +39,16 @@ describe("SupportPage", () => {
     renderSupportPage();
 
     await user.click(screen.getByRole("button", { name: "Caso nuevo" }));
-
-    expect(await screen.findByText("chat screen")).toBeInTheDocument();
+    expect(cases.createCase).not.toHaveBeenCalled();
     expect(events.trackEvent).toHaveBeenCalledWith(EventName.CaseModeSelected, {
       mode: "new",
     });
+
+    await user.click(
+      screen.getByRole("button", { name: "Crear caso y empezar" }),
+    );
+
+    expect(await screen.findByText("chat screen")).toBeInTheDocument();
     expect(events.trackEvent).toHaveBeenCalledWith(EventName.CaseCreated, {
       incident_id: "new-1",
     });
@@ -87,11 +92,8 @@ describe("SupportPage", () => {
     renderSupportPage();
     await user.click(screen.getByRole("button", { name: "Caso existente" }));
 
-    await user.type(
-      screen.getByLabelText("O escribe el ID del caso"),
-      "typed-1",
-    );
-    await user.click(screen.getByRole("button", { name: "Buscar caso" }));
+    await user.type(screen.getByLabelText("Buscar por ID"), "typed-1");
+    await user.click(screen.getByRole("button", { name: "Retomar" }));
 
     expect(await screen.findByText("chat screen")).toBeInTheDocument();
     expect(cases.resumeCase).toHaveBeenCalledWith("typed-1");
@@ -112,11 +114,8 @@ describe("SupportPage", () => {
     renderSupportPage();
     await user.click(screen.getByRole("button", { name: "Caso existente" }));
 
-    await user.type(
-      screen.getByLabelText("O escribe el ID del caso"),
-      "wrong-id",
-    );
-    await user.click(screen.getByRole("button", { name: "Buscar caso" }));
+    await user.type(screen.getByLabelText("Buscar por ID"), "wrong-id");
+    await user.click(screen.getByRole("button", { name: "Retomar" }));
 
     expect(await screen.findByRole("alert")).toHaveTextContent(
       "Caso no encontrado",
@@ -134,11 +133,8 @@ describe("SupportPage", () => {
     renderSupportPage();
     await user.click(screen.getByRole("button", { name: "Caso existente" }));
 
-    await user.type(
-      screen.getByLabelText("O escribe el ID del caso"),
-      "  case-42  ",
-    );
-    await user.click(screen.getByRole("button", { name: "Buscar caso" }));
+    await user.type(screen.getByLabelText("Buscar por ID"), "  case-42  ");
+    await user.click(screen.getByRole("button", { name: "Retomar" }));
 
     expect(resumeSpy).toHaveBeenCalledWith("case-42");
   });
@@ -149,9 +145,25 @@ describe("SupportPage", () => {
     renderSupportPage();
     await user.click(screen.getByRole("button", { name: "Caso existente" }));
 
-    const input = screen.getByLabelText("O escribe el ID del caso");
+    const input = screen.getByLabelText("Buscar por ID");
     await user.type(input, "a".repeat(80));
 
     expect((input as HTMLInputElement).value).toHaveLength(64);
+  });
+
+  it("marks the picked mode tile as pressed", async () => {
+    vi.spyOn(cases, "listOpenCases").mockResolvedValue([]);
+    const user = userEvent.setup();
+    renderSupportPage();
+    const existingTile = screen.getByRole("button", { name: "Caso existente" });
+    expect(existingTile).toHaveAttribute("aria-pressed", "false");
+
+    await user.click(existingTile);
+
+    expect(existingTile).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByRole("button", { name: "Caso nuevo" })).toHaveAttribute(
+      "aria-pressed",
+      "false",
+    );
   });
 });
