@@ -11,6 +11,7 @@ from typing import Any, Sequence
 
 import psycopg2
 from psycopg2.extras import execute_values
+from psycopg2.pool import ThreadedConnectionPool
 
 from krtr.database.neon.artifacts import ColumnSpec
 from krtr.database.neon.config import NeonConfig
@@ -37,7 +38,9 @@ class NeonClient:
                 loaded from the environment / `.env` via `NeonConfig.from_environment`.
         """
         resolved_config = config or NeonConfig.from_environment()
+        self._config = resolved_config
         self._connection = psycopg2.connect(resolved_config.connection_string.get_secret_value())
+        self._pool: ThreadedConnectionPool | None = None
 
     def __enter__(self) -> "NeonClient":
         """Returns this client, allowing use as a context manager.
@@ -66,12 +69,14 @@ class NeonClient:
         self.close()
 
     def close(self) -> None:
-        """Closes the underlying database connection.
+        """Closes the underlying database connection and the pool, if opened.
 
         Returns:
             None.
         """
         self._connection.close()
+        if self._pool is not None:
+            self._pool.closeall()
 
     def execute(self, statement: str) -> None:
         """Runs a single SQL statement and commits it.
@@ -149,3 +154,102 @@ class NeonClient:
             ColumnSpec(name=name, data_type=data_type, is_nullable=(is_nullable == "YES"))
             for name, data_type, is_nullable in rows
         ]
+
+    def _get_pool(self) -> ThreadedConnectionPool:
+        """Returns this client's pooled-connection pool, opening it on first use.
+
+        Exists so the pool is only created for callers that actually need
+        parameterized, concurrent-safe queries (`execute_params`, `fetch_one`,
+        `fetch_all`); the single-connection loader path (`execute`,
+        `insert_rows`, `get_column_specs`) never pays for it.
+
+        Args:
+            None.
+
+        Returns:
+            ThreadedConnectionPool: the lazily-created pool, reused on every call.
+        """
+        if self._pool is None:
+            self._pool = ThreadedConnectionPool(
+                self._config.pool_min_size,
+                self._config.pool_max_size,
+                self._config.connection_string.get_secret_value(),
+            )
+            logger.debug(
+                "Opened Neon connection pool (min=%d, max=%d)",
+                self._config.pool_min_size,
+                self._config.pool_max_size,
+            )
+        return self._pool
+
+    def execute_params(self, statement: str, params: dict[str, Any] | None = None) -> None:
+        """Runs a parameterized statement from a pooled connection and commits it.
+
+        Exists for parameterized DML (`INSERT`/`UPDATE`/`DELETE` with
+        `%(name)s` placeholders) issued from concurrent request handlers, such
+        as the FastAPI BFF's session and event writes, where a single
+        long-lived connection would serialize unrelated requests.
+
+        Args:
+            statement: The SQL statement to execute, with `%(name)s` placeholders.
+            params: The values for the statement's placeholders, by name.
+
+        Returns:
+            None.
+        """
+        pool = self._get_pool()
+        connection = pool.getconn()
+        try:
+            with connection.cursor() as cursor:
+                cursor.execute(statement, params)
+            connection.commit()
+        finally:
+            pool.putconn(connection)
+
+    def fetch_one(
+        self, statement: str, params: dict[str, Any] | None = None
+    ) -> tuple[Any, ...] | None:
+        """Runs a parameterized query from a pooled connection and returns one row.
+
+        Exists for point lookups (e.g. a session by its hash) from concurrent
+        request handlers, without holding a dedicated connection per caller.
+
+        Args:
+            statement: The SQL query to execute, with `%(name)s` placeholders.
+            params: The values for the query's placeholders, by name.
+
+        Returns:
+            tuple[Any, ...] | None: the first matching row, or None if no row matched.
+        """
+        pool = self._get_pool()
+        connection = pool.getconn()
+        try:
+            with connection.cursor() as cursor:
+                cursor.execute(statement, params)
+                return cursor.fetchone()
+        finally:
+            pool.putconn(connection)
+
+    def fetch_all(
+        self, statement: str, params: dict[str, Any] | None = None
+    ) -> list[tuple[Any, ...]]:
+        """Runs a parameterized query from a pooled connection and returns every row.
+
+        Exists for list queries (e.g. open cases) from concurrent request
+        handlers, without holding a dedicated connection per caller.
+
+        Args:
+            statement: The SQL query to execute, with `%(name)s` placeholders.
+            params: The values for the query's placeholders, by name.
+
+        Returns:
+            list[tuple[Any, ...]]: every matching row, in the query's order.
+        """
+        pool = self._get_pool()
+        connection = pool.getconn()
+        try:
+            with connection.cursor() as cursor:
+                cursor.execute(statement, params)
+                return cursor.fetchall()
+        finally:
+            pool.putconn(connection)

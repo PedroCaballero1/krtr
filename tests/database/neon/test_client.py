@@ -33,6 +33,11 @@ class FakeCursor:
         """Returns the connection's canned result rows."""
         return self.connection.fetchall_result
 
+    def fetchone(self) -> tuple | None:
+        """Returns the first of the connection's canned result rows, or None."""
+        rows = self.connection.fetchall_result
+        return rows[0] if rows else None
+
 
 class FakeConnection:
     """Stands in for a psycopg2 connection, recording what happens to it."""
@@ -148,3 +153,123 @@ def test_context_manager_closes_the_connection(monkeypatch: pytest.MonkeyPatch) 
         assert not connection.closed
 
     assert connection.closed
+
+
+class FakePool:
+    """Stands in for a psycopg2 ThreadedConnectionPool, recording how it is used."""
+
+    def __init__(self, minconn: int, maxconn: int, dsn: str) -> None:
+        """Records the sizing/DSN it was constructed with and counts checkouts."""
+        self.minconn = minconn
+        self.maxconn = maxconn
+        self.dsn = dsn
+        self.connection = FakeConnection()
+        self.getconn_calls = 0
+        self.putconn_calls = 0
+        self.closed_all = False
+
+    def getconn(self) -> "FakeConnection":
+        """Returns the single fake connection this pool wraps, and counts it."""
+        self.getconn_calls += 1
+        return self.connection
+
+    def putconn(self, connection: "FakeConnection") -> None:
+        """Counts the connection being returned to the pool."""
+        self.putconn_calls += 1
+
+    def closeall(self) -> None:
+        """Marks the pool as fully closed."""
+        self.closed_all = True
+
+
+def make_pooled_client(
+    monkeypatch: pytest.MonkeyPatch,
+) -> tuple[NeonClient, FakeConnection, list[FakePool]]:
+    """Builds a NeonClient whose pool is a FakePool, recording every pool created."""
+    fake_connection = FakeConnection()
+    monkeypatch.setattr(client_module.psycopg2, "connect", lambda *a, **k: fake_connection)
+    created_pools: list[FakePool] = []
+
+    def fake_pool_factory(minconn: int, maxconn: int, dsn: str) -> FakePool:
+        pool = FakePool(minconn, maxconn, dsn)
+        pool.connection = fake_connection  # Share it so assertions see what ran.
+        created_pools.append(pool)
+        return pool
+
+    monkeypatch.setattr(client_module, "ThreadedConnectionPool", fake_pool_factory)
+    client = NeonClient(
+        NeonConfig(connection_string="postgresql://u:p@h/db", pool_min_size=1, pool_max_size=5)
+    )
+    return client, fake_connection, created_pools
+
+
+def test_execute_params_uses_the_pool_and_commits(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Verifies execute_params runs the statement with its params via a pooled connection."""
+    client, connection, pools = make_pooled_client(monkeypatch)
+
+    client.execute_params("UPDATE t SET a = %(a)s WHERE id = %(id)s", {"a": 1, "id": 2})
+
+    assert connection.executed == [("UPDATE t SET a = %(a)s WHERE id = %(id)s", {"a": 1, "id": 2})]
+    assert connection.committed == 1
+    assert pools[0].getconn_calls == 1
+    assert pools[0].putconn_calls == 1
+
+
+def test_fetch_one_returns_the_first_row(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Verifies fetch_one passes params through and returns fetchone()'s result."""
+    client, connection, _ = make_pooled_client(monkeypatch)
+    connection.fetchall_result = [("row-1",)]
+
+    result = client.fetch_one("SELECT a FROM t WHERE id = %(id)s", {"id": 1})
+
+    assert result == ("row-1",)
+    assert connection.executed == [("SELECT a FROM t WHERE id = %(id)s", {"id": 1})]
+
+
+def test_fetch_all_returns_every_row(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Verifies fetch_all passes params through and returns every row."""
+    client, connection, _ = make_pooled_client(monkeypatch)
+    connection.fetchall_result = [("row-1",), ("row-2",)]
+
+    result = client.fetch_all("SELECT a FROM t WHERE status = %(status)s", {"status": "open"})
+
+    assert result == [("row-1",), ("row-2",)]
+
+
+def test_pool_is_created_once_and_reused_across_calls(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Verifies a second parameterized call reuses the pool instead of opening a new one."""
+    client, _, pools = make_pooled_client(monkeypatch)
+
+    client.execute_params("UPDATE t SET a = 1")
+    client.fetch_one("SELECT 1")
+    client.fetch_all("SELECT 1")
+
+    assert len(pools) == 1
+    assert pools[0].minconn == 1
+    assert pools[0].maxconn == 5
+    assert pools[0].getconn_calls == 3
+    assert pools[0].putconn_calls == 3
+
+
+def test_creating_the_client_alone_never_opens_the_pool(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Verifies the single-connection loader path never pays for a pool it doesn't use."""
+    client, _, pools = make_pooled_client(monkeypatch)
+
+    client.execute("CREATE TABLE t (id INT)")
+
+    assert pools == []
+
+
+def test_close_closes_the_pool_only_if_it_was_opened(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Verifies close() tears down the pool when opened, and doesn't error when it wasn't."""
+    client, connection, pools = make_pooled_client(monkeypatch)
+
+    client.close()
+    assert connection.closed
+    assert pools == []  # Never opened, so nothing to close.
+
+    client2, connection2, pools2 = make_pooled_client(monkeypatch)
+    client2.execute_params("UPDATE t SET a = 1")
+    client2.close()
+    assert connection2.closed
+    assert pools2[0].closed_all
