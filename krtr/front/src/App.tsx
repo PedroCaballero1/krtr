@@ -1,6 +1,7 @@
 import type { JSX } from "react";
 import { useTranslation } from "react-i18next";
 import { BrowserRouter, Route, Routes } from "react-router-dom";
+import { LanguageSelector } from "@/components/language-selector";
 import "@/i18n/config";
 
 /**
@@ -12,8 +13,10 @@ import "@/i18n/config";
 function LandingPlaceholder(): JSX.Element {
   const { t } = useTranslation();
   return (
-    <main className="flex min-h-svh items-center justify-center">
+    <main className="flex min-h-svh flex-col items-center justify-center gap-4">
+      <LanguageSelector />
       <h1 className="text-2xl font-semibold text-foreground">{t("app_name")}</h1>
+      <p className="text-muted-foreground">{t("login_landing_tagline")}</p>
     </main>
   );
 }

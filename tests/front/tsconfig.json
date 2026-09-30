@@ -1,0 +1,7 @@
+{
+  "extends": "../../krtr/front/tsconfig.app.json",
+  "compilerOptions": {
+    "types": ["vite/client", "vitest/globals", "@testing-library/jest-dom"]
+  },
+  "include": ["**/*.ts", "**/*.tsx"]
+}
