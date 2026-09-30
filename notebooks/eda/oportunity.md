@@ -1,7 +1,8 @@
 # Opportunity: what a user is worth, what churn costs, and what the surveys can (not) tell us
 
-_Last updated: 2026-09-26 · All code and calculations are in [oportunity.ipynb](oportunity.ipynb); every number below comes from its executed outputs.
-Sources: `customers.csv`, `products.csv`, the full `transactions` history, `complaints` and `satisfaction_surveys` (all 1,097 daily files, 2023-06-17 to 2026-06-17)._
+_Last updated: 2026-09-29 · Sections 1-5 and 7-10: code and calculations in [oportunity.ipynb](oportunity.ipynb); every number comes from its executed outputs.
+Section 6: code in [call_transcripts/causes.ipynb](call_transcripts/causes.ipynb).
+Sources: `customers.csv`, `products.csv`, `service_agents.csv`, the full `transactions`, `complaints`, `satisfaction_surveys` and `call_transcripts` histories (1,097 daily files each, 2023-06-17 to 2026-06-17)._
 
 > Related findings: [compensations / complaints](compensations_hypothesis/FINDINGS.md) · [consolidated opportunities](FINDINGS.md)
 
@@ -17,6 +18,7 @@ Sources: `customers.csv`, `products.csv`, the full `transactions` history, `comp
 | Do those low ratings actually cost anything? | **No measurable cost.** These customers are no more likely to leave, transact less, complain, receive compensation or contact again than customers who gave the top score. Upper bounds: about **51,000** and **39,000 USD-eq a year**, under 1% of the exposure. |
 | Main problem with the survey data | The **comment is a function of the rating band**, not independent information, and surveys **cannot be linked** to the complaints or interactions they should evaluate. The "reasons" cannot be verified. |
 | New: does the density of comment reasons follow days to resolution? | **No, within what is observed**: at agent, month and customer level (Spearman between -0.07 and +0.08, every interval including zero, one of them only up to 0.00), and also when the never-resolved tail is included. **But no complaint was ever resolved in under a day** and only 22.9% have a resolution time, so the fast end is unobserved (section 5.3). |
+| New: do call transcripts or the agent roster show what causes waiting time, and is any agent an AI agent? | **No AI agent is registered** (1,200 human agents; `agent_type` is a channel, not an automation tier). The call's **topic** (`Queja`, `Retención`) and **length** carry a small, real signal, but together they account for only **8.1%** of waiting-time complaints; **92% are unexplained** by anything in the transcript or the agent roster. |
 
 ---
 
@@ -264,7 +266,43 @@ Across the 1,090 agents, the share of an agent's complaints still unresolved (me
 
 ---
 
-## 6. What this means for the opportunity
+## 6. Call transcripts and the agent roster: what explains waiting time, and is any agent an AI agent?
+
+**Scope.** `call_transcripts` (171,321 transcripts, 2023-06-17 to 2026-06-17, streamed) joined to `satisfaction_surveys` by `interaction_id` (53,090 linked, 31.0% of transcripts, always the
+same customer and agent) and to `service_agents.csv` (1,200 agents) by `agent_id`. Full detail and every check in [call_transcripts/causes.ipynb](call_transcripts/causes.ipynb).
+
+### 6.1 Is any agent an AI agent? No.
+
+`agent_type` has four values (`Phone`, `Digital`, `In-Person`, `Hybrid`), all describing a **channel a human works**, not an automation tier. Every one of the 1,200 rows carries a human first
+and last name, a hire date (2013-06-20 to 2026-03-17), a native accent and a country of origin matching each other 1:1 (Mexico 600, Colombia 360, Argentina 240), and no automation keyword
+(`bot`, `virtual`, `chatbot`, `asistente`, `automat-`, `IA`, `AI`) appears in any name, email or specialty. `Digital` (251 agents) is a human agent assigned to digital-channel contacts, not a bot.
+
+The roster's own **`avg_csat`** (mean 4.27, range 3.50-5.00) and **`total_monthly_interactions`** (mean 453, range 100-800) are flat across `agent_type`, `experience_level`, `specialty`,
+`work_shift` and `agent_status`, and are **unrelated to what the transcripts and surveys actually record**: Spearman ~0.00 against the observed monthly call rate and ~0.01 against the
+observed mean CSAT of that agent's linked surveys. The roster cannot be used as a performance proxy; only the joined, observed figures below can.
+
+### 6.2 What explains waiting time and unresolved-problem comments?
+
+The transcript text is a fixed template (12 distinct lines across the whole history; every call asks for a balance) and carries no complaint or technical content, even though 17% of calls
+are labeled `Queja` and 15% `Técnico`. Two real, if modest, signals survive against that template:
+
+- **Topic.** `Queja` and `Retención` calls have the lowest CSAT (2.44 and 2.60 against 2.91 for `Transaccional`) and the most waiting-time (+3.1 and +3.3 per 100 surveys) and unresolved
+  (+1.9 and +1.8) comments. They also take disproportionate call time: `Queja` is 17.1% of timed calls but 23.1% of call time (1.35x), `Comercial` 8.1% of calls and 13.5% of time (1.68x).
+- **Length.** Across all calls, longer means a lower rating (CSAT 2.89 to 2.60 by duration quartile, Spearman -0.16) and more waiting complaints (11.6 to 14.5 per 100 surveys). But **inside a
+  topic, length no longer predicts the rating** (e.g. `Queja` shorter/middle/longer third: CSAT 2.44/2.43/2.47) — the rating effect is really the topic. The **waiting-time comment** does keep a
+  small length gradient inside topics (e.g. `Queja` 14.0/14.6/15.2 per 100 by call-length tercile).
+
+**How much do topic and length explain?** If every topic complained about waiting at the `Transaccional` rate, there would be 6,232 waiting-time complaints instead of the observed 6,783 —
+topic accounts for **551, or 8.1%**. **Not signals at all**: the agent roster (section 6.1), the agent handling the call (spread of agents' mean duration 13.0 s vs 13.3 s expected by chance;
+spread of agents' waiting-complaint rate 4.79 vs 4.83 points expected), audio quality, transcription model, accent, product mentioned, entity counts, the customer asking how long it takes, the
+agent asking them to wait, having called in the previous 30 days (3.4% vs 3.2%), or calling again afterwards (3.2% vs 3.2%).
+
+**Why so little is explained.** The waiting-time complaint (`Tardaron mucho en atenderme`, `Tuve que esperar demasiado tiempo`) refers to waiting *before or around* the call, which the
+transcripts do not record (duration is talk time only); and the topic label does not agree with the call's actual text (Cramer's V 0.01), so a `Queja` call's real content is unobservable here.
+
+---
+
+## 7. What this means for the opportunity
 
 - **Value at stake is large; observed cost is zero.** The customers behind waiting-time and unresolved-problem ratings tie about 15.6 M USD-eq of yearly interest income and 223.8 M of balances, but nothing in the data shows that the ratings
   make anyone leave, spend less or need more service.
@@ -272,10 +310,11 @@ Across the 1,090 agents, the share of an agent's complaints still unresolved (me
   target the wrong users; the value lies in the few large ones.
 - **The waiting-time versus not-resolved split cannot guide investment.** It cannot be verified (section 4), it does not follow resolution speed within 1-30 days (section 5) and it does not predict any consequence (section 3.3). What same-day resolution would change is **unobserved** (section 5.3).
 - **Churn cost cannot be measured yet** because churn is not identifiable.
+- **No AI agent is registered**, and neither the call's topic and length nor the agent roster explain more than 8.1% of the waiting-time complaints: the transcripts and the roster are not, today, a usable signal for routing or staffing decisions aimed at reducing waiting time.
 
 ---
 
-## 7. Assumptions and limits
+## 8. Assumptions and limits
 
 - **Interest income is a proxy**: credit balance x `interest_rate` (assumed annual %); it includes delinquent balances. Deposit margins, fees, interchange, cost of funds, defaults and acquisition cost are missing, so **value is a floor** and no profit is stated.
 - **USD-equivalent** amounts use the exchange rates implied by the transactions file (350 ARS/USD, 4,000 COP/USD), not market rates.
@@ -285,8 +324,9 @@ Across the 1,090 agents, the share of an agent's complaints still unresolved (me
 - **Surveys are per interaction and complaints per case** with no shared key, so section 5 links them by agent, month and customer window only.
 - **Range restriction and selection.** No complaint was resolved in under a day (fastest exactly 1 day, slowest 30) and only 22.9% of complaints have a resolution time, so every speed-related result holds only inside 1-30 days among resolved complaints (section 5.3).
 - The data looks generated independently of business behaviour (uniform durations, 13 comment sentences, flat rates), so relationships found or not found here should be reproduced on real operational data.
+- **Call transcripts are a fixed template** (12 distinct lines) and carry no real complaint or technical content, and **the agent roster's own performance columns do not match observed behaviour**, so section 6 describes what the topic and length labels correlate with, not a verified cause.
 
-## 8. What to collect to quantify this properly
+## 9. What to collect to quantify this properly
 
 1. **Revenue and margin per customer** (fees, interchange, deposit spread, cost of funds, defaults) and **acquisition cost**, to turn the floor into a customer lifetime value.
 2. **A dated closure or inactivity event** per customer, to measure churn and its timing after a low rating.
@@ -294,9 +334,12 @@ Across the 1,090 agents, the share of an agent's complaints still unresolved (me
 4. **Real comments** and a **valid 0-10 NPS**, so that reasons carry information beyond the rating.
 5. **Handling time and cost per contact**, to price repeat contacts and waiting time directly.
 6. **Compensation currency**, to compare it with revenue.
+7. **Queue and hold time per interaction**, real (non-templated) conversation content, and a resolution outcome per interaction, plus the `call_center_interactions` dataset the catalog lists, to find what actually drives waiting time.
 
-## 9. Reproduce
+## 10. Reproduce
 
 [oportunity.ipynb](oportunity.ipynb) loads customers, products, complaints and surveys, and **streams the 1,097 transaction files one at a time** (peak process memory about 630 MB, about 40 seconds).
 It contains: value per user, churn rates and the value held by status, exposure and full-churn scenarios, the consequence tests and cost bounds, the survey comment-versus-rating checks, and the
 reason-density versus days-to-resolution tests. Charts in `figures/` are exported from the executed notebook.
+
+[call_transcripts/causes.ipynb](call_transcripts/causes.ipynb) streams the 1,097 transcript files, joins to surveys and to `service_agents.csv`, and contains: the AI-agent check, roster stats, the topic/duration/text grouping analysis, the waiting-time-complaint deep dive, and the agent-roster-versus-outcomes checks referenced in section 6.
