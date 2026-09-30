@@ -31,6 +31,9 @@ export default defineConfig({
     // Tests live under tests/front/ at the repo root, mirroring krtr/front/src/
     // (D2), not next to the source files.
     environment: "jsdom",
+    // https, so __Host- prefixed cookies (session, CSRF) can actually be
+    // set in tests — jsdom enforces the same __Host- rules real browsers do.
+    environmentOptions: { jsdom: { url: "https://localhost" } },
     globals: true,
     setupFiles: ["../../tests/front/setup.ts"],
     include: ["../../tests/front/**/*.test.{ts,tsx}"],
