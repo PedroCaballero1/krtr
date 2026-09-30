@@ -1,0 +1,8 @@
+{
+  "name": "krtr-workspace",
+  "private": true,
+  "description": "npm workspace root: only exists so krtr/front's dependencies are hoisted to the repo root and resolvable from tests/front/, which mirrors krtr/front/src/ (D2) outside the package itself.",
+  "workspaces": [
+    "krtr/front"
+  ]
+}

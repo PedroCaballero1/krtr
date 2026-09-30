@@ -17,7 +17,10 @@ __pycache__/
 # Local CLI state (e.g. Modal run records)
 .krtr/
 
-# Frontend build artifacts (krtr/front is a separate Vite/npm project)
+# Frontend build artifacts (krtr/front is a separate Vite/npm project,
+# installed as an npm workspace so its deps hoist to /node_modules and
+# are resolvable from tests/front/, per D2)
+/node_modules/
 krtr/front/node_modules/
 krtr/front/dist/
 
