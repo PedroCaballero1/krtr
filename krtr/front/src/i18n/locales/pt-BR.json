@@ -16,5 +16,12 @@
   "support_case_id_label": "Ou digite o ID do caso",
   "support_case_id_submit": "Buscar caso",
   "support_case_not_found": "Caso não encontrado",
-  "support_back": "Voltar"
+  "support_back": "Voltar",
+  "chat_messages_label": "Mensagens",
+  "chat_placeholder": "Escreva sua mensagem…",
+  "chat_send": "Enviar",
+  "chat_typing_indicator": "Digitando…",
+  "chat_error_timeout": "A resposta demorou demais. Tente novamente.",
+  "chat_error_rate_limited": "Você enviou muitas mensagens. Aguarde um momento.",
+  "chat_error_generic": "Não foi possível enviar a mensagem. Tente novamente."
 }
