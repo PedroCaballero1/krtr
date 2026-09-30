@@ -8,5 +8,13 @@
   "session_absolute_warning": "Tu sesión se cerrará en {{seconds}} segundos porque llegó al tiempo máximo.",
   "session_stay_connected": "Seguir conectado",
   "session_expired_idle_message": "Sesión cerrada por inactividad.",
-  "session_expired_absolute_message": "Sesión cerrada por tiempo máximo alcanzado."
+  "session_expired_absolute_message": "Sesión cerrada por tiempo máximo alcanzado.",
+  "support_new_case": "Caso nuevo",
+  "support_existing_case": "Caso existente",
+  "support_open_cases_heading": "Tus casos abiertos",
+  "support_no_open_cases": "No tienes casos abiertos.",
+  "support_case_id_label": "O escribe el ID del caso",
+  "support_case_id_submit": "Buscar caso",
+  "support_case_not_found": "Caso no encontrado",
+  "support_back": "Volver"
 }
