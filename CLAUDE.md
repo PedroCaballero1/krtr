@@ -300,3 +300,39 @@ Example: `feat(database/snowflake): add connection pooling`.
 All downloaded datasets must be saved under `C:\Users\pcaba\krtr\data` (the `data/` directory
 at the repo root). Use it as the `local_path` whenever downloading data (e.g. from S3) instead
 of any other location.
+
+## Frontend (TypeScript/React)
+
+`krtr/front/` is a separate Vite + React + TypeScript project (see
+`docs/guia-web-seguridad.md`), excluded from the Python tooling above (black, ruff,
+flake8, pytest, the hatch wheel). The same engineering standards this file sets for
+Python apply to the frontend, adapted to TypeScript/React as follows.
+
+- **Tests mirror the source tree**: `tests/front/` mirrors `krtr/front/src/` 1:1, the
+  same way `tests/` mirrors `krtr/` for Python (see the Tests section above). A
+  component at `krtr/front/src/session/InactivityModal.tsx` is tested at
+  `tests/front/session/InactivityModal.test.tsx`.
+- **TSDoc on every component and function**: every exported component, hook, and
+  function gets a TSDoc comment (`/** ... */`) explaining what it does, why it exists,
+  its `@param`s, and its return value — the same justification-first standard as the
+  Python docstring rules above.
+- **No magic strings — use `enum` or `as const`**: never hardcode a string or value
+  that represents one option out of a known, fixed set (an event name, a language
+  code, a session state, a case mode, etc.). Define a TypeScript `enum` or a `const`
+  object with `as const` instead, and reference it everywhere — never the raw literal.
+  This mirrors the "No hardcoded strings or values — use Enums" rule above.
+- **40-line limit per component/function**: the same 40-line body limit applies to
+  React components, hooks, and plain functions. If a component grows past it, extract
+  child components or helper functions instead of letting it grow.
+- **No `console.*`**: never use `console.log`/`warn`/`error`/etc. for output. All
+  status updates, progress, and errors that need recording go through
+  `trackEvent(EventName, props)` to the backend's `POST /api/events` (§3.5 of the
+  guide), the frontend equivalent of the Python `logging` rule above.
+- **Exception — anonymous callbacks in hooks and JSX props**: the "no nested
+  functions" rule above still applies to named, reusable logic, but React idioms
+  require inline callbacks as direct arguments to hooks (`useEffect(() => { ... },
+  [...])`) or JSX props (`onClick={() => ...}`). These inline callbacks are allowed
+  **only** in that position, and must immediately delegate to a named function
+  defined at module scope (or a component-scoped handler extracted via a hook) rather
+  than containing the logic themselves — e.g. `onClick={() => handleSupportClick()}`,
+  not `onClick={() => { /* several lines of logic */ }}`.
