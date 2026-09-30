@@ -6,6 +6,7 @@ import { MAX_MESSAGE_LENGTH, sendChatMessage } from "@/api/chat";
 import { ApiError } from "@/api/client";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
+import { VoiceRecorder } from "@/components/voice-recorder";
 import i18n from "@/i18n/config";
 import { resolveLanguage } from "@/i18n/languages";
 
@@ -150,6 +151,11 @@ function ChatComposer({
           {t("chat_send")}
         </Button>
       </div>
+      <VoiceRecorder
+        incidentId={incidentId}
+        onSent={handlers.appendExchange}
+        onError={handlers.setErrorMessage}
+      />
     </div>
   );
 }

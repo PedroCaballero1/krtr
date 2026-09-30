@@ -23,5 +23,11 @@
   "chat_typing_indicator": "Escribiendo…",
   "chat_error_timeout": "La respuesta tardó demasiado. Intenta de nuevo.",
   "chat_error_rate_limited": "Enviaste demasiados mensajes. Espera un momento.",
-  "chat_error_generic": "No se pudo enviar el mensaje. Intenta de nuevo."
+  "chat_error_generic": "No se pudo enviar el mensaje. Intenta de nuevo.",
+  "chat_voice_message_label": "🎤 Nota de voz",
+  "voice_record": "Grabar nota de voz",
+  "voice_recording_status": "Grabando… {{seconds}}s de {{maxSeconds}}s",
+  "voice_cancel": "Cancelar",
+  "voice_send": "Enviar",
+  "voice_permission_denied": "No se pudo acceder al micrófono. Revisa los permisos del navegador."
 }
