@@ -166,7 +166,7 @@ Cuando cada tarea quede desbloqueada, Claude Code prepara sus comandos en `deplo
 
 ## Checklist rápido
 
-- [ ] P5.1 Quitar los mocks de demo del frontend
+- [x] P5.1 Quitar los mocks de demo del frontend (`138ad97`)
 - [ ] P5.2 Lint sin advertencias
 - [ ] P5.3 Recorrido completo contra el backend local
 - [ ] P5.4 Confirmar qué eventos registra el backend
