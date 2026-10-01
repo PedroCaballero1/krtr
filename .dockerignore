@@ -1,0 +1,34 @@
+# Keep the build context to what the Dockerfile copies, and never send
+# secrets or datasets to the Docker daemon (rule 4 of the web guide).
+
+# Secrets and local state
+.env
+.env.*
+!.env.example
+data/
+.krtr/
+
+# VCS, editors, OS
+.git/
+.github/
+.vscode/
+.DS_Store
+
+# Python environments and caches
+.venv/
+**/__pycache__/
+**/*.py[cod]
+.pytest_cache/
+.ruff_cache/
+/dist/
+
+# Node installs and builds (rebuilt inside the image)
+**/node_modules/
+krtr/front/dist/
+
+# Not needed at runtime
+tests/
+e2e/
+docs/
+notebooks/
+main.py
