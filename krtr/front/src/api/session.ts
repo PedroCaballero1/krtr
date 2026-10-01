@@ -17,13 +17,6 @@ export interface CurrentSession {
  * @returns The current session's customer_id and expiry timestamps.
  */
 export async function fetchCurrentSession(): Promise<CurrentSession> {
-  // TEMP DEMO MOCK — revert before continuing real work.
-  return {
-    customer_id: "48213",
-    idle_expires_at: new Date(Date.now() + 5 * 60 * 1000).toISOString(),
-    absolute_expires_at: new Date(Date.now() + 30 * 60 * 1000).toISOString(),
-  };
-  // eslint-disable-next-line no-unreachable
   const response = await apiFetch("/api/me");
   return (await response.json()) as CurrentSession;
 }
@@ -38,9 +31,6 @@ export async function fetchCurrentSession(): Promise<CurrentSession> {
  * @returns The refreshed session, with updated expiry timestamps.
  */
 export async function reportActivity(): Promise<CurrentSession> {
-  // TEMP DEMO MOCK — revert before continuing real work.
-  return fetchCurrentSession();
-  // eslint-disable-next-line no-unreachable
   const response = await apiFetch("/api/session/activity", { method: "POST" });
   return (await response.json()) as CurrentSession;
 }
