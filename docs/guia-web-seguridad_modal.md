@@ -1,6 +1,6 @@
 # Guía de trabajo — Web y seguridad de krtr
 
-_Versión 2.6 · 2-oct-2026 · **Cambio de plataforma: de Google Cloud a Modal** · Fuente: [`docs/goals.md`](goals.md) + decisiones acordadas con el equipo_
+_Versión 2.7 · 2-oct-2026 · **Cambio de plataforma: de Google Cloud a Modal** · Fuente: [`docs/goals.md`](goals.md) + decisiones acordadas con el equipo_
 _Fecha límite de la hackathon: 5-oct-2026 · Rama de trabajo: `web-develop-security`_
 
 > **Qué cambió en la v2.** Google Cloud quedó descartado porque la prueba gratuita exige un pago. Todo se despliega en **Modal** (plan Starter, con 30 USD/mes de créditos y sin pagos adicionales). Por eso:
@@ -20,6 +20,8 @@ _Fecha límite de la hackathon: 5-oct-2026 · Rama de trabajo: `web-develop-secu
 > **v2.5.** 1.1 hecha (Docker con Colima) y 1.3 hecha salvo el permiso de auditoría, que va en 3.1. Neon está en us-east-2 (Ohio) y su rama principal se llama `production`.
 >
 > **v2.6.** 0.5 y 3.1 hechas, con Keycloak 26.8.0 en local y su imagen para Modal. El CI instala el extra `modal`. El permiso de auditoría quedó dado en `dev`. La 6.3 suma lo aprendido en la 3.1.
+>
+> **v2.7.** 3.2 hecha: el realm `krtr` como código, verificado al reimportarlo (22 de 22). La 6.3 suma lo que la 3.2 deja para producción.
 
 ---
 
@@ -204,6 +206,7 @@ Nunca se guardan contraseñas, tokens ni cookies en `properties`.
 | 0.1 Cuenta de Modal · 0.4 Comportamiento de Modal | ✅ 0.4 · 0.1 parcial (faltan créditos y revisar GCP) | — · `0d17496` |
 | 4.11 Registrar eventos · 5.11 Lint · 5.12 Favicon | ✅ | `1634b54` · `ea27df2` · `fa1c646` |
 | 1.1 Herramientas (Docker con Colima) · 1.3 Neon (roles, base `keycloak`, tablas, rama `dev`) | ✅ (el permiso de auditoría ya está en `dev`; en `production` va en 6.3) | — (configuración fuera del repo) |
+| 3.2 Realm `krtr` como código | ✅ | `d272e96` |
 | 0.5 Reglas de Modal en el `CLAUDE.md` · 3.1 Imagen de Keycloak (local y Modal) | ✅ | `2d8d921` · `a4c2a4e` (CI) · `983cebb` · `bd88576` |
 | Test inestable de `chat-page` (fuera de la guía; fallaba 2 de cada 3 veces) | ✅ | `a52ae22` |
 | 1.4 Estructura del repo · 1.5 Reglas del front en `CLAUDE.md` · 1.6 Dependencias | ✅ | `43d598d` · `dd51ee2` · `88c3fe9` |
@@ -328,7 +331,7 @@ Nunca se guardan contraseñas, tokens ni cookies en `properties`.
 - **Commit:** `feat(back/security/keycloak): add Keycloak images for local and Modal` (quedó en dos: la parte local y la de Modal, porque la segunda necesitaba la 0.5)
 - **Depende de:** 1.3, 0.1, 0.5 (para la parte de Modal)
 
-#### 3.2 🤖 Realm `krtr` como código
+#### 3.2 🤖 Realm `krtr` como código ✅ `d272e96`
 - **Objetivo:** `realm-krtr.json` importable, **sin secretos**. Igual que la v1:
   - Registro, "olvidé mi contraseña", "recordarme" y consola de cuenta desactivados (D5).
   - i18n `es` / `pt-BR`, por defecto `es`.
@@ -343,6 +346,13 @@ Nunca se guardan contraseñas, tokens ni cookies en `properties`.
   - `krtr-web`: confidencial, PKCE S256, redirect URIs **exactos** `http://localhost:8000/auth/callback` y `https://<ws>--krtr.modal.run/auth/callback`; web origins y post-logout exactos. **No** se incluyen las URLs `-dev` de `modal serve`, salvo que el revisor lo pida.
   - **Ya no** existe el cliente `krtr-importer` (D20).
 - **Aceptación:** en local, un usuario de prueba entra con `customer_id` + contraseña, queda bloqueado al sexto intento y un segundo login cierra la sesión anterior.
+- **Resultado:**
+  - **Cómo se armó:** `krtr/back/security/keycloak/realm-krtr.json` (unas 2.850 líneas) se configuró en el Keycloak local con la API de administración y se exportó. Se probó borrando el realm y reimportándolo desde el archivo: **22 de 22 verificaciones OK**, entre ellas la aceptación (login con `customer_id`, canje del código con secreto y PKCE, 1 sola sesión, bloqueo al 6.º intento, ES/PT, sin registro ni recuperación).
+  - **Flujo de login:** `krtr browser` es la copia del flujo de la 26.8, que ya trae el OTP condicional ("Conditional 2FA"), más `user-session-limits` (1 sesión, cierra la más antigua).
+  - **Secretos:** el de `krtr-web` es el placeholder `${KRTR_WEB_OIDC_CLIENT_SECRET}`, que Keycloak resuelve del entorno al importar (en `.env`, y en producción por los secretos de la 6.1). Las llaves del realm no están en el archivo: Keycloak las genera al importar.
+  - **Ojo:** la importación usa la estrategia **IGNORE_EXISTING**. Si el realm ya existe, los cambios al JSON no se aplican: en local hay que borrar el realm y reiniciar; en producción solo cuenta la primera importación.
+  - **Realm `master`:** la protección contra fuerza bruta se activó a mano en local; la 6.3 la repite en producción.
+  - **Tests** (`tests/back/security/keycloak/`): fallan si un nuevo export filtra un secreto o pierde estos ajustes, y si el `docker-compose.yml` publica puertos fuera de `127.0.0.1`.
 - **Commit:** `feat(back/security/keycloak): add krtr realm configuration`
 - **Depende de:** 3.1
 
@@ -534,6 +544,8 @@ Nunca se guardan contraseñas, tokens ni cookies en `properties`.
     - `--cache=local` va en el arranque.
     - El **primer** arranque contra `production` aplica 237 migraciones. Si tarda más que el timeout, hay que hacer un arranque de calentamiento antes de salir al aire.
     - Después de ese arranque, como `krtr_keycloak`, dar `GRANT SELECT ON event_entity TO krtr_audit_reader` (1.3).
+    - Activar la protección contra fuerza bruta del realm `master` (5 fallos → 15 min) con `kcadm.sh` (3.2).
+    - Pasarle a la función `auth` la variable `KRTR_WEB_OIDC_CLIENT_SECRET` (secreto `krtr-auth`), que el realm usa al importarse (3.2).
   - `@modal.asgi_app(label="krtr-auth")` devuelve el gateway de 3.7.
 - **Aceptación:**
   - Desplegado, `https://<ws>--krtr-auth.modal.run/realms/krtr/.well-known/openid-configuration` responde 200 y su `issuer` es esa URL.
