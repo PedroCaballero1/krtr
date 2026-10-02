@@ -1,6 +1,6 @@
 # Guía de trabajo — Web y seguridad de krtr
 
-_Versión 2.3 · 1-oct-2026 · **Cambio de plataforma: de Google Cloud a Modal** · Fuente: [`docs/goals.md`](goals.md) + decisiones acordadas con el equipo_
+_Versión 2.4 · 1-oct-2026 · **Cambio de plataforma: de Google Cloud a Modal** · Fuente: [`docs/goals.md`](goals.md) + decisiones acordadas con el equipo_
 _Fecha límite de la hackathon: 5-oct-2026 · Rama de trabajo: `web-develop-security`_
 
 > **Qué cambió en la v2.** Google Cloud quedó descartado porque la prueba gratuita exige un pago. Todo se despliega en **Modal** (plan Starter, con 30 USD/mes de créditos y sin pagos adicionales). Por eso:
@@ -14,6 +14,8 @@ _Fecha límite de la hackathon: 5-oct-2026 · Rama de trabajo: `web-develop-secu
 > **v2.2 (cuenta de Modal y 0.4).** El workspace es `juan-alvarezo-2002` (D11 con las URLs reales). Regla 7 nueva: los comandos `modal` llevan `--env-file .env`. La 0.4 quedó hecha ([`docs/modal-platform.md`](modal-platform.md)) y sus resultados se aplicaron en 3.7, 4.6 y D22.
 >
 > **v2.3.** D16, D17 y D19–D23 aprobadas. La 1.3 ahora incluye crear las tablas `events` y `app_sessions` con sus permisos, y el orden correcto del permiso de `krtr_audit_reader`.
+>
+> **v2.4.** 4.11, 5.11 y 5.12 hechas, y arreglado el test inestable de `chat-page`. La 6.2 sirve `create_served_app()`.
 
 ---
 
@@ -196,6 +198,8 @@ Nunca se guardan contraseñas, tokens ni cookies en `properties`.
 | Esta guía (v2) | ✅ | `473da5a` |
 | 0.2 Retirar artefactos de GCP · 0.3 Quitar referencias a Cloud Run | ✅ | `24d7dba` · `cd2704d` (+ `5a69dc9`: referencias a esta guía) |
 | 0.1 Cuenta de Modal · 0.4 Comportamiento de Modal | ✅ 0.4 · 0.1 parcial (faltan créditos y revisar GCP) | — · `0d17496` |
+| 4.11 Registrar eventos · 5.11 Lint · 5.12 Favicon | ✅ | `1634b54` · `ea27df2` · `fa1c646` |
+| Test inestable de `chat-page` (fuera de la guía; fallaba 2 de cada 3 veces) | ✅ | `a52ae22` |
 | 1.4 Estructura del repo · 1.5 Reglas del front en `CLAUDE.md` · 1.6 Dependencias | ✅ | `43d598d` · `dd51ee2` · `88c3fe9` |
 | 2.1 SQL `events` · 2.2 SQL `app_sessions` · 2.3 Pool en `NeonClient` | ✅ | `d8a728d` · `685129f` · `1c4436a` |
 | 4.1 Base FastAPI · 4.2 Cabeceras · 4.7 Eventos cifrados | ✅ | `4766468` · `e6e2e3c` · `51d7de8` |
@@ -435,12 +439,13 @@ Nunca se guardan contraseñas, tokens ni cookies en `properties`.
 - **Commit:** `feat(back/security/audit): add purge and Keycloak event sync jobs`
 - **Depende de:** 4.7
 
-#### 4.11 🤖 Registrar eventos en la app servida 🆕
+#### 4.11 🤖 Registrar eventos en la app servida 🆕 ✅ `1634b54`
 - **Objetivo:** hoy `krtr/back/web/app.py` crea `app = create_app()` sin `EventRecorder`, así que la app servida (con `krtr back web serve` o en Modal) descarta todos los eventos y solo deja un warning en el log. Ninguna tarea lo conectaba. Hay que construir el `EventRecorder` (pool de `NeonClient` + `AesGcmCipher` con `KRTR_EVENTS_KEY`) desde el entorno para la app servida. Los tests siguen inyectando el suyo.
   - Ojo: `krtr/back/web/app.py` ejecuta `create_app()` al importarse, y los tests importan ese módulo. La conexión a Neon no puede exigirse al importar.
 - **Aceptación:**
   - Con `NEON_DB_HOST` y `KRTR_EVENTS_KEY` definidos, cada petición deja un `http_request` en `events` y `POST /api/events` guarda el evento.
-  - En producción, si falta alguna de las dos variables, la app no arranca y el error dice cuál falta, en lugar de descartar eventos (G21). _Propuesta: confirmar en la revisión._
+  - En producción, si falta alguna de las dos variables, la app no arranca y el error dice cuál falta, en lugar de descartar eventos (G21). _Aprobado el 1-oct._
+- **Resultado:** `EventRecorder.from_environment()` valida la clave antes de abrir Neon. `create_served_app()` carga `.env` y conecta el grabador; en desarrollo, si falta algo, solo avisa. `krtr back web serve` usa esa fábrica (uvicorn `factory=True`) y ya no existe el `app` a nivel de módulo. Verificado con tests y arrancando el servidor real. ⬜ Falta ver los eventos en Neon, que requiere las tablas de la 1.3; queda para 5.13.
 - **Commit:** `feat(back/web): record events in the served app`
 - **Depende de:** 4.7
 
@@ -448,14 +453,16 @@ Nunca se guardan contraseñas, tokens ni cookies en `properties`.
 
 - **5.1–5.10** ✅ (incluye el diseño visual y la eliminación de los mocks)
 
-#### 5.11 🤖 Lint sin advertencias (P5.2)
+#### 5.11 🤖 Lint sin advertencias (P5.2) ✅ `ea27df2`
 - **Objetivo:** mover `buttonVariants` fuera de `components/ui/button.tsx`, o desactivar la regla solo para los componentes de shadcn, con una justificación.
 - **Aceptación:** `npm run lint` da 0 advertencias.
+- **Resultado:** nadie importaba `buttonVariants`, así que se dejó de exportar; no hizo falta ninguna de las dos opciones.
 - **Commit:** `style(front): fix react-refresh lint warning`
 
-#### 5.12 🤖 Servir el favicon (P5.5)
+#### 5.12 🤖 Servir el favicon (P5.5) ✅ `fa1c646`
 - **Objetivo:** mover `favicon.svg` a `src/assets/` y referenciarlo desde `index.html`.
 - **Aceptación:** `/assets/…favicon….svg` responde 200 con `image/svg+xml`.
+- **Resultado:** Vite lo publica como `/assets/favicon-<hash>.svg`, que responde 200 con `image/svg+xml` en `krtr back web serve`. La carpeta `public/` ya no existe.
 - **Commit:** `fix(front): serve favicon from assets`
 
 #### 5.13 👤🤖 Recorrido completo en local (P5.3)
@@ -491,7 +498,7 @@ Nunca se guardan contraseñas, tokens ni cookies en `properties`.
     - Instalar sin el grupo `dev` (`uv_sync(..., extra_options="--no-dev")`). El `uv_sync` de Modal no lo excluye por defecto, así que bandit, locust, playwright y las demás herramientas de desarrollo llegarían a producción.
   - `@modal.asgi_app(label="krtr")` + `@modal.concurrent(max_inputs=50)`.
   - `cpu=0.25`, `memory=512`, `max_containers=1`, `min_containers` según `KRTR_WARM` (D17), `region` según D16, `secrets=[krtr-web]`.
-  - Sirve `create_app()` con el registro de eventos de 4.11.
+  - Sirve `create_served_app()` (4.11), la misma fábrica que usa `krtr back web serve`, que ya incluye el registro de eventos.
 - **Aceptación:**
   - `uv run --env-file .env modal serve krtr/back/deploy/app.py` sirve la SPA y `/healthz` en la URL `-dev`.
   - Hay un test que comprueba la configuración de la función (recursos, etiqueta, secretos) sin llamar a Modal.
