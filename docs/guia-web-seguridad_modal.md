@@ -1,6 +1,6 @@
 # Guía de trabajo — Web y seguridad de krtr
 
-_Versión 2.7 · 2-oct-2026 · **Cambio de plataforma: de Google Cloud a Modal** · Fuente: [`docs/goals.md`](goals.md) + decisiones acordadas con el equipo_
+_Versión 2.8 · 2-oct-2026 · **Cambio de plataforma: de Google Cloud a Modal** · Fuente: [`docs/goals.md`](goals.md) + decisiones acordadas con el equipo_
 _Fecha límite de la hackathon: 5-oct-2026 · Rama de trabajo: `web-develop-security`_
 
 > **Qué cambió en la v2.** Google Cloud quedó descartado porque la prueba gratuita exige un pago. Todo se despliega en **Modal** (plan Starter, con 30 USD/mes de créditos y sin pagos adicionales). Por eso:
@@ -22,6 +22,8 @@ _Fecha límite de la hackathon: 5-oct-2026 · Rama de trabajo: `web-develop-secu
 > **v2.6.** 0.5 y 3.1 hechas, con Keycloak 26.8.0 en local y su imagen para Modal. El CI instala el extra `modal`. El permiso de auditoría quedó dado en `dev`. La 6.3 suma lo aprendido en la 3.1.
 >
 > **v2.7.** 3.2 hecha: el realm `krtr` como código, verificado al reimportarlo (22 de 22). La 6.3 suma lo que la 3.2 deja para producción.
+>
+> **v2.8.** 4.3 y 4.4 hechas: login OIDC, sesiones del servidor y sus endpoints, verificados contra Keycloak local y la rama `dev` de Neon (13 de 13). La 4.5 y el frontend heredan dos puntos abiertos (ver la 4.4).
 
 ---
 
@@ -207,6 +209,7 @@ Nunca se guardan contraseñas, tokens ni cookies en `properties`.
 | 4.11 Registrar eventos · 5.11 Lint · 5.12 Favicon | ✅ | `1634b54` · `ea27df2` · `fa1c646` |
 | 1.1 Herramientas (Docker con Colima) · 1.3 Neon (roles, base `keycloak`, tablas, rama `dev`) | ✅ (el permiso de auditoría ya está en `dev`; en `production` va en 6.3) | — (configuración fuera del repo) |
 | 3.2 Realm `krtr` como código | ✅ | `d272e96` |
+| 4.3 Cliente OIDC (BFF) · 4.4 Sesiones del servidor | ✅ | `a7c601a` (clave) · `0af3a00` (OIDC) · `a26970f` (sesiones) · `0f89cd5` (endpoints) |
 | 0.5 Reglas de Modal en el `CLAUDE.md` · 3.1 Imagen de Keycloak (local y Modal) | ✅ | `2d8d921` · `a4c2a4e` (CI) · `983cebb` · `bd88576` |
 | Test inestable de `chat-page` (fuera de la guía; fallaba 2 de cada 3 veces) | ✅ | `a52ae22` |
 | 1.4 Estructura del repo · 1.5 Reglas del front en `CLAUDE.md` · 1.6 Dependencias | ✅ | `43d598d` · `dd51ee2` · `88c3fe9` |
@@ -407,7 +410,7 @@ Nunca se guardan contraseñas, tokens ni cookies en `properties`.
 
 - **4.1 · 4.2 · 4.7** ✅
 
-#### 4.3 🤖 Cliente OIDC (BFF)
+#### 4.3 🤖 Cliente OIDC (BFF) ✅ `0af3a00` · `0f89cd5`
 - **Objetivo:** `/auth/login`, `/auth/callback` y `/auth/logout` con Authlib.
   - `state`, `nonce` y PKCE S256 guardados en `__Host-krtr_oidc` (cifrada, **SameSite=Lax**, 10 min, D22).
   - `ui_locales` según `lang`.
@@ -418,16 +421,28 @@ Nunca se guardan contraseñas, tokens ni cookies en `properties`.
   - Los tests con Keycloak simulado cubren el callback correcto, el `state` inválido y el `nonce` inválido (→ 400 + evento), y que el logout limpia la sesión.
   - La cookie temporal es `Lax` y se borra después del callback.
   - Se registran `auth_login_started`, `auth_login_succeeded`, `auth_login_failed` y `auth_logout`.
-- **Commit:** `feat(back/security/oidc): add OIDC login flow`
+- **Commit:** `feat(back/security/oidc): add OIDC login flow` (quedó en `0af3a00`, el núcleo, y `0f89cd5`, los endpoints junto con los de la 4.4)
+- **Cómo quedó:**
+  - El ID token se valida con **joserfc** (de los autores de Authlib), porque `authlib.jose` está deprecado. De Authlib solo se usa el reto PKCE.
+  - La cookie temporal se cifra con `KRTR_TOKENS_KEY` (`a7c601a`), la misma clave que cifra los tokens de las sesiones. Cambiarla cierra todas las sesiones.
+  - El callback compara el `state` en tiempo constante **antes** de mirar `error` o `code`. Los motivos de rechazo de `auth_login_failed` son los de `LoginFailureReason`.
+  - En producción la app no arranca sin `KRTR_WEB_OIDC_CLIENT_SECRET` y `KRTR_TOKENS_KEY`. Con `KRTR_WEB_ENVIRONMENT=development` arranca igual, y las rutas de login responden 503 `auth_unavailable`.
 - **Depende de:** 3.2, 4.1
 
-#### 4.4 🤖 Sesiones del servidor (G15)
+#### 4.4 🤖 Sesiones del servidor (G15) ✅ `a26970f` · `0f89cd5`
 - Igual que la v1:
   - Token de 256 bits en `__Host-krtr_session` (`HttpOnly`, `Secure`, `Strict`); en la base solo el hash; tokens OIDC cifrados.
   - Inactividad de 5 min, máximo de 30 min, revocar la sesión anterior.
   - `/api/me` y `/api/session/activity`; refrescar el access token cuando falte menos de 60 s; rotar el id al hacer login.
 - **Aceptación:** los tests de la v1 + se registran `session_created`, `session_revoked_by_new_login`, `session_expired_idle`, `session_expired_absolute` y `unauthorized_request` (cubre P5.4).
-- **Commit:** `feat(back/security/sessions): add server-side sessions`
+- **Commit:** `feat(back/security/sessions): add server-side sessions` (quedó en `a26970f` y `0f89cd5`)
+- **Cómo quedó:**
+  - `GET /api/me` **no** cuenta como actividad; solo `POST /api/session/activity` corre el plazo de inactividad. Así, consultar el estado no mantiene viva una sesión ociosa.
+  - Si Keycloak rechaza el refresh (por ejemplo, porque un admin desactivó al usuario), la sesión se revoca y la petición responde 401 `unauthorized`.
+  - Verificado de punta a punta: login con el formulario real de Keycloak, `/api/me`, actividad, sesión única y logout (13 de 13).
+- **Puntos abiertos:**
+  - **CSRF:** `POST /auth/logout` y `POST /api/session/activity` todavía no exigen el token CSRF. La 4.5 debe cubrirlos.
+  - **Frontend:** los locales tienen `session_expired_idle_message` y `session_expired_absolute_message`, pero faltan `unauthorized`, `login_failed` y `auth_unavailable`. Además, un callback rechazado responde 400 con JSON (como pide la aceptación), y el navegador lo muestra tal cual. Hay que decidir si conviene redirigir a la página de inicio con un aviso.
 - **Depende de:** 2.2, 2.3, 4.3
 
 #### 4.5 🤖 Protección CSRF
