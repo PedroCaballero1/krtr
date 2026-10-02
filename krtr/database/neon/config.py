@@ -16,13 +16,15 @@ logger = logging.getLogger(__name__)
 
 
 class NeonEnvironmentVariable(StrEnum):
-    """The environment variable the Neon client reads its connection string from.
+    """The environment variables the Neon client reads its settings from.
 
-    Centralizes the variable name so the config loader, the README and the
+    Centralizes the variable names so the config loader, the README and the
     tests never disagree on spelling. Consumed by `NeonConfig.from_environment`.
     """
 
     CONNECTION_STRING = "NEON_DB_HOST"  # Full postgresql:// URL, not just a hostname.
+    POOL_MIN_SIZE = "NEON_POOL_MIN_SIZE"  # Optional; defaults to NeonConfig.pool_min_size.
+    POOL_MAX_SIZE = "NEON_POOL_MAX_SIZE"  # Optional; defaults to NeonConfig.pool_max_size.
 
 
 class NeonConfig(BaseModel):
@@ -33,6 +35,9 @@ class NeonConfig(BaseModel):
     """
 
     connection_string: SecretStr
+    pool_min_size: int = 1
+    pool_max_size: int = 10  # Cloud Run runs krtr-web with a single instance (D8) serving <20
+    # concurrent jurors; 10 pooled connections comfortably covers that load.
 
     @classmethod
     def from_environment(cls) -> "NeonConfig":
@@ -59,4 +64,9 @@ class NeonConfig(BaseModel):
                 f"{NeonEnvironmentVariable.CONNECTION_STRING.value}"
             )
         logger.debug("Loaded Neon connection string from the environment")
-        return cls(connection_string=connection_string)
+        pool_settings = {}
+        if pool_min_size := os.environ.get(NeonEnvironmentVariable.POOL_MIN_SIZE):
+            pool_settings["pool_min_size"] = int(pool_min_size)
+        if pool_max_size := os.environ.get(NeonEnvironmentVariable.POOL_MAX_SIZE):
+            pool_settings["pool_max_size"] = int(pool_max_size)
+        return cls(connection_string=connection_string, **pool_settings)

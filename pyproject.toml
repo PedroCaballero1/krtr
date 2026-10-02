@@ -19,19 +19,35 @@ dependencies = [
     "ruff>=0.16.8",
     "tqdm>=4.70.1",
     "typer>=0.27.2",
+    "fastapi>=0.142.2",
+    "uvicorn[standard]>=0.54.0",
+    "authlib>=1.8.0",
+    "httpx>=0.28.1",
+    "itsdangerous>=2.2.0",
+    "cryptography>=50.0.2",
+    "argon2-cffi>=25.1.0",
+    "python-multipart>=0.0.32",
+    "slowapi>=0.1.10",
 ]
 
 [tool.black]
 line-length = 100
+extend-exclude = '''
+/(
+  krtr/front
+)/
+'''
 
 [tool.ruff]
 line-length = 100
+extend-exclude = ["krtr/front"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+norecursedirs = ["krtr/front", "node_modules", "dist", ".venv"]
 
 [project.scripts]
 krtr = "krtr.cli.main:app"
@@ -47,12 +63,18 @@ build-backend = "hatchling.build"
 
 [dependency-groups]
 dev = [
+    "bandit>=1.9.4",
+    "locust>=2.46.6",
     "matplotlib>=3.11.2",
     "pandas>=3.0.6",
+    "pip-audit>=2.10.1",
+    "pytest-playwright>=0.9.0",
+    "respx>=0.23.1",
 ]
 
 [tool.hatch.build.targets.wheel]
 packages = ["krtr"]
+exclude = ["krtr/front", "**/node_modules", "**/dist"]
 
 [tool.semantic_release]
 version_toml = ["pyproject.toml:project.version"]
