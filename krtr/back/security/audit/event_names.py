@@ -3,7 +3,7 @@
 Exists so no part of the system hardcodes an event name string: every event
 recorded by the backend, or submitted by the frontend to `POST /api/events`,
 must be a member of this Enum. Mirrors the catalog documented in §3.5 of
-docs/guia-web-seguridad.md. Consumed by `krtr/back/security/audit/recorder.py`
+docs/guia-web-seguridad_modal.md. Consumed by `krtr/back/security/audit/recorder.py`
 and `krtr/back/web/routers/events.py`.
 
 Not covered here: the `auth_*` events Keycloak itself emits (login,

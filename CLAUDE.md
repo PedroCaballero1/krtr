@@ -304,7 +304,7 @@ of any other location.
 ## Frontend (TypeScript/React)
 
 `krtr/front/` is a separate Vite + React + TypeScript project (see
-`docs/guia-web-seguridad.md`), excluded from the Python tooling above (black, ruff,
+`docs/guia-web-seguridad_modal.md`), excluded from the Python tooling above (black, ruff,
 flake8, pytest, the hatch wheel). The same engineering standards this file sets for
 Python apply to the frontend, adapted to TypeScript/React as follows.
 

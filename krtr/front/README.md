@@ -2,7 +2,7 @@
 
 React + Vite + TypeScript + Tailwind + shadcn/ui SPA for krtr, compiled to
 static files served by FastAPI (`krtr/back/web/`) in the same domain. See
-[`docs/guia-web-seguridad.md`](../../docs/guia-web-seguridad.md) for the
+[`docs/guia-web-seguridad_modal.md`](../../docs/guia-web-seguridad_modal.md) for the
 full plan.
 
 This package is installed as an npm workspace from the repo root, so its

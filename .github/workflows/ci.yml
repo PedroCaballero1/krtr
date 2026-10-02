@@ -46,7 +46,7 @@ jobs:
       - name: Run tests (pytest)
         run: uv run pytest tests
 
-  # Task 7.1 of docs/guia-web-seguridad.md: fails on high or critical findings.
+  # Task 7.1 of docs/guia-web-seguridad_modal.md: fails on high or critical findings.
   security:
     runs-on: ubuntu-latest
     steps:

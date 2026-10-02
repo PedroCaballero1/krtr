@@ -14,7 +14,7 @@ def make_client(auth_origin: str = "https://auth.example.com") -> TestClient:
 
 
 def test_response_carries_every_static_security_header() -> None:
-    """Verifies each hardening header from §4.2 is present with its exact value."""
+    """Verifies each hardening header from task 4.2 is present with its exact value."""
     response = make_client().get("/healthz")
 
     assert response.headers["Strict-Transport-Security"] == "max-age=31536000; includeSubDomains"

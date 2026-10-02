@@ -1,7 +1,7 @@
 """Defines the structured request/response contracts krtr-web's endpoints use.
 
 Exists to keep an endpoint's request/response shape discoverable apart from
-its implementation, per the §3.4 API contract in docs/guia-web-seguridad.md.
+its implementation, per the §3.4 API contract in docs/guia-web-seguridad_modal.md.
 Consumed by `krtr/back/web/routers/`.
 """
 

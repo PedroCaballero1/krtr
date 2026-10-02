@@ -2,7 +2,7 @@
 
 Exists so client-side routes (`/`, `/app`, and any nested route the SPA's
 router owns) all resolve to the same `index.html`, letting React Router take
-over in the browser, per §3.3/4.1 of docs/guia-web-seguridad.md. Registered
+over in the browser, per §3.3 and task 4.1 of docs/guia-web-seguridad_modal.md. Registered
 last in `create_app` so it only catches requests no other router matched.
 Consumed by `krtr/back/web/app.py`.
 """
