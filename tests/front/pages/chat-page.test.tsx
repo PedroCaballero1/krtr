@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -106,9 +106,14 @@ describe("ChatPage — typing indicator timing (fake clock)", () => {
     );
 
     expect(await screen.findByText("reply-slow")).toBeInTheDocument();
-    expect(
-      screen.queryByText(es.chat_typing_indicator),
-    ).not.toBeInTheDocument();
+    // React commits the reply first and runs that effect cleanup (which
+    // clears the indicator) right after, so wait for it instead of
+    // asserting in the same tick; it still fails if the indicator never clears.
+    await waitFor(() =>
+      expect(
+        screen.queryByText(es.chat_typing_indicator),
+      ).not.toBeInTheDocument(),
+    );
   });
 });
 
