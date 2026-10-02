@@ -13,8 +13,14 @@ name: krtr-keycloak
 services:
   keycloak:
     image: quay.io/keycloak/keycloak:26.8.0  # Latest stable on 2026-10-02.
-    command: ["start-dev"]
+    # --import-realm creates the krtr realm from realm-krtr.json on startup if it does not exist
+    # yet; an existing realm is left as it is (task 3.2).
+    command: ["start-dev", "--import-realm"]
+    volumes:
+      - ./realm-krtr.json:/opt/keycloak/data/import/realm-krtr.json:ro
     environment:
+      # Read by realm-krtr.json's ${KRTR_WEB_OIDC_CLIENT_SECRET} placeholder at import time.
+      KRTR_WEB_OIDC_CLIENT_SECRET: ${KRTR_WEB_OIDC_CLIENT_SECRET:?missing in .env, see .env.example}
       KC_DB: postgres
       # Direct connection: Keycloak runs its own pool and Liquibase migrations, which Neon's
       # transaction-mode pooler does not support.
