@@ -193,7 +193,7 @@ Nunca se guardan contraseñas, tokens ni cookies en `properties`.
 |---|---|---|
 | Esta guía (v2) | ✅ | `473da5a` |
 | 0.2 Retirar artefactos de GCP · 0.3 Quitar referencias a Cloud Run | ✅ | `24d7dba` · `cd2704d` (+ `5a69dc9`: referencias a esta guía) |
-| 0.1 Cuenta de Modal · 0.4 Comportamiento de Modal | ✅ 0.4 · 0.1 parcial (faltan créditos, token del CI y revisar GCP) | — · `0d17496` |
+| 0.1 Cuenta de Modal · 0.4 Comportamiento de Modal | ✅ 0.4 · 0.1 parcial (faltan créditos y revisar GCP) | — · `0d17496` |
 | 1.4 Estructura del repo · 1.5 Reglas del front en `CLAUDE.md` · 1.6 Dependencias | ✅ | `43d598d` · `dd51ee2` · `88c3fe9` |
 | 2.1 SQL `events` · 2.2 SQL `app_sessions` · 2.3 Pool en `NeonClient` | ✅ | `d8a728d` · `685129f` · `1c4436a` |
 | 4.1 Base FastAPI · 4.2 Cabeceras · 4.7 Eventos cifrados | ✅ | `4766468` · `e6e2e3c` · `51d7de8` |
@@ -225,7 +225,7 @@ Nunca se guardan contraseñas, tokens ni cookies en `properties`.
   - Crear un **token de Modal para CI** y guardarlo como `MODAL_TOKEN_ID` / `MODAL_TOKEN_SECRET` en GitHub Secrets.
   - Si llegó a crearse algo en Google Cloud, cerrarlo para que no genere cobros.
 - **Aceptación:** con el extra instalado (`uv sync --extra modal`), `uv run krtr compute modal doctor` pasa y el workspace queda anotado en el PR de la fase 0.
-- **Estado (1-oct):** ✅ cuenta creada, token en `.env`, workspace `juan-alvarezo-2002` (D11) y `doctor` en verde (Neon, credenciales y secreto `krtr-neon`). ⬜ Falta confirmar: los créditos y su renovación, el token del CI en GitHub Secrets (debe ser de `juan-alvarezo-2002`; `gh` no está instalado, así que no se pudo verificar) y que no quedó nada en Google Cloud.
+- **Estado (1-oct):** ✅ cuenta creada, token en `.env`, workspace `juan-alvarezo-2002` (D11) y `doctor` en verde (Neon, credenciales y secreto `krtr-neon`). ✅ `MODAL_TOKEN_ID` y `MODAL_TOKEN_SECRET` creados en GitHub Secrets: lo confirmó el usuario, porque sin `gh` no se puede ver desde aquí; se comprobará en la primera corrida de 6.7. ⬜ Falta confirmar: los créditos y su renovación, y que no quedó nada en Google Cloud.
 - **Depende de:** —
 
 #### 0.2 🤖 Eliminar los artefactos de GCP ✅ `24d7dba`
@@ -277,9 +277,9 @@ Nunca se guardan contraseñas, tokens ni cookies en `properties`.
 
 ### Fase 1 — Preparación
 
-- **1.1** 👤 Herramientas locales: `uv`, Python 3.13, Node LTS, Docker (solo para Keycloak local), `gh`, `git` y la **CLI de Modal** (`uv sync --extra modal` y luego `uv run modal --version`: `modal` es una dependencia opcional). `gcloud` ya no hace falta. ⬜ confirmar.
+- **1.1** 👤 Herramientas locales: `uv`, Python 3.13, Node LTS, Docker (solo para Keycloak local), `gh`, `git` y la **CLI de Modal** (`uv sync --extra modal` y luego `uv run modal --version`: `modal` es una dependencia opcional). `gcloud` ya no hace falta. ⬜ **Estado (1-oct):** Node 24, `uv`, `git` y la CLI de Modal funcionan. **Docker no está instalado** (bloquea 3.1, 3.6 y 5.13 en local) y `gh` tampoco.
 - **1.2** ❌ Proyecto de GCP: cancelada.
-- **1.3** 👤 Preparar Neon: base `keycloak`, rama `dev`, roles `krtr_app`, `krtr_keycloak`, `krtr_audit_reader`, scale-to-zero desactivado. ⬜ **confirmar si ya se hizo**; las tareas 2.x lo sugieren, pero no hay evidencia en el repo.
+- **1.3** 👤 Preparar Neon: base `keycloak`, rama `dev`, roles `krtr_app`, `krtr_keycloak`, `krtr_audit_reader`, scale-to-zero desactivado. ⬜ **No está hecha** en la base de `.env` (`neondb`, rol `neondb_owner`, revisado el 1-oct): no existen la base `keycloak`, los roles `krtr_*` ni las tablas `events` y `app_sessions` (solo `products` y `daily_exchange_rates`). La rama `dev` y el scale-to-zero se revisan en la consola de Neon.
 - **1.4 · 1.5 · 1.6** ✅
 
 ### Fase 2 — Base de datos
