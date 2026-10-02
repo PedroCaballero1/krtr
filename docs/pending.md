@@ -1,5 +1,7 @@
 # Pendientes de las fases 5, 6 y 7
 
+> **⚠️ Documento reemplazado.** Desde el 1-oct-2026, el estado vigente está en la §4.1 de [`guia-web-seguridad_modal.md`](guia-web-seguridad_modal.md). Este documento se escribió para la guía v1 (Google Cloud): sus números de tarea de la fase 6 y lo que dice sobre el dominio, el Load Balancer, Cloud Armor, el `Dockerfile` y `deploy/gcp/` ya no aplican. Se conserva como registro.
+
 _Corte: 1-oct-2026 · Rama `web-develop-security` (último commit `dc4f241`) · Referencia: [`guia-web-seguridad.md`](guia-web-seguridad.md)_
 
 Este documento lista lo que falta para cerrar las fases 5 (frontend), 6 (contenedores y despliegue) y 7 (seguridad y pruebas) de la guía. Usa la misma notación de la guía: **🤖** Claude Code · **👤** una persona del equipo · **👤🤖** Claude Code prepara los comandos y la persona los ejecuta.

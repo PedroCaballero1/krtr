@@ -15,7 +15,7 @@ from krtr.back.security.audit.event_names import EventName
 class HealthStatus(BaseModel):
     """The `GET /healthz` response contract.
 
-    Exists so uptime checks (Cloud Run, GitHub Actions' smoke test) get a
+    Exists so uptime checks (the GitHub Actions deploy smoke test) get a
     typed, stable shape. Returned by `krtr/back/web/routers/health.py`.
     """
 

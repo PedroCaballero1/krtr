@@ -14,7 +14,7 @@ from pydantic import BaseModel
 logger = logging.getLogger(__name__)
 
 # Local Keycloak, as docker-compose (task 3.1) will expose it. Overridden via
-# KRTR_AUTH_ORIGIN for the run.app URLs and later for auth.<dominio> (D11).
+# KRTR_AUTH_ORIGIN with the krtr-auth URL on Modal (D11).
 DEFAULT_AUTH_ORIGIN = "http://localhost:8080"
 
 

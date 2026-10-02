@@ -2,7 +2,7 @@
 
 Exists to expose running the krtr-web FastAPI app as a single, thin CLI
 command, so the uvicorn invocation (host, port, import path) lives in one
-place instead of being repeated in Docker, docs and scripts. Consumed by
+place instead of being repeated in docs and scripts. Consumed by
 `krtr/cli/back/__init__.py`, which registers `web_app`.
 """
 
@@ -27,15 +27,15 @@ def serve(
     host: str = typer.Option(DEFAULT_HOST, help="Host interface to bind to."),
     port: int = typer.Option(
         None,
-        help="Port to listen on. Defaults to the $PORT env var (Cloud Run sets it), "
+        help="Port to listen on. Defaults to the $PORT env var, "
         f"or {DEFAULT_PORT} if that isn't set either.",
     ),
     reload: bool = typer.Option(False, help="Enable uvicorn's auto-reload for local development."),
 ) -> None:
     """Runs the krtr-web FastAPI application with uvicorn.
 
-    Exists so the app starts the same way in local development, Docker and
-    Cloud Run.
+    Exists so the app always starts the same way in local development.
+    Production does not use this command: Modal serves the app itself.
 
     Args:
         host: Host interface to bind to.

@@ -1,8 +1,8 @@
 -- Schema for the `app_sessions` table: server-side sessions for the krtr
 -- BFF (D1 of docs/guia-web-seguridad.md). Lets the backend enforce the
 -- idle/absolute session timeouts and the "1 session per customer_id" rule
--- (G15) from any Cloud Run instance, since the session state lives in the
--- database rather than in-process.
+-- (G15) from any app container, and across restarts, since the session
+-- state lives in the database rather than in-process.
 -- No indexes beyond the primary key: the CLAUDE.md rule against creating
 -- indexes unless the user explicitly asks for them applies here.
 -- Consumed by krtr.back.security.sessions (create, touch activity,

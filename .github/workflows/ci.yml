@@ -1,7 +1,8 @@
 name: CI
 
 # No path filters: the security job must see every change (a secret can leak
-# from any file), and the deploy workflow (task 6.8) waits on this one.
+# from any file), and the deploy workflow (task 6.7 of
+# docs/guia-web-seguridad_modal.md) waits on this one.
 on:
   push:
     branches: [master]

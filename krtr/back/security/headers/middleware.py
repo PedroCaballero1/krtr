@@ -34,8 +34,9 @@ def build_content_security_policy(auth_origin: str) -> str:
     rest of the (otherwise static) policy.
 
     Args:
-        auth_origin: Keycloak's origin (e.g. `https://auth.<dominio>`),
-            allowed in `form-action` alongside `'self'`.
+        auth_origin: Keycloak's origin (e.g.
+            `https://<workspace>--krtr-auth.modal.run`), allowed in
+            `form-action` alongside `'self'`.
 
     Returns:
         str: the full CSP header value.

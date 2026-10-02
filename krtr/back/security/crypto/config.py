@@ -2,8 +2,8 @@
 
 Exists so the encryption key — shared by the `events.properties` and
 `app_sessions.tokens_ciphertext` columns — is read and validated from the
-environment (or, in production, Secret Manager injected as an env var, per
-§6.2 of docs/guia-web-seguridad.md) in exactly one place. Consumed by
+environment (in production, Modal injects it from the `krtr-web` secret, per
+task 6.1 of docs/guia-web-seguridad_modal.md) in exactly one place. Consumed by
 `krtr/back/security/crypto/cipher.py`.
 """
 

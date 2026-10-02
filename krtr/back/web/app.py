@@ -30,9 +30,9 @@ def create_app(
 ) -> FastAPI:
     """Builds and configures the krtr-web FastAPI application.
 
-    Exists so the app is assembled the same way whether it is run via
-    `krtr back web serve`, imported by uvicorn in Docker/Cloud Run, or built
-    in a test with custom configuration.
+    Exists so the app is assembled the same way whether it is run locally
+    via `krtr back web serve`, served by the `web` function on Modal, or
+    built in a test with custom configuration.
 
     Args:
         config: The configuration to build the app with. When None, it is
@@ -42,7 +42,8 @@ def create_app(
         event_recorder: The recorder used to write audit events (G21). When
             None, event recording is skipped (logged, not an error) — the
             deployed app is expected to always provide one once Neon (task
-            1.3) and the encryption key (task 6.2) exist; tests may omit it.
+            1.3) and the encryption key (`KRTR_EVENTS_KEY`) exist; tests may
+            omit it.
 
     Returns:
         FastAPI: the configured application, ready to serve.
