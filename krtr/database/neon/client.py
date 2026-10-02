@@ -182,7 +182,7 @@ class NeonClient:
             )
         return self._pool
 
-    def execute_params(self, statement: str, params: dict[str, Any] | None = None) -> None:
+    def execute_params(self, statement: str, params: dict[str, Any] | None = None) -> int:
         """Runs a parameterized statement from a pooled connection and commits it.
 
         Exists for parameterized DML (`INSERT`/`UPDATE`/`DELETE` with
@@ -195,14 +195,17 @@ class NeonClient:
             params: The values for the statement's placeholders, by name.
 
         Returns:
-            None.
+            int: the number of rows the statement affected, e.g. how many
+            sessions an `UPDATE` revoked.
         """
         pool = self._get_pool()
         connection = pool.getconn()
         try:
             with connection.cursor() as cursor:
                 cursor.execute(statement, params)
+                affected_rows = cursor.rowcount
             connection.commit()
+            return affected_rows
         finally:
             pool.putconn(connection)
 
