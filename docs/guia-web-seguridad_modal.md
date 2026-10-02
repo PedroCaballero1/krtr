@@ -1,6 +1,6 @@
 # Guía de trabajo — Web y seguridad de krtr
 
-_Versión 2.1 · 1-oct-2026 · **Cambio de plataforma: de Google Cloud a Modal** · Fuente: [`docs/goals.md`](goals.md) + decisiones acordadas con el equipo_
+_Versión 2.2 · 1-oct-2026 · **Cambio de plataforma: de Google Cloud a Modal** · Fuente: [`docs/goals.md`](goals.md) + decisiones acordadas con el equipo_
 _Fecha límite de la hackathon: 5-oct-2026 · Rama de trabajo: `web-develop-security`_
 
 > **Qué cambió en la v2.** Google Cloud quedó descartado porque la prueba gratuita exige un pago. Todo se despliega en **Modal** (plan Starter, con 30 USD/mes de créditos y sin pagos adicionales). Por eso:
@@ -10,6 +10,8 @@ _Fecha límite de la hackathon: 5-oct-2026 · Rama de trabajo: `web-develop-secu
 > La fase 6 se reescribió completa. Se agregó la **Fase 0** para deshacer lo que se preparó para GCP. Las decisiones nuevas son D16–D23 (§2) y van marcadas con 🆕.
 >
 > **v2.1 (revisión de la fase 0).** 0.2 y 0.3 quedaron hechas y D18 aprobada. Se agregaron las tareas 0.5 y 4.11, y se ajustaron 0.1–0.4, 1.1, 3.2, 5.13, 6.1, 6.2, 6.7, 7.6 y las §3.3–§4 para cerrar los huecos que encontró la revisión.
+>
+> **v2.2 (cuenta de Modal y 0.4).** El workspace es `juan-alvarezo-2002` (D11 con las URLs reales). Regla 7 nueva: los comandos `modal` llevan `--env-file .env`. La 0.4 quedó hecha ([`docs/modal-platform.md`](modal-platform.md)) y sus resultados se aplicaron en 3.7, 4.6 y D22.
 
 ---
 
@@ -26,6 +28,7 @@ _Fecha límite de la hackathon: 5-oct-2026 · Rama de trabajo: `web-develop-secu
   4. Nunca subir secretos, contraseñas ni archivos de `data/` al repositorio.
   5. Los `table.sql` solo se escriben con la documentación de columnas que aprobó el usuario.
   6. **Reutilizar `krtr/compute/modal/`** (imagen, secretos, volúmenes) en lugar de reescribir esa lógica (regla DRY).
+  7. **Los comandos del CLI de Modal se corren desde la raíz del repo como `uv run --env-file .env modal …`.** El token de krtr está en `.env` (workspace `juan-alvarezo-2002`), pero el CLI `modal` no lee `.env`: sin `--env-file` usa el perfil activo de `~/.modal.toml` (`development-maia`, otro workspace) y desplegaría ahí. Los comandos `krtr` ya cargan `.env` solos, y el CI usa los secretos de GitHub.
 - **Antes de seguir**, el revisor confirma las decisiones 🆕 de la §2.
 
 ---
@@ -50,7 +53,7 @@ _Fecha límite de la hackathon: 5-oct-2026 · Rama de trabajo: `web-develop-secu
 | Eventos | Una sola tabla `events(id UUID, event_name, properties cifrado, occurred_at)`. Se registra **todo**. Retención de **3 meses**. | G21 |
 | Base de datos | Todo en **Neon** (AWS us-east-1, Virginia). Scale-to-zero **desactivado**. Base aparte `keycloak`. | — |
 | **Despliegue** 🆕 | **Modal**, un solo entorno (producción). **GitHub Actions** ejecuta `modal deploy` con cada merge a `master` si pasan pytest, los linters y los escáneres. | — |
-| **Dominio** 🆕 | **Ninguno.** Modal solo permite dominio propio desde el plan Team (250 USD/mes). Las URLs son `https://<workspace>--krtr.modal.run` (app) y `https://<workspace>--krtr-auth.modal.run` (Keycloak). | — |
+| **Dominio** 🆕 | **Ninguno.** Modal solo permite dominio propio desde el plan Team (250 USD/mes). Las URLs son `https://juan-alvarezo-2002--krtr.modal.run` (app) y `https://juan-alvarezo-2002--krtr-auth.modal.run` (Keycloak). | — |
 | **Secretos y jobs** 🆕 | **Modal Secrets** reemplaza a Secret Manager. **Modal Cron** reemplaza a Cloud Scheduler (el plan Starter permite 5 crons; usamos 2). | — |
 | Seguridad | Referencia **OWASP ASVS 5.0 nivel 2** + OWASP Top 10. Pruebas en **pytest** que corren **contra producción**, más ZAP. Sin WAF: toda la protección vive en la app (ver §7). | G3 |
 | Carga | Menos de 20 usuarios simultáneos (jurados). Locust. | G3 |
@@ -73,7 +76,7 @@ Las decisiones D1–D15 son las de la v1. Si alguna cambió por el paso a Modal,
 | D8 | **Cambia:** en Modal, la app usa `max_containers=1` y `@modal.concurrent`; Keycloak usa `max_containers=1`. `min_containers` depende de D17. | El límite de mensajes vive en memoria y Keycloak no forma clúster. |
 | D9 | Las pruebas contra producción van en `e2e/`, fuera de `tests/`. | No siguen la regla de espejo 1:1. |
 | D10 | Desarrollo local: rama `dev` de Neon + Keycloak en Docker (`docker compose`). | Docker se usa **solo en local**; no se paga nada. |
-| D11 | **Cambia:** la app en `https://<workspace>--krtr.modal.run` y Keycloak en `https://<workspace>--krtr-auth.modal.run` (etiquetas `krtr` y `krtr-auth`). | Sin dominio propio. |
+| D11 | **Cambia:** la app en `https://juan-alvarezo-2002--krtr.modal.run` y Keycloak en `https://juan-alvarezo-2002--krtr-auth.modal.run` (etiquetas `krtr` y `krtr-auth`, workspace `juan-alvarezo-2002` confirmado en 0.1, entorno `main`). En el resto de esta guía, `<ws>` = `juan-alvarezo-2002`. | Sin dominio propio. |
 | D12 | Las 150.000 cuentas pueden iniciar sesión, estén Active o no. La muestra del jurado solo tiene Active. | G6. |
 | D13 | El aviso de 30 s aplica a la inactividad y al máximo de 30 min. | Coherencia. |
 | D14 | El idioma se guarda en `localStorage`; por defecto ES; se envía a Keycloak con `ui_locales`. | — |
@@ -84,7 +87,7 @@ Las decisiones D1–D15 son las de la v1. Si alguna cambió por el paso a Modal,
 | **D19** 🆕 | Keycloak corre dentro del contenedor detrás de un **gateway ASGI propio**. Keycloak escucha en `127.0.0.1:8081`, y el gateway lo publica bloqueando `/admin/*`, `/realms/master/*`, `/metrics` y `/health*` (responden 404). La administración se hace con `kcadm.sh` desde `modal container exec`, nunca desde internet. | Reemplaza la regla de Cloud Armor que restringía `/admin` por IP. |
 | **D20** 🆕 | Los 150.000 usuarios se importan con **`kc.sh import`** (directo a la base, sin la API HTTP), desde una función de Modal que lee un **Volume** con los JSON. La importación se hace **antes** de la salida al aire, con Keycloak detenido. Al terminar, se vacía el Volume. | Con `/admin` bloqueado, no se puede usar `partialImport` por HTTP. |
 | **D21** 🆕 | La app de Modal se llama **`krtr-web`** y tiene 5 funciones: `web`, `auth`, `auth_import`, `purge_events` (cron diario, 03:00 COT) y `sync_auth_events` (cada 15 min). Vive en `krtr/back/deploy/`. | Un `modal deploy` despliega todo junto. |
-| **D22** 🆕 | La cookie temporal del login OIDC (`__Host-krtr_oidc`, guarda `state`, `nonce` y el verificador PKCE) usa **`SameSite=Lax`**. La cookie de sesión sigue en `Strict`. **Todas** las cookies llevan el prefijo `__Host-`. | La vuelta desde Keycloak puede contar como navegación entre sitios distintos. Con `Strict`, esa cookie no llegaría al callback. El prefijo `__Host-` impide que otra app en `modal.run` sobrescriba nuestras cookies. |
+| **D22** 🆕 | La cookie temporal del login OIDC (`__Host-krtr_oidc`, guarda `state`, `nonce` y el verificador PKCE) usa **`SameSite=Lax`**. La cookie de sesión sigue en `Strict`. **Todas** las cookies llevan el prefijo `__Host-`. | La vuelta desde Keycloak puede contar como navegación entre sitios distintos. Con `Strict`, esa cookie no llegaría al callback. El prefijo `__Host-` impide que otra app en `modal.run` sobrescriba nuestras cookies. **0.4(d):** `modal.run` no está en la Public Suffix List, así que la vuelta desde Keycloak es del mismo sitio y `Strict` también llegaría. `Lax` sigue siendo válido; lo esencial es el prefijo `__Host-`. |
 | **D23** 🆕 | Nuevo calendario (§4): salida al aire el **sábado 3-oct**; congelar cambios el **domingo 4-oct** a las 18:00. | La meta del 2-oct ya no es realista con el cambio de plataforma. |
 
 ---
@@ -190,6 +193,7 @@ Nunca se guardan contraseñas, tokens ni cookies en `properties`.
 |---|---|---|
 | Esta guía (v2) | ✅ | `473da5a` |
 | 0.2 Retirar artefactos de GCP · 0.3 Quitar referencias a Cloud Run | ✅ | `24d7dba` · `cd2704d` (+ `5a69dc9`: referencias a esta guía) |
+| 0.1 Cuenta de Modal · 0.4 Comportamiento de Modal | ✅ 0.4 · 0.1 parcial (faltan créditos, token del CI y revisar GCP) | — · `0d17496` |
 | 1.4 Estructura del repo · 1.5 Reglas del front en `CLAUDE.md` · 1.6 Dependencias | ✅ | `43d598d` · `dd51ee2` · `88c3fe9` |
 | 2.1 SQL `events` · 2.2 SQL `app_sessions` · 2.3 Pool en `NeonClient` | ✅ | `d8a728d` · `685129f` · `1c4436a` |
 | 4.1 Base FastAPI · 4.2 Cabeceras · 4.7 Eventos cifrados | ✅ | `4766468` · `e6e2e3c` · `51d7de8` |
@@ -203,7 +207,7 @@ Nunca se guardan contraseñas, tokens ni cookies en `properties`.
 
 | Día | Qué | Nota |
 |---|---|---|
-| Jue 1-oct (noche) | Fase 0 | 0.2 y 0.3 ✅. 0.4 se puede hacer en paralelo y desbloquea 4.6; 0.5 desbloquea la fase 6. |
+| Jue 1-oct (noche) | Fase 0 | 0.2, 0.3 y 0.4 ✅ (0.4 desbloquea 4.6). De 0.1 faltan los pasos 👤. 0.5 desbloquea la fase 6. |
 | Vie 2-oct | Fases 3 y 4 (lo pendiente) + 5.11–5.13 | Fase 3 y fase 4 en paralelo; se juntan en 5.13. |
 | Sáb 3-oct | Fase 6 → **salida al aire** + 7.2 y 7.3 | Encender el modo demo (6.8) al salir al aire. |
 | Dom 4-oct | 7.4–7.6, 8.1 | **Congelar a las 18:00**: cada deploy reinicia Keycloak. |
@@ -221,6 +225,7 @@ Nunca se guardan contraseñas, tokens ni cookies en `properties`.
   - Crear un **token de Modal para CI** y guardarlo como `MODAL_TOKEN_ID` / `MODAL_TOKEN_SECRET` en GitHub Secrets.
   - Si llegó a crearse algo en Google Cloud, cerrarlo para que no genere cobros.
 - **Aceptación:** con el extra instalado (`uv sync --extra modal`), `uv run krtr compute modal doctor` pasa y el workspace queda anotado en el PR de la fase 0.
+- **Estado (1-oct):** ✅ cuenta creada, token en `.env`, workspace `juan-alvarezo-2002` (D11) y `doctor` en verde (Neon, credenciales y secreto `krtr-neon`). ⬜ Falta confirmar: los créditos y su renovación, el token del CI en GitHub Secrets (debe ser de `juan-alvarezo-2002`; `gh` no está instalado, así que no se pudo verificar) y que no quedó nada en Google Cloud.
 - **Depende de:** —
 
 #### 0.2 🤖 Eliminar los artefactos de GCP ✅ `24d7dba`
@@ -245,7 +250,7 @@ Nunca se guardan contraseñas, tokens ni cookies en `properties`.
 - **Commit:** `docs(repo): drop Cloud Run references` (scope `repo` y no `back`: también toca `database/`, `cli/`, el CI y `docs/`)
 - **Depende de:** 0.2
 
-#### 0.4 👤🤖 Verificar el comportamiento de la plataforma Modal
+#### 0.4 👤🤖 Verificar el comportamiento de la plataforma Modal ✅ `0d17496`
 - **Objetivo:** desplegar una app temporal `krtr-probe` (un endpoint que devuelve los headers que recibe) y anotar en `docs/modal-platform.md`:
   - **(a)** Qué cabecera trae la IP real del cliente (`X-Forwarded-For` u otra) y si se puede confiar en ella. Lo necesitan D6 y 4.6.
   - **(b)** Qué versiones de TLS acepta `*.modal.run` (`openssl s_client -tls1`, `-tls1_1`, `-tls1_2`, `-tls1_3`).
@@ -253,8 +258,9 @@ Nunca se guardan contraseñas, tokens ni cookies en `properties`.
   - **(d)** Si `modal.run` está en la Public Suffix List (afecta D22).
   - **(e)** Cuánto tarda el arranque en frío de un contenedor pequeño.
   - **(f)** Qué cabeceras agrega Modal a las respuestas (`curl -sI` contra la app de prueba), en especial `Server`: 4.2 y 7.2 exigen no filtrarla, y `server_header=False` solo aplica a `krtr back web serve`. También con qué usuario corre el proceso dentro del contenedor (el `Dockerfile` retirado usaba uno sin privilegios).
-- Al terminar, `modal app stop krtr-probe`.
+- Al terminar, `uv run --env-file .env modal app stop krtr-probe --yes` (sin `--yes`, fuera de una terminal interactiva el comando se cancela).
 - **Aceptación:** el documento existe con las 6 respuestas y la evidencia (comandos y salida).
+- **Resultado:** [`docs/modal-platform.md`](modal-platform.md). En corto: la IP real llega en `request.client.host` y no en una cabecera, solo se acepta TLS 1.2 y 1.3, `http://` redirige con 308, `modal.run` no está en la Public Suffix List, el arranque en frío toma de 3,6 a 5,8 s, no se agrega `Server` en HTTPS y el contenedor corre como root. Sin región fija, los contenedores cayeron en `us-east` (AWS y Azure) y en `us-central` (GCP).
 - **Commit:** `docs(back/deploy): record Modal platform behaviour`
 - **Depende de:** 0.1
 
@@ -352,7 +358,7 @@ Nunca se guardan contraseñas, tokens ni cookies en `properties`.
 #### 3.7 🤖 Gateway delante de Keycloak (D19) 🆕
 - **Objetivo:** `krtr/back/security/keycloak/gateway.py`, una app ASGI (Starlette + `httpx.AsyncClient`) que:
   - Reenvía todo a `http://127.0.0.1:8081`, conservando el método, el cuerpo, los headers (incluidos varios `Set-Cookie`) y las redirecciones.
-  - Agrega `X-Forwarded-Proto: https`, `X-Forwarded-Host` y `X-Forwarded-For`.
+  - Agrega `X-Forwarded-Proto: https`, `X-Forwarded-Host` y `X-Forwarded-For`, **reemplazando** lo que mande el cliente: `X-Forwarded-For` sale de `request.client.host`. Descarta `Forwarded` y `X-Real-IP`, que Modal deja pasar sin tocar (0.4a).
   - Responde **404** a `/admin/*`, `/realms/master/*`, `/metrics`, `/health*`.
   - Aplica las cabeceras de seguridad del vertical `headers/` que correspondan, reutilizando ese código.
 - **Aceptación:** los tests (con `respx`) cubren las rutas bloqueadas (404, sin llegar a Keycloak), el reenvío de `Set-Cookie` múltiples, las redirecciones 302 sin reescribir y un timeout (→ 504).
@@ -397,12 +403,12 @@ Nunca se guardan contraseñas, tokens ni cookies en `properties`.
 - **Objetivo:**
   - 20 mensajes por minuto por `customer_id` en `/api/chat/*`.
   - Un límite moderado por sesión en `/api/*`.
-  - **🆕 Un límite por IP de 600 peticiones por minuto** en todo el sitio (D6), con la IP tomada **solo** de la cabecera confirmada en 0.4(a).
+  - **🆕 Un límite por IP de 600 peticiones por minuto** en todo el sitio (D6), con la IP tomada **solo** de la fuente confirmada en 0.4(a): `request.client.host`, nunca de una cabecera.
   - Respuesta 429 con `Retry-After` y evento `rate_limit_exceeded`.
 - **Aceptación:**
   - El mensaje 21 da 429.
   - La petición 601 desde la misma IP da 429.
-  - Un `X-Forwarded-For` falsificado por el cliente no evade el límite (según lo hallado en 0.4).
+  - Un `X-Forwarded-For`, `X-Real-IP` o `Forwarded` falsificado por el cliente no evade el límite (0.4a).
 - **Commit:** `feat(back/security/rate_limit): add per-user and per-IP rate limiting`
 - **Depende de:** 4.4, 0.4
 
@@ -469,7 +475,7 @@ Nunca se guardan contraseñas, tokens ni cookies en `properties`.
   - **Nunca** imprime valores.
 - **Aceptación:**
   - Los tests (con Modal simulado) verifican qué variables van a cada secreto y que nada se escribe en los logs.
-  - `modal secret list` muestra los 3 secretos.
+  - `uv run --env-file .env modal secret list` muestra los 3 secretos.
 - **Commit:** `feat(back/deploy): push Modal secrets for web, auth and jobs`
 - **Depende de:** 0.1, 0.2, 0.5
 
@@ -483,7 +489,7 @@ Nunca se guardan contraseñas, tokens ni cookies en `properties`.
   - `cpu=0.25`, `memory=512`, `max_containers=1`, `min_containers` según `KRTR_WARM` (D17), `region` según D16, `secrets=[krtr-web]`.
   - Sirve `create_app()` con el registro de eventos de 4.11.
 - **Aceptación:**
-  - `modal serve krtr/back/deploy/app.py` sirve la SPA y `/healthz` en la URL `-dev`.
+  - `uv run --env-file .env modal serve krtr/back/deploy/app.py` sirve la SPA y `/healthz` en la URL `-dev`.
   - Hay un test que comprueba la configuración de la función (recursos, etiqueta, secretos) sin llamar a Modal.
 - **Commit:** `feat(back/deploy): serve krtr-web on Modal`
 - **Depende de:** 6.1, 4.11
@@ -507,16 +513,16 @@ Nunca se guardan contraseñas, tokens ni cookies en `properties`.
 
 #### 6.5 🤖 Crons
 - **Objetivo:** funciones `purge_events` con `schedule=modal.Cron("0 8 * * *")` (03:00 COT) y `sync_auth_events` con `schedule=modal.Period(minutes=15)`. Ambas con `cpu=0.125`, `secrets=[krtr-jobs]`, y llaman a las funciones de 4.10.
-- **Aceptación:** al ejecutarlas a mano (`modal run`), terminan bien y dejan logs.
+- **Aceptación:** al ejecutarlas a mano (`uv run --env-file .env modal run …`), terminan bien y dejan logs.
 - **Commit:** `feat(back/deploy): schedule event purge and Keycloak sync`
 - **Depende de:** 4.10, 6.2
 
 #### 6.6 👤🤖 Primer despliegue y datos de producción
 - **Objetivo:**
-  1. `npm run build --workspace krtr/front` y `KRTR_WARM=false uv run modal deploy krtr/back/deploy/app.py`.
+  1. `npm run build --workspace krtr/front` y `KRTR_WARM=false uv run --env-file .env modal deploy krtr/back/deploy/app.py`.
   2. Anotar las 2 URLs reales. Confirmar que coinciden con `KRTR_PUBLIC_URL`, `KRTR_AUTH_ORIGIN`, los redirect URIs del realm y `KC_HOSTNAME`; si no, corregirlas y volver a desplegar.
   3. **Importar usuarios** (3.5 contra producción) mientras Keycloak no tiene contenedores activos (D20).
-  4. Crear la **cuenta con MFA**: `modal container exec <id> /opt/keycloak/bin/kcadm.sh …` contra `127.0.0.1:8081`, con la acción requerida "Configure OTP"; enrolar TOTP.
+  4. Crear la **cuenta con MFA**: `uv run --env-file .env modal container exec <id> /opt/keycloak/bin/kcadm.sh …` contra `127.0.0.1:8081`, con la acción requerida "Configure OTP"; enrolar TOTP.
   5. Guardar las credenciales QA en GitHub Secrets.
 - **Aceptación:**
   - En `https://<ws>--krtr.modal.run`, el recorrido login → soporte → chat → voz → cerrar sesión funciona en ES y en PT.
