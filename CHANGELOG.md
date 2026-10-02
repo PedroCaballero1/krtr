@@ -2,6 +2,99 @@
 
 <!-- version list -->
 
+## v1.5.0 (2026-10-02)
+
+### Chores
+
+- **deploy/gcp**: Add registry, service account and secret setup script
+  ([#9](https://github.com/PedroCaballero1/krtr/pull/9),
+  [`c2b7892`](https://github.com/PedroCaballero1/krtr/commit/c2b78928c176150a80d098ff7065a539529139e2))
+
+- **repo**: Add application container image ([#9](https://github.com/PedroCaballero1/krtr/pull/9),
+  [`c2b7892`](https://github.com/PedroCaballero1/krtr/commit/c2b78928c176150a80d098ff7065a539529139e2))
+
+- **repo**: Add web and security dependencies ([#9](https://github.com/PedroCaballero1/krtr/pull/9),
+  [`c2b7892`](https://github.com/PedroCaballero1/krtr/commit/c2b78928c176150a80d098ff7065a539529139e2))
+
+- **repo**: Scaffold back and front verticals ([#9](https://github.com/PedroCaballero1/krtr/pull/9),
+  [`c2b7892`](https://github.com/PedroCaballero1/krtr/commit/c2b78928c176150a80d098ff7065a539529139e2))
+
+### Documentation
+
+- **repo**: Add frontend rules to CLAUDE.md ([#9](https://github.com/PedroCaballero1/krtr/pull/9),
+  [`c2b7892`](https://github.com/PedroCaballero1/krtr/commit/c2b78928c176150a80d098ff7065a539529139e2))
+
+- **repo**: Add pending work for phases 5 and 6
+  ([#9](https://github.com/PedroCaballero1/krtr/pull/9),
+  [`c2b7892`](https://github.com/PedroCaballero1/krtr/commit/c2b78928c176150a80d098ff7065a539529139e2))
+
+- **Web & Security**: Add plan ([#8](https://github.com/PedroCaballero1/krtr/pull/8),
+  [`970072a`](https://github.com/PedroCaballero1/krtr/commit/970072ad90042542d7f19a40e4be3cbd6608ccb9))
+
+### Features
+
+- **back/security/audit**: Add encrypted event logging
+  ([#9](https://github.com/PedroCaballero1/krtr/pull/9),
+  [`c2b7892`](https://github.com/PedroCaballero1/krtr/commit/c2b78928c176150a80d098ff7065a539529139e2))
+
+- **back/security/headers**: Add security headers middleware
+  ([#9](https://github.com/PedroCaballero1/krtr/pull/9),
+  [`c2b7892`](https://github.com/PedroCaballero1/krtr/commit/c2b78928c176150a80d098ff7065a539529139e2))
+
+- **back/web**: Add FastAPI application skeleton
+  ([#9](https://github.com/PedroCaballero1/krtr/pull/9),
+  [`c2b7892`](https://github.com/PedroCaballero1/krtr/commit/c2b78928c176150a80d098ff7065a539529139e2))
+
+- **database/neon**: Add pooled parameterized queries
+  ([#9](https://github.com/PedroCaballero1/krtr/pull/9),
+  [`c2b7892`](https://github.com/PedroCaballero1/krtr/commit/c2b78928c176150a80d098ff7065a539529139e2))
+
+- **database/queries/app_sessions**: Add session table and queries
+  ([#9](https://github.com/PedroCaballero1/krtr/pull/9),
+  [`c2b7892`](https://github.com/PedroCaballero1/krtr/commit/c2b78928c176150a80d098ff7065a539529139e2))
+
+- **database/queries/events**: Add events table and queries
+  ([#9](https://github.com/PedroCaballero1/krtr/pull/9),
+  [`c2b7892`](https://github.com/PedroCaballero1/krtr/commit/c2b78928c176150a80d098ff7065a539529139e2))
+
+- **front**: Apply krtr visual design to phase 5 screens
+  ([#9](https://github.com/PedroCaballero1/krtr/pull/9),
+  [`c2b7892`](https://github.com/PedroCaballero1/krtr/commit/c2b78928c176150a80d098ff7065a539529139e2))
+
+- **front**: Instrument UI events ([#9](https://github.com/PedroCaballero1/krtr/pull/9),
+  [`c2b7892`](https://github.com/PedroCaballero1/krtr/commit/c2b78928c176150a80d098ff7065a539529139e2))
+
+- **front**: Scaffold React application ([#9](https://github.com/PedroCaballero1/krtr/pull/9),
+  [`c2b7892`](https://github.com/PedroCaballero1/krtr/commit/c2b78928c176150a80d098ff7065a539529139e2))
+
+- **front/api**: Add API client and event tracking
+  ([#9](https://github.com/PedroCaballero1/krtr/pull/9),
+  [`c2b7892`](https://github.com/PedroCaballero1/krtr/commit/c2b78928c176150a80d098ff7065a539529139e2))
+
+- **front/cases**: Add case selection ([#9](https://github.com/PedroCaballero1/krtr/pull/9),
+  [`c2b7892`](https://github.com/PedroCaballero1/krtr/commit/c2b78928c176150a80d098ff7065a539529139e2))
+
+- **front/chat**: Add chat view with typing indicator
+  ([#9](https://github.com/PedroCaballero1/krtr/pull/9),
+  [`c2b7892`](https://github.com/PedroCaballero1/krtr/commit/c2b78928c176150a80d098ff7065a539529139e2))
+
+- **front/chat**: Add voice note recording ([#9](https://github.com/PedroCaballero1/krtr/pull/9),
+  [`c2b7892`](https://github.com/PedroCaballero1/krtr/commit/c2b78928c176150a80d098ff7065a539529139e2))
+
+- **front/home**: Add authenticated home ([#9](https://github.com/PedroCaballero1/krtr/pull/9),
+  [`c2b7892`](https://github.com/PedroCaballero1/krtr/commit/c2b78928c176150a80d098ff7065a539529139e2))
+
+- **front/i18n**: Add Spanish and Portuguese ([#9](https://github.com/PedroCaballero1/krtr/pull/9),
+  [`c2b7892`](https://github.com/PedroCaballero1/krtr/commit/c2b78928c176150a80d098ff7065a539529139e2))
+
+- **front/landing**: Add login landing page ([#9](https://github.com/PedroCaballero1/krtr/pull/9),
+  [`c2b7892`](https://github.com/PedroCaballero1/krtr/commit/c2b78928c176150a80d098ff7065a539529139e2))
+
+- **front/session**: Add inactivity and absolute timeout handling
+  ([#9](https://github.com/PedroCaballero1/krtr/pull/9),
+  [`c2b7892`](https://github.com/PedroCaballero1/krtr/commit/c2b78928c176150a80d098ff7065a539529139e2))
+
+
 ## v1.4.0 (2026-09-30)
 
 ### Bug Fixes
