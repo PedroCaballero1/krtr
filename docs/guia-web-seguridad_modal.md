@@ -1,6 +1,6 @@
 # Guía de trabajo — Web y seguridad de krtr
 
-_Versión 2 · 1-oct-2026 · **Cambio de plataforma: de Google Cloud a Modal** · Fuente: [`docs/goals.md`](goals.md) + decisiones acordadas con el equipo_
+_Versión 2.1 · 1-oct-2026 · **Cambio de plataforma: de Google Cloud a Modal** · Fuente: [`docs/goals.md`](goals.md) + decisiones acordadas con el equipo_
 _Fecha límite de la hackathon: 5-oct-2026 · Rama de trabajo: `web-develop-security`_
 
 > **Qué cambió en la v2.** Google Cloud quedó descartado porque la prueba gratuita exige un pago. Todo se despliega en **Modal** (plan Starter, con 30 USD/mes de créditos y sin pagos adicionales). Por eso:
@@ -8,6 +8,8 @@ _Fecha límite de la hackathon: 5-oct-2026 · Rama de trabajo: `web-develop-secu
 > - **No hay dominio propio**: las URLs son `*.modal.run`.
 >
 > La fase 6 se reescribió completa. Se agregó la **Fase 0** para deshacer lo que se preparó para GCP. Las decisiones nuevas son D16–D23 (§2) y van marcadas con 🆕.
+>
+> **v2.1 (revisión de la fase 0).** 0.2 y 0.3 quedaron hechas y D18 aprobada. Se agregaron las tareas 0.5 y 4.11, y se ajustaron 0.1–0.4, 1.1, 3.2, 5.13, 6.1, 6.2, 6.7, 7.6 y las §3.3–§4 para cerrar los huecos que encontró la revisión.
 
 ---
 
@@ -78,7 +80,7 @@ Las decisiones D1–D15 son las de la v1. Si alguna cambió por el paso a Modal,
 | D15 | Mensaje de prueba del chat. ES: "Gracias por tu mensaje. Nuestro asistente estará disponible muy pronto." PT: "Obrigado pela sua mensagem. Nosso assistente estará disponível em breve." | Placeholder. |
 | **D16** 🆕 | Fijar la **región `us-east`** (Virginia) en las funciones `web` y `auth`, junto a Neon. | Baja la latencia hacia Neon, pero Modal cobra ×1,75 en región fija (§8). Alternativa más barata: no fijar región (Modal elige, puede quedar lejos de Neon). |
 | **D17** 🆕 | **"Modo demo"**: `min_containers=1` (siempre encendido) solo desde que la página sale al aire hasta que termina la evaluación. Fuera de esa ventana, `min_containers=0`: se apaga sin tráfico y arranca en frío (Keycloak tarda unos 20–40 s). Se controla con la variable `KRTR_WARM` al hacer `modal deploy`. | Los créditos de 30 USD/mes no alcanzan para tener todo encendido el mes completo (§8). |
-| **D18** 🆕 | **Retirar** el `Dockerfile` y el `.dockerignore` de la tarea 6.1 v1. La imagen de la app se arma con la API de imágenes de Modal (`uv_sync` + `add_local_python_source` + `add_local_dir` del front compilado), **igual que `krtr/compute/modal/app.py`**. | Evita mantener dos formas de construir la misma imagen; reutiliza lo que ya funciona en Modal. |
+| **D18** 🆕 | ✅ **Aprobada** y ejecutada en 0.2 (`24d7dba`). **Retirar** el `Dockerfile` y el `.dockerignore` de la tarea 6.1 v1. La imagen de la app se arma con la API de imágenes de Modal (`uv_sync` + `add_local_python_source` + `add_local_dir` del front compilado), **igual que `krtr/compute/modal/app.py`**. | Evita mantener dos formas de construir la misma imagen; reutiliza lo que ya funciona en Modal. |
 | **D19** 🆕 | Keycloak corre dentro del contenedor detrás de un **gateway ASGI propio**. Keycloak escucha en `127.0.0.1:8081`, y el gateway lo publica bloqueando `/admin/*`, `/realms/master/*`, `/metrics` y `/health*` (responden 404). La administración se hace con `kcadm.sh` desde `modal container exec`, nunca desde internet. | Reemplaza la regla de Cloud Armor que restringía `/admin` por IP. |
 | **D20** 🆕 | Los 150.000 usuarios se importan con **`kc.sh import`** (directo a la base, sin la API HTTP), desde una función de Modal que lee un **Volume** con los JSON. La importación se hace **antes** de la salida al aire, con Keycloak detenido. Al terminar, se vacía el Volume. | Con `/admin` bloqueado, no se puede usar `partialImport` por HTTP. |
 | **D21** 🆕 | La app de Modal se llama **`krtr-web`** y tiene 5 funciones: `web`, `auth`, `auth_import`, `purge_events` (cron diario, 03:00 COT) y `sync_auth_events` (cada 15 min). Vive en `krtr/back/deploy/`. | Un `modal deploy` despliega todo junto. |
@@ -140,7 +142,7 @@ krtr/
   cli/back/{web,security,deploy}/      # comandos typer, espejo de krtr/back
   database/queries/{events,app_sessions}/   # ✅
 tests/...  (espejo 1:1)     e2e/{security,browser,load}/  (contra producción)
-deploy/gcp/  ❌ se elimina (0.2)     Dockerfile, .dockerignore  ❌ se eliminan (D18)
+deploy/gcp/, Dockerfile, .dockerignore  ❌ eliminados en 0.2 (D18, 24d7dba)
 ```
 
 ### 3.4 Contrato de la API (frontend ↔ backend)
@@ -162,9 +164,21 @@ Sin cambios respecto a la v1:
 | `POST /api/events` | Opcional + Origin | `{event_name ∈ catálogo, properties ≤4 KB}` | 202 (✅ hecho) |
 | `GET /healthz` | No | — | 200 (✅ hecho) |
 
+Todas las respuestas llevan un `request_id`. Los errores tienen la forma `{error: <code>, message_key}` para que el frontend los traduzca.
+
 ### 3.5 Tabla `events` (G21)
 
-✅ Ya existe (commit `d8a728d`). Sin cambios: `id UUID`, `event_name`, `properties BYTEA` (cifrado AES-256-GCM), `occurred_at TIMESTAMPTZ`. La retención es de 3 meses con `purge.sql`. El catálogo `EventName` es el de la v1.
+✅ Ya existe (commit `d8a728d`). Sin cambios: `id UUID`, `event_name`, `properties BYTEA` (cifrado AES-256-GCM), `occurred_at TIMESTAMPTZ`. La retención es de 3 meses con `purge.sql`. **No** se crean índices (regla del `CLAUDE.md`).
+
+**Catálogo de `EventName`** (el de la v1, ya implementado en `krtr/back/security/audit/event_names.py`; ampliarlo si aparecen eventos nuevos):
+- **HTTP:** `http_request` (método, ruta, estado, latencia, IP, user-agent, request_id).
+- **Login:** `auth_login_started`, `auth_login_succeeded`, `auth_login_failed`, `auth_logout`, `auth_*` (importados de Keycloak), `session_created`, `session_revoked_by_new_login`, `session_idle_warning_shown`, `session_absolute_warning_shown`, `session_extended`, `session_expired_idle`, `session_expired_absolute`.
+- **Interfaz:** `page_view`, `language_changed`, `support_clicked`, `case_mode_selected`, `case_list_viewed`, `case_created`, `case_resume_succeeded`, `case_resume_failed`.
+- **Chat:** `chat_message_sent`, `chat_response_received` (con latencia), `typing_indicator_shown`.
+- **Voz:** `voice_recording_started`, `voice_recording_cancelled`, `voice_recording_sent`, `voice_permission_denied`.
+- **Seguridad:** `rate_limit_exceeded`, `csrf_rejected`, `unauthorized_request`, `client_error`, `server_error`.
+
+Nunca se guardan contraseñas, tokens ni cookies en `properties`.
 
 ---
 
@@ -174,20 +188,22 @@ Sin cambios respecto a la v1:
 
 | Tarea | Estado | Commit |
 |---|---|---|
+| Esta guía (v2) | ✅ | `473da5a` |
+| 0.2 Retirar artefactos de GCP · 0.3 Quitar referencias a Cloud Run | ✅ | `24d7dba` · `cd2704d` (+ `5a69dc9`: referencias a esta guía) |
 | 1.4 Estructura del repo · 1.5 Reglas del front en `CLAUDE.md` · 1.6 Dependencias | ✅ | `43d598d` · `dd51ee2` · `88c3fe9` |
 | 2.1 SQL `events` · 2.2 SQL `app_sessions` · 2.3 Pool en `NeonClient` | ✅ | `d8a728d` · `685129f` · `1c4436a` |
 | 4.1 Base FastAPI · 4.2 Cabeceras · 4.7 Eventos cifrados | ✅ | `4766468` · `e6e2e3c` · `51d7de8` |
 | 5.1–5.10 Frontend completo + diseño visual · quitar mocks | ✅ | `5ed04d1` … `9ebe3b5` · `6543970` · `138ad97` |
 | 7.1 Escáneres en CI | ✅ (falta verlo en verde en GitHub) | `43b3d82` |
-| 6.1 v1 `Dockerfile` | ♻️ → se retira (D18, tarea 0.2) | `67a7a2c` |
-| 6.2 v1 script de GCP | ♻️ → se reemplaza por 6.1 v2 (tarea 0.2) | `ee70fdb` |
+| 6.1 v1 `Dockerfile` | ❌ retirada en 0.2 (D18) | `67a7a2c` → `24d7dba` |
+| 6.2 v1 script de GCP | ❌ retirada en 0.2; la reemplaza 6.1 v2 | `ee70fdb` → `24d7dba` |
 | 1.2 Proyecto de GCP · 6.5 Dominio · 6.6 Load Balancer · 6.7 Cloud Armor | ❌ cancelada | — |
 
 ### 4.2 Calendario nuevo (D23)
 
 | Día | Qué | Nota |
 |---|---|---|
-| Jue 1-oct (noche) | Fase 0 | 0.4 se puede hacer en paralelo y desbloquea 4.6. |
+| Jue 1-oct (noche) | Fase 0 | 0.2 y 0.3 ✅. 0.4 se puede hacer en paralelo y desbloquea 4.6; 0.5 desbloquea la fase 6. |
 | Vie 2-oct | Fases 3 y 4 (lo pendiente) + 5.11–5.13 | Fase 3 y fase 4 en paralelo; se juntan en 5.13. |
 | Sáb 3-oct | Fase 6 → **salida al aire** + 7.2 y 7.3 | Encender el modo demo (6.8) al salir al aire. |
 | Dom 4-oct | 7.4–7.6, 8.1 | **Congelar a las 18:00**: cada deploy reinicia Keycloak. |
@@ -204,24 +220,29 @@ Sin cambios respecto a la v1:
   - Confirmar el nombre del **workspace** (define las URLs, D11) y los créditos disponibles este mes. Revisar en *Usage & Billing* cuándo se renuevan.
   - Crear un **token de Modal para CI** y guardarlo como `MODAL_TOKEN_ID` / `MODAL_TOKEN_SECRET` en GitHub Secrets.
   - Si llegó a crearse algo en Google Cloud, cerrarlo para que no genere cobros.
-- **Aceptación:** `uv run krtr compute modal doctor` pasa y el workspace queda anotado en el PR de la fase 0.
+- **Aceptación:** con el extra instalado (`uv sync --extra modal`), `uv run krtr compute modal doctor` pasa y el workspace queda anotado en el PR de la fase 0.
 - **Depende de:** —
 
-#### 0.2 🤖 Eliminar los artefactos de GCP
+#### 0.2 🤖 Eliminar los artefactos de GCP ✅ `24d7dba`
 - **Objetivo:** borrar `deploy/gcp/` (script de la 6.2 v1), y el `Dockerfile` y el `.dockerignore` (D18). Quitar cualquier referencia a ellos en el README y en el CI.
-- **Aceptación:** `grep -rniE "gcp|cloud run|artifact registry|secret manager|cloud armor"` sobre `krtr tests e2e .github README.md` no devuelve nada. El CI pasa.
+- **Aceptación:** los tres ya no existen, el README y el CI no los mencionan, y pytest y los linters pasan. El grep de GCP pasó a la 0.3, porque `krtr/` conserva menciones hasta que esa tarea termina.
 - **Commit:** `chore(repo): remove Google Cloud deployment artifacts`
-- **Depende de:** revisión de D18
+- **Depende de:** revisión de D18 (✅ aprobada)
 
-#### 0.3 🤖 Actualizar comentarios y configuración que mencionan Cloud Run
+#### 0.3 🤖 Actualizar comentarios y configuración que mencionan Cloud Run ✅ `cd2704d` · `5a69dc9`
 - **Objetivo:** dejar los docstrings y comentarios sin referencia a una plataforma concreta, o apuntando a Modal. Archivos:
-  - `krtr/database/queries/app_sessions/table.sql`, `krtr/database/neon/config.py`
+  - `krtr/database/queries/app_sessions/table.sql`, `krtr/database/queries/events/purge.sql` (Cloud Scheduler → cron `purge_events` de Modal), `krtr/database/neon/config.py`
+  - `krtr/back/security/crypto/config.py` (Secret Manager → secreto `krtr-web` de Modal)
   - `krtr/back/security/headers/config.py` y `middleware.py` (`KRTR_AUTH_ORIGIN` = URL de `krtr-auth` en Modal)
   - `krtr/back/web/app.py`, `artifacts.py`, `routers/health.py`
   - `krtr/cli/back/web/handler.py` (`$PORT` se mantiene para desarrollo local)
+  - `.github/workflows/ci.yml` (el despliegue continuo ahora es la tarea 6.7, no la 6.8)
 - Marcar `docs/pending.md` como reemplazado por la §4.1 de esta guía.
-- **Aceptación:** no cambia ningún comportamiento; pytest y lint pasan.
-- **Commit:** `docs(back): drop Cloud Run references`
+- Apuntar a esta guía las referencias a la v1 en el código, los tests, el CI, el `CLAUDE.md` y el README del front, y poner en la v1 un aviso de que esta guía la reemplaza (commit `5a69dc9`).
+- **Aceptación:**
+  - No cambia ningún comportamiento; pytest y lint pasan.
+  - `grep -rniE "gcp|google cloud|cloud run|run\.app|artifact registry|secret manager|cloud armor|cloud scheduler|us-east4|gcloud|<dominio>" krtr tests .github README.md CLAUDE.md --exclude-dir=node_modules --exclude-dir=dist` no devuelve nada.
+- **Commit:** `docs(repo): drop Cloud Run references` (scope `repo` y no `back`: también toca `database/`, `cli/`, el CI y `docs/`)
 - **Depende de:** 0.2
 
 #### 0.4 👤🤖 Verificar el comportamiento de la plataforma Modal
@@ -231,14 +252,26 @@ Sin cambios respecto a la v1:
   - **(c)** Si `http://` redirige a `https://`.
   - **(d)** Si `modal.run` está en la Public Suffix List (afecta D22).
   - **(e)** Cuánto tarda el arranque en frío de un contenedor pequeño.
+  - **(f)** Qué cabeceras agrega Modal a las respuestas (`curl -sI` contra la app de prueba), en especial `Server`: 4.2 y 7.2 exigen no filtrarla, y `server_header=False` solo aplica a `krtr back web serve`. También con qué usuario corre el proceso dentro del contenedor (el `Dockerfile` retirado usaba uno sin privilegios).
 - Al terminar, `modal app stop krtr-probe`.
-- **Aceptación:** el documento existe con las 5 respuestas y la evidencia (comandos y salida).
+- **Aceptación:** el documento existe con las 6 respuestas y la evidencia (comandos y salida).
 - **Commit:** `docs(back/deploy): record Modal platform behaviour`
 - **Depende de:** 0.1
 
+#### 0.5 🤖 Reglas de `krtr/back/deploy/` en el `CLAUDE.md` 🆕
+- **Objetivo:** hoy el `CLAUDE.md` solo permite importar `modal` dentro de `krtr/compute/modal/`, y solo exceptúa ese entrypoint de la regla de logging. La app de Modal de D21 vive en `krtr/back/deploy/`, así que hay que ampliar ambas reglas, como hizo 1.5 para el frontend:
+  - `krtr/back/deploy/` puede importar `modal` a nivel de módulo: solo lo cargan `modal deploy` / `modal serve` y los contenedores de Modal.
+  - Los comandos de la CLI que hablan con Modal (`krtr back deploy push-secrets`, `krtr back security import-users`) importan `modal` solo dentro de la función que lo usa, como `krtr/compute/modal/secrets.py`.
+  - Las funciones de `krtr/back/deploy/` configuran el logging una sola vez al arrancar el contenedor.
+  - El camino local (`krtr back web serve`, pytest) sigue funcionando sin el extra `modal`.
+  - Los tests de `krtr/back/deploy/` usan `pytest.importorskip("modal")`, como `tests/compute/modal/test_app.py`. El CI no instala el extra, así que allí esos tests se saltan: decidir si el job `lint-and-test` lo instala.
+- **Aceptación:** el revisor humano aprueba el texto.
+- **Commit:** `docs(repo): add Modal deploy rules to CLAUDE.md`
+- **Depende de:** revisión de D21
+
 ### Fase 1 — Preparación
 
-- **1.1** 👤 Herramientas locales: `uv`, Python 3.13, Node LTS, Docker (solo para Keycloak local), `gh`, `git` y la **CLI de Modal** (`uv run modal --version`). `gcloud` ya no hace falta. ⬜ confirmar.
+- **1.1** 👤 Herramientas locales: `uv`, Python 3.13, Node LTS, Docker (solo para Keycloak local), `gh`, `git` y la **CLI de Modal** (`uv sync --extra modal` y luego `uv run modal --version`: `modal` es una dependencia opcional). `gcloud` ya no hace falta. ⬜ confirmar.
 - **1.2** ❌ Proyecto de GCP: cancelada.
 - **1.3** 👤 Preparar Neon: base `keycloak`, rama `dev`, roles `krtr_app`, `krtr_keycloak`, `krtr_audit_reader`, scale-to-zero desactivado. ⬜ **confirmar si ya se hizo**; las tareas 2.x lo sugieren, pero no hay evidencia en el repo.
 - **1.4 · 1.5 · 1.6** ✅
@@ -269,6 +302,7 @@ Sin cambios respecto a la v1:
   - Protección contra fuerza bruta: 5 fallos → 15 min.
   - SSO Idle 5 min, SSO Max 30 min, access token de 5 min.
   - **User Session Count Limiter** (máximo 1, cierra la más antigua) y **Conditional OTP**.
+  - User Profile con email, nombre y apellido opcionales; emails duplicados permitidos (no se importan, D5).
   - Eventos de login y de administración activos, con expiración de 90 días.
   - **Master realm:** fuerza bruta activada, y la contraseña del admin bootstrap sale de un Modal Secret.
 - **Clientes:**
@@ -391,6 +425,15 @@ Sin cambios respecto a la v1:
 - **Commit:** `feat(back/security/audit): add purge and Keycloak event sync jobs`
 - **Depende de:** 4.7
 
+#### 4.11 🤖 Registrar eventos en la app servida 🆕
+- **Objetivo:** hoy `krtr/back/web/app.py` crea `app = create_app()` sin `EventRecorder`, así que la app servida (con `krtr back web serve` o en Modal) descarta todos los eventos y solo deja un warning en el log. Ninguna tarea lo conectaba. Hay que construir el `EventRecorder` (pool de `NeonClient` + `AesGcmCipher` con `KRTR_EVENTS_KEY`) desde el entorno para la app servida. Los tests siguen inyectando el suyo.
+  - Ojo: `krtr/back/web/app.py` ejecuta `create_app()` al importarse, y los tests importan ese módulo. La conexión a Neon no puede exigirse al importar.
+- **Aceptación:**
+  - Con `NEON_DB_HOST` y `KRTR_EVENTS_KEY` definidos, cada petición deja un `http_request` en `events` y `POST /api/events` guarda el evento.
+  - En producción, si falta alguna de las dos variables, la app no arranca y el error dice cuál falta, en lugar de descartar eventos (G21). _Propuesta: confirmar en la revisión._
+- **Commit:** `feat(back/web): record events in the served app`
+- **Depende de:** 4.7
+
 ### Fase 5 — Frontend
 
 - **5.1–5.10** ✅ (incluye el diseño visual y la eliminación de los mocks)
@@ -408,7 +451,7 @@ Sin cambios respecto a la v1:
 #### 5.13 👤🤖 Recorrido completo en local (P5.3)
 - **Objetivo:** con `krtr back web serve` + Keycloak en `docker compose` + Neon `dev`, recorrer login → soporte → caso → chat → voz → cerrar sesión, en ES y en PT.
 - **Aceptación:** el recorrido funciona sin errores en la consola y aparecen en `events` tanto los eventos del front como los del servidor (P5.4).
-- **Depende de:** 3.6, 3.7, 4.3–4.10
+- **Depende de:** 3.6, 3.7, 4.3–4.11
 
 ### Fase 6 — Despliegue en Modal 🆕 (reemplaza toda la fase 6 de la v1)
 
@@ -428,19 +471,22 @@ Sin cambios respecto a la v1:
   - Los tests (con Modal simulado) verifican qué variables van a cada secreto y que nada se escribe en los logs.
   - `modal secret list` muestra los 3 secretos.
 - **Commit:** `feat(back/deploy): push Modal secrets for web, auth and jobs`
-- **Depende de:** 0.2, 0.1
+- **Depende de:** 0.1, 0.2, 0.5
 
 #### 6.2 🤖 Función `web`
 - **Objetivo:** `krtr/back/deploy/app.py` define `app = modal.App("krtr-web")` y la función `web`:
   - Imagen: **extraer** la construcción de imagen de `krtr/compute/modal/app.py` a una función compartida (DRY) y agregarle `add_local_dir("krtr/front/dist", "/app/frontend")`.
+  - Conservar lo que hacía el `Dockerfile` retirado en 0.2:
+    - Las variables `KRTR_WEB_FRONTEND_DIST_DIR=/app/frontend` y `KRTR_WEB_ENVIRONMENT=production`. Sin la primera, la app busca el front en la ruta relativa `krtr/front/dist`.
+    - Instalar sin el grupo `dev` (`uv_sync(..., extra_options="--no-dev")`). El `uv_sync` de Modal no lo excluye por defecto, así que bandit, locust, playwright y las demás herramientas de desarrollo llegarían a producción.
   - `@modal.asgi_app(label="krtr")` + `@modal.concurrent(max_inputs=50)`.
   - `cpu=0.25`, `memory=512`, `max_containers=1`, `min_containers` según `KRTR_WARM` (D17), `region` según D16, `secrets=[krtr-web]`.
-  - El `create_app()` existente se usa sin cambios.
+  - Sirve `create_app()` con el registro de eventos de 4.11.
 - **Aceptación:**
   - `modal serve krtr/back/deploy/app.py` sirve la SPA y `/healthz` en la URL `-dev`.
   - Hay un test que comprueba la configuración de la función (recursos, etiqueta, secretos) sin llamar a Modal.
 - **Commit:** `feat(back/deploy): serve krtr-web on Modal`
-- **Depende de:** 6.1
+- **Depende de:** 6.1, 4.11
 
 #### 6.3 🤖 Función `auth` (Keycloak + gateway)
 - **Objetivo:** en la misma app:
@@ -480,7 +526,7 @@ Sin cambios respecto a la v1:
 #### 6.7 🤖 Despliegue continuo
 - **Objetivo:** `.github/workflows/deploy.yml`:
   - Al hacer push a `master`, espera que pasen `lint-and-test` y `security`.
-  - Luego: `npm ci` + build del front → `uv sync` → `uv run modal deploy krtr/back/deploy/app.py`, con `MODAL_TOKEN_ID` y `MODAL_TOKEN_SECRET` y `KRTR_WARM` desde una variable del repositorio.
+  - Luego: `npm ci` + build del front → `uv sync --locked --extra modal` → `uv run modal deploy krtr/back/deploy/app.py`, con `MODAL_TOKEN_ID` y `MODAL_TOKEN_SECRET` y `KRTR_WARM` desde una variable del repositorio.
   - Smoke test: `/healthz` de la app y `/.well-known/openid-configuration` de Keycloak.
 - **Aceptación:** un merge de prueba despliega sin intervención manual.
 - **Commit:** `ci(deploy): deploy to Modal on master`
@@ -537,7 +583,7 @@ Sin cambios respecto a la v1:
 
 #### 7.6 👤 Revisión contra ASVS nivel 2
 - **Objetivo:** `docs/security-checklist.md` con los controles aplicables de ASVS 5.0 L2. Cada control con estado y evidencia.
-- **Excepciones documentadas** por la plataforma: sin WAF, política TLS que no controlamos (0.4b), sin dominio propio, y la administración de Keycloak solo por `modal container exec`.
+- **Excepciones documentadas** por la plataforma: sin WAF, política TLS que no controlamos (0.4b), sin dominio propio, la administración de Keycloak solo por `modal container exec`, y lo que haya encontrado 0.4(f) (cabeceras que agrega Modal y usuario del contenedor).
 - **Aceptación:** no queda ningún control aplicable sin evidencia ni sin excepción justificada.
 - **Depende de:** 7.2–7.5
 
