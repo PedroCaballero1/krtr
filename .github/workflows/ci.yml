@@ -31,8 +31,10 @@ jobs:
       - name: Set up Python
         run: uv python install
 
+      # The modal extra makes the tests behind pytest.importorskip("modal") run here too
+      # (krtr/compute/modal/ and krtr/back/deploy/); they need no Modal credentials.
       - name: Install dependencies
-        run: uv sync --locked
+        run: uv sync --locked --extra modal
 
       - name: Check formatting (black)
         run: uv run black --check krtr tests
