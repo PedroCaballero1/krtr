@@ -1,6 +1,6 @@
 # Guía de trabajo — Web y seguridad de krtr
 
-_Versión 2.2 · 1-oct-2026 · **Cambio de plataforma: de Google Cloud a Modal** · Fuente: [`docs/goals.md`](goals.md) + decisiones acordadas con el equipo_
+_Versión 2.3 · 1-oct-2026 · **Cambio de plataforma: de Google Cloud a Modal** · Fuente: [`docs/goals.md`](goals.md) + decisiones acordadas con el equipo_
 _Fecha límite de la hackathon: 5-oct-2026 · Rama de trabajo: `web-develop-security`_
 
 > **Qué cambió en la v2.** Google Cloud quedó descartado porque la prueba gratuita exige un pago. Todo se despliega en **Modal** (plan Starter, con 30 USD/mes de créditos y sin pagos adicionales). Por eso:
@@ -12,6 +12,8 @@ _Fecha límite de la hackathon: 5-oct-2026 · Rama de trabajo: `web-develop-secu
 > **v2.1 (revisión de la fase 0).** 0.2 y 0.3 quedaron hechas y D18 aprobada. Se agregaron las tareas 0.5 y 4.11, y se ajustaron 0.1–0.4, 1.1, 3.2, 5.13, 6.1, 6.2, 6.7, 7.6 y las §3.3–§4 para cerrar los huecos que encontró la revisión.
 >
 > **v2.2 (cuenta de Modal y 0.4).** El workspace es `juan-alvarezo-2002` (D11 con las URLs reales). Regla 7 nueva: los comandos `modal` llevan `--env-file .env`. La 0.4 quedó hecha ([`docs/modal-platform.md`](modal-platform.md)) y sus resultados se aplicaron en 3.7, 4.6 y D22.
+>
+> **v2.3.** D16, D17 y D19–D23 aprobadas. La 1.3 ahora incluye crear las tablas `events` y `app_sessions` con sus permisos, y el orden correcto del permiso de `krtr_audit_reader`.
 
 ---
 
@@ -29,7 +31,7 @@ _Fecha límite de la hackathon: 5-oct-2026 · Rama de trabajo: `web-develop-secu
   5. Los `table.sql` solo se escriben con la documentación de columnas que aprobó el usuario.
   6. **Reutilizar `krtr/compute/modal/`** (imagen, secretos, volúmenes) en lugar de reescribir esa lógica (regla DRY).
   7. **Los comandos del CLI de Modal se corren desde la raíz del repo como `uv run --env-file .env modal …`.** El token de krtr está en `.env` (workspace `juan-alvarezo-2002`), pero el CLI `modal` no lee `.env`: sin `--env-file` usa el perfil activo de `~/.modal.toml` (`development-maia`, otro workspace) y desplegaría ahí. Los comandos `krtr` ya cargan `.env` solos, y el CI usa los secretos de GitHub.
-- **Antes de seguir**, el revisor confirma las decisiones 🆕 de la §2.
+- **Antes de seguir**, el revisor confirma las decisiones 🆕 de la §2. ✅ Todas aprobadas el 1-oct.
 
 ---
 
@@ -81,14 +83,14 @@ Las decisiones D1–D15 son las de la v1. Si alguna cambió por el paso a Modal,
 | D13 | El aviso de 30 s aplica a la inactividad y al máximo de 30 min. | Coherencia. |
 | D14 | El idioma se guarda en `localStorage`; por defecto ES; se envía a Keycloak con `ui_locales`. | — |
 | D15 | Mensaje de prueba del chat. ES: "Gracias por tu mensaje. Nuestro asistente estará disponible muy pronto." PT: "Obrigado pela sua mensagem. Nosso assistente estará disponível em breve." | Placeholder. |
-| **D16** 🆕 | Fijar la **región `us-east`** (Virginia) en las funciones `web` y `auth`, junto a Neon. | Baja la latencia hacia Neon, pero Modal cobra ×1,75 en región fija (§8). Alternativa más barata: no fijar región (Modal elige, puede quedar lejos de Neon). |
-| **D17** 🆕 | **"Modo demo"**: `min_containers=1` (siempre encendido) solo desde que la página sale al aire hasta que termina la evaluación. Fuera de esa ventana, `min_containers=0`: se apaga sin tráfico y arranca en frío (Keycloak tarda unos 20–40 s). Se controla con la variable `KRTR_WARM` al hacer `modal deploy`. | Los créditos de 30 USD/mes no alcanzan para tener todo encendido el mes completo (§8). |
+| **D16** 🆕 | ✅ **Aprobada** (1-oct). Fijar la **región `us-east`** (Virginia) en las funciones `web` y `auth`, junto a Neon. | Baja la latencia hacia Neon, pero Modal cobra ×1,75 en región fija (§8). Alternativa más barata: no fijar región (Modal elige, puede quedar lejos de Neon). |
+| **D17** 🆕 | ✅ **Aprobada** (1-oct). **"Modo demo"**: `min_containers=1` (siempre encendido) solo desde que la página sale al aire hasta que termina la evaluación. Fuera de esa ventana, `min_containers=0`: se apaga sin tráfico y arranca en frío (Keycloak tarda unos 20–40 s). Se controla con la variable `KRTR_WARM` al hacer `modal deploy`. | Los créditos de 30 USD/mes no alcanzan para tener todo encendido el mes completo (§8). |
 | **D18** 🆕 | ✅ **Aprobada** y ejecutada en 0.2 (`24d7dba`). **Retirar** el `Dockerfile` y el `.dockerignore` de la tarea 6.1 v1. La imagen de la app se arma con la API de imágenes de Modal (`uv_sync` + `add_local_python_source` + `add_local_dir` del front compilado), **igual que `krtr/compute/modal/app.py`**. | Evita mantener dos formas de construir la misma imagen; reutiliza lo que ya funciona en Modal. |
-| **D19** 🆕 | Keycloak corre dentro del contenedor detrás de un **gateway ASGI propio**. Keycloak escucha en `127.0.0.1:8081`, y el gateway lo publica bloqueando `/admin/*`, `/realms/master/*`, `/metrics` y `/health*` (responden 404). La administración se hace con `kcadm.sh` desde `modal container exec`, nunca desde internet. | Reemplaza la regla de Cloud Armor que restringía `/admin` por IP. |
-| **D20** 🆕 | Los 150.000 usuarios se importan con **`kc.sh import`** (directo a la base, sin la API HTTP), desde una función de Modal que lee un **Volume** con los JSON. La importación se hace **antes** de la salida al aire, con Keycloak detenido. Al terminar, se vacía el Volume. | Con `/admin` bloqueado, no se puede usar `partialImport` por HTTP. |
-| **D21** 🆕 | La app de Modal se llama **`krtr-web`** y tiene 5 funciones: `web`, `auth`, `auth_import`, `purge_events` (cron diario, 03:00 COT) y `sync_auth_events` (cada 15 min). Vive en `krtr/back/deploy/`. | Un `modal deploy` despliega todo junto. |
-| **D22** 🆕 | La cookie temporal del login OIDC (`__Host-krtr_oidc`, guarda `state`, `nonce` y el verificador PKCE) usa **`SameSite=Lax`**. La cookie de sesión sigue en `Strict`. **Todas** las cookies llevan el prefijo `__Host-`. | La vuelta desde Keycloak puede contar como navegación entre sitios distintos. Con `Strict`, esa cookie no llegaría al callback. El prefijo `__Host-` impide que otra app en `modal.run` sobrescriba nuestras cookies. **0.4(d):** `modal.run` no está en la Public Suffix List, así que la vuelta desde Keycloak es del mismo sitio y `Strict` también llegaría. `Lax` sigue siendo válido; lo esencial es el prefijo `__Host-`. |
-| **D23** 🆕 | Nuevo calendario (§4): salida al aire el **sábado 3-oct**; congelar cambios el **domingo 4-oct** a las 18:00. | La meta del 2-oct ya no es realista con el cambio de plataforma. |
+| **D19** 🆕 | ✅ **Aprobada** (1-oct). Keycloak corre dentro del contenedor detrás de un **gateway ASGI propio**. Keycloak escucha en `127.0.0.1:8081`, y el gateway lo publica bloqueando `/admin/*`, `/realms/master/*`, `/metrics` y `/health*` (responden 404). La administración se hace con `kcadm.sh` desde `modal container exec`, nunca desde internet. | Reemplaza la regla de Cloud Armor que restringía `/admin` por IP. |
+| **D20** 🆕 | ✅ **Aprobada** (1-oct). Los 150.000 usuarios se importan con **`kc.sh import`** (directo a la base, sin la API HTTP), desde una función de Modal que lee un **Volume** con los JSON. La importación se hace **antes** de la salida al aire, con Keycloak detenido. Al terminar, se vacía el Volume. | Con `/admin` bloqueado, no se puede usar `partialImport` por HTTP. |
+| **D21** 🆕 | ✅ **Aprobada** (1-oct). La app de Modal se llama **`krtr-web`** y tiene 5 funciones: `web`, `auth`, `auth_import`, `purge_events` (cron diario, 03:00 COT) y `sync_auth_events` (cada 15 min). Vive en `krtr/back/deploy/`. | Un `modal deploy` despliega todo junto. |
+| **D22** 🆕 | ✅ **Aprobada** (1-oct). La cookie temporal del login OIDC (`__Host-krtr_oidc`, guarda `state`, `nonce` y el verificador PKCE) usa **`SameSite=Lax`**. La cookie de sesión sigue en `Strict`. **Todas** las cookies llevan el prefijo `__Host-`. | La vuelta desde Keycloak puede contar como navegación entre sitios distintos. Con `Strict`, esa cookie no llegaría al callback. El prefijo `__Host-` impide que otra app en `modal.run` sobrescriba nuestras cookies. **0.4(d):** `modal.run` no está en la Public Suffix List, así que la vuelta desde Keycloak es del mismo sitio y `Strict` también llegaría. `Lax` sigue siendo válido; lo esencial es el prefijo `__Host-`. |
+| **D23** 🆕 | ✅ **Aprobada** (1-oct). Nuevo calendario (§4): salida al aire el **sábado 3-oct**; congelar cambios el **domingo 4-oct** a las 18:00. | La meta del 2-oct ya no es realista con el cambio de plataforma. |
 
 ---
 
@@ -273,13 +275,15 @@ Nunca se guardan contraseñas, tokens ni cookies en `properties`.
   - Los tests de `krtr/back/deploy/` usan `pytest.importorskip("modal")`, como `tests/compute/modal/test_app.py`. El CI no instala el extra, así que allí esos tests se saltan: decidir si el job `lint-and-test` lo instala.
 - **Aceptación:** el revisor humano aprueba el texto.
 - **Commit:** `docs(repo): add Modal deploy rules to CLAUDE.md`
-- **Depende de:** revisión de D21
+- **Depende de:** revisión de D21 (✅ aprobada)
 
 ### Fase 1 — Preparación
 
 - **1.1** 👤 Herramientas locales: `uv`, Python 3.13, Node LTS, Docker (solo para Keycloak local), `gh`, `git` y la **CLI de Modal** (`uv sync --extra modal` y luego `uv run modal --version`: `modal` es una dependencia opcional). `gcloud` ya no hace falta. ⬜ **Estado (1-oct):** Node 24, `uv`, `git` y la CLI de Modal funcionan. **Docker no está instalado** (bloquea 3.1, 3.6 y 5.13 en local) y `gh` tampoco.
 - **1.2** ❌ Proyecto de GCP: cancelada.
 - **1.3** 👤 Preparar Neon: base `keycloak`, rama `dev`, roles `krtr_app`, `krtr_keycloak`, `krtr_audit_reader`, scale-to-zero desactivado. ⬜ **No está hecha** en la base de `.env` (`neondb`, rol `neondb_owner`, revisado el 1-oct): no existen la base `keycloak`, los roles `krtr_*` ni las tablas `events` y `app_sessions` (solo `products` y `daily_exchange_rates`). La rama `dev` y el scale-to-zero se revisan en la consola de Neon.
+  - 🆕 **Tablas de la app**, en la rama principal y en `dev`: con el rol dueño, `uv run krtr database neon create-schema events` y `uv run krtr database neon create-schema app_sessions` (el SQL es el de 2.1 y 2.2). Después, `GRANT SELECT, INSERT, UPDATE, DELETE ON events, app_sessions TO krtr_app`. Sin esto, la 4.11 no puede guardar eventos ni la 4.4 sesiones.
+  - 🆕 **Permiso de `krtr_audit_reader`:** `GRANT SELECT ON event_entity` en la base `keycloak` se da **después del primer arranque de Keycloak** (3.1 en `dev`, 6.3 en producción), porque esa tabla la crea Keycloak. No usar `ALTER DEFAULT PRIVILEGES`: también le daría lectura de `credential`, donde están los hashes de las contraseñas.
 - **1.4 · 1.5 · 1.6** ✅
 
 ### Fase 2 — Base de datos
