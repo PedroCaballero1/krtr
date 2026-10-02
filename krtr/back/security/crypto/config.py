@@ -1,10 +1,10 @@
 """Defines configuration for the AES-256-GCM encryption used across krtr-web.
 
-Exists so the encryption key — shared by the `events.properties` and
-`app_sessions.tokens_ciphertext` columns — is read and validated from the
-environment (in production, Modal injects it from the `krtr-web` secret, per
-task 6.1 of docs/guia-web-seguridad_modal.md) in exactly one place. Consumed by
-`krtr/back/security/crypto/cipher.py`.
+Exists so each encryption key — one for `events.properties`, another for the
+OIDC tokens in `app_sessions.tokens_ciphertext` and the login cookie — is read
+and validated from the environment (in production, Modal injects them from the
+`krtr-web` secret, per task 6.1 of docs/guia-web-seguridad_modal.md) in exactly
+one place. Consumed by `krtr/back/security/crypto/cipher.py`.
 """
 
 import base64
@@ -21,13 +21,16 @@ AES_256_KEY_LENGTH_BYTES = 32
 
 
 class CryptoEnvironmentVariable(StrEnum):
-    """The environment variable `CryptoConfig` reads the encryption key from.
+    """The environment variables `CryptoConfig` reads an encryption key from.
 
-    Centralizes the variable name so the config loader, the README and the
-    tests never disagree on spelling. Consumed by `CryptoConfig.from_environment`.
+    Centralizes the variable names so the config loader, the README and the
+    tests never disagree on spelling. Each purpose gets its own key, so one
+    leaking does not expose the other's data. Consumed by
+    `CryptoConfig.from_environment`.
     """
 
-    EVENTS_KEY = "KRTR_EVENTS_KEY"  # Base64-encoded 32-byte AES-256 key.
+    EVENTS_KEY = "KRTR_EVENTS_KEY"  # Base64-encoded 32-byte AES-256 key for events.
+    TOKENS_KEY = "KRTR_TOKENS_KEY"  # Same format; OIDC tokens and the login cookie.
 
 
 class CryptoConfig(BaseModel):
@@ -75,11 +78,13 @@ class CryptoConfig(BaseModel):
         return base64.b64decode(self.key.get_secret_value())
 
     @classmethod
-    def from_environment(cls) -> "CryptoConfig":
-        """Builds a CryptoConfig from `KRTR_EVENTS_KEY`.
+    def from_environment(
+        cls, variable: CryptoEnvironmentVariable = CryptoEnvironmentVariable.EVENTS_KEY
+    ) -> "CryptoConfig":
+        """Builds a CryptoConfig from one of the key environment variables.
 
         Args:
-            None.
+            variable: Which key to read; the events key unless told otherwise.
 
         Returns:
             CryptoConfig: the validated configuration.
@@ -88,11 +93,8 @@ class CryptoConfig(BaseModel):
             ValueError: if the environment variable is missing, empty, or
                 not a valid 32-byte base64-encoded key.
         """
-        key = os.environ.get(CryptoEnvironmentVariable.EVENTS_KEY)
+        key = os.environ.get(variable)
         if not key:
-            raise ValueError(
-                "Missing required environment variable: "
-                f"{CryptoEnvironmentVariable.EVENTS_KEY.value}"
-            )
-        logger.debug("Loaded encryption key from the environment")
+            raise ValueError(f"Missing required environment variable: {variable.value}")
+        logger.debug("Loaded encryption key %s from the environment", variable.value)
         return cls(key=key)
