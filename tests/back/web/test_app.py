@@ -1,11 +1,28 @@
-"""Tests create_app(): health, docs gating by environment, and the SPA fallback."""
+"""Tests create_app() (health, docs, SPA fallback) and create_served_app() (event recording)."""
 
+import logging
 from pathlib import Path
 
+import pytest
 from fastapi.testclient import TestClient
 
+from krtr.back.security.audit import recorder as recorder_module
+from krtr.back.security.audit.event_names import EventName
+from krtr.back.security.audit.recorder import EventRecorder
+from krtr.back.security.crypto.config import CryptoEnvironmentVariable
+from krtr.back.web import app as app_module
 from krtr.back.web.app import create_app
-from krtr.back.web.config import WebConfig, WebEnvironment
+from krtr.back.web.config import WebConfig, WebEnvironment, WebEnvironmentVariable
+from tests.back.security.audit.fakes import InMemoryRecorder, refuse_to_open_neon
+
+
+@pytest.fixture
+def served_environment(monkeypatch: pytest.MonkeyPatch) -> pytest.MonkeyPatch:
+    """Isolates create_served_app from the developer's .env, the events key and Neon."""
+    monkeypatch.setattr(app_module, "load_dotenv", lambda: None)
+    monkeypatch.setattr(recorder_module, "NeonClient", refuse_to_open_neon)
+    monkeypatch.delenv(CryptoEnvironmentVariable.EVENTS_KEY, raising=False)
+    return monkeypatch
 
 
 def test_healthz_reports_ok() -> None:
@@ -85,3 +102,40 @@ def test_response_carries_a_request_id_header() -> None:
     response = client.get("/healthz")
 
     assert response.headers.get("X-Request-Id")
+
+
+def test_served_app_records_every_request_in_production(
+    served_environment: pytest.MonkeyPatch,
+) -> None:
+    """In production, the served app must record an http_request for each request (G21)."""
+    recorder = InMemoryRecorder()
+    served_environment.setenv(WebEnvironmentVariable.ENVIRONMENT, WebEnvironment.PRODUCTION)
+    served_environment.setattr(EventRecorder, "from_environment", lambda: recorder)
+
+    TestClient(app_module.create_served_app()).get("/healthz")
+
+    assert [event_name for event_name, _ in recorder.events] == [EventName.HTTP_REQUEST]
+
+
+def test_served_app_refuses_to_start_in_production_without_the_events_key(
+    served_environment: pytest.MonkeyPatch,
+) -> None:
+    """Production must fail fast, naming the missing variable, instead of dropping events."""
+    served_environment.setenv(WebEnvironmentVariable.ENVIRONMENT, WebEnvironment.PRODUCTION)
+
+    with pytest.raises(ValueError, match=CryptoEnvironmentVariable.EVENTS_KEY.value):
+        app_module.create_served_app()
+
+
+def test_served_app_runs_without_recording_in_development(
+    served_environment: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    """Development may run without Neon or a key: recording is off and a warning says why."""
+    served_environment.setenv(WebEnvironmentVariable.ENVIRONMENT, WebEnvironment.DEVELOPMENT)
+
+    with caplog.at_level(logging.WARNING, logger=app_module.__name__):
+        served_app = app_module.create_served_app()
+
+    assert served_app.state.event_recorder is None
+    assert CryptoEnvironmentVariable.EVENTS_KEY.value in caplog.text
+    assert TestClient(served_app).get("/healthz").status_code == 200

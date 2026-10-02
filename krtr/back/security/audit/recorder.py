@@ -14,6 +14,7 @@ from uuid import uuid4
 
 from krtr.back.security.audit.event_names import EventName
 from krtr.back.security.crypto.cipher import AesGcmCipher
+from krtr.back.security.crypto.config import CryptoConfig
 from krtr.database.neon.client import NeonClient
 from krtr.database.queries import load_sql
 
@@ -32,7 +33,8 @@ class EventRecorder:
     Exists to centralize the write path for G21's single audit-log table:
     every event this backend records goes through one instance of this
     class instead of ad hoc inserts. Consumed by the audit middleware and
-    the `POST /api/events` route.
+    the `POST /api/events` route; `create_served_app` in
+    `krtr/back/web/app.py` builds the instance the served app uses.
     """
 
     def __init__(self, client: NeonClient, cipher: AesGcmCipher) -> None:
@@ -46,6 +48,29 @@ class EventRecorder:
         """
         self._client = client
         self._cipher = cipher
+
+    @classmethod
+    def from_environment(cls) -> "EventRecorder":
+        """Builds a recorder from `KRTR_EVENTS_KEY` and `NEON_DB_HOST`.
+
+        Exists so the served app (and later the event jobs) wire the same
+        cipher and pooled Neon client without assembling them themselves.
+        The key is validated before the Neon connection opens, so a bad key
+        never leaves a connection behind. The key is read from the
+        environment as is: local entrypoints load `.env` before calling this.
+
+        Args:
+            None.
+
+        Returns:
+            EventRecorder: a recorder bound to the events key and a new Neon client.
+
+        Raises:
+            ValueError: if `KRTR_EVENTS_KEY` or `NEON_DB_HOST` is missing, or
+                the key is not a base64-encoded 32-byte key.
+        """
+        cipher = AesGcmCipher(CryptoConfig.from_environment().decoded_key())
+        return cls(client=NeonClient(), cipher=cipher)
 
     def record_event(self, event_name: EventName, properties: dict[str, Any]) -> None:
         """Encrypts `properties` and writes one event row.

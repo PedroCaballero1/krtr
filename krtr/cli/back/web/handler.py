@@ -36,6 +36,8 @@ def serve(
 
     Exists so the app always starts the same way in local development.
     Production does not use this command: Modal serves the app itself.
+    uvicorn calls the `create_served_app` factory at startup, so a missing
+    variable stops the server there instead of when the module is imported.
 
     Args:
         host: Host interface to bind to.
@@ -51,7 +53,8 @@ def serve(
     # header after the app responds, which our security-headers middleware
     # (krtr/back/security/headers/) cannot see or strip.
     uvicorn.run(
-        "krtr.back.web.app:app",
+        "krtr.back.web.app:create_served_app",
+        factory=True,
         host=host,
         port=resolved_port,
         reload=reload,
