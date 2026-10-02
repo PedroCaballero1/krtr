@@ -8,27 +8,42 @@ tests build the app with `create_app` and their own collaborators.
 
 import logging
 
+import httpx
 from dotenv import load_dotenv
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 
 from krtr.back.security.audit.middleware import record_http_request
 from krtr.back.security.audit.recorder import EventRecorder
+from krtr.back.security.crypto.cipher import AesGcmCipher
+from krtr.back.security.crypto.config import CryptoConfig, CryptoEnvironmentVariable
 from krtr.back.security.headers.config import HeadersConfig
 from krtr.back.security.headers.middleware import add_security_headers
+from krtr.back.security.oidc.client import KeycloakOidcClient
+from krtr.back.security.oidc.config import OidcConfig
+from krtr.back.security.oidc.login_cookie import LoginCookieCodec
+from krtr.back.security.sessions.service import SessionService
+from krtr.back.security.sessions.store import SessionStore
 from krtr.back.web.config import WebConfig, WebEnvironment
+from krtr.back.web.dependencies import AuthServices, register_auth_error_handlers
 from krtr.back.web.middleware import log_request
+from krtr.back.web.routers.auth import auth_router
 from krtr.back.web.routers.events import events_router
 from krtr.back.web.routers.health import health_router
+from krtr.back.web.routers.session import session_router
 from krtr.back.web.routers.spa import spa_router
+from krtr.database.neon.client import NeonClient
 
 logger = logging.getLogger(__name__)
+
+KEYCLOAK_TIMEOUT_SECONDS = 10  # A login or refresh must not hang a worker on Keycloak.
 
 
 def create_app(
     config: WebConfig | None = None,
     headers_config: HeadersConfig | None = None,
     event_recorder: EventRecorder | None = None,
+    auth_services: AuthServices | None = None,
 ) -> FastAPI:
     """Builds and configures the krtr-web FastAPI application.
 
@@ -45,6 +60,9 @@ def create_app(
             None, event recording is skipped (logged, not an error).
             `create_served_app` always provides one in production; tests
             may omit it.
+        auth_services: The OIDC login and session services (tasks 4.3, 4.4).
+            When None, the login and session routes answer 503;
+            `create_served_app` always provides them in production.
 
     Returns:
         FastAPI: the configured application, ready to serve.
@@ -60,11 +78,13 @@ def create_app(
     app.state.config = resolved_config
     app.state.headers_config = resolved_headers_config
     app.state.event_recorder = event_recorder
+    app.state.auth_services = auth_services
     app.middleware("http")(add_security_headers)
     app.middleware("http")(record_http_request)
     app.middleware("http")(log_request)
-    app.include_router(health_router)
-    app.include_router(events_router)
+    register_auth_error_handlers(app)
+    for router in (health_router, events_router, auth_router, session_router):
+        app.include_router(router)
     _mount_frontend_assets(app, resolved_config)
     app.include_router(spa_router)
     logger.info("krtr-web app created (environment=%s)", resolved_config.environment)
@@ -72,27 +92,32 @@ def create_app(
 
 
 def create_served_app() -> FastAPI:
-    """Builds the app that is actually served, with event recording wired in.
+    """Builds the app that is actually served, with event recording and login wired in.
 
-    Exists because `create_app` leaves the event recorder optional, so tests
+    Exists because `create_app` leaves its collaborators optional, so tests
     can inject their own, while the served app must record every event
-    (G21). Used as uvicorn's factory by `krtr back web serve`, and meant to
-    be served the same way on Modal. `.env` is loaded first, so a local run
-    reads the same variables the Modal secret provides in production.
+    (G21) and log customers in (tasks 4.3, 4.4). Used as uvicorn's factory by
+    `krtr back web serve`, and meant to be served the same way on Modal.
+    `.env` is loaded first, so a local run reads the same variables the
+    Modal secret provides in production.
 
     Args:
         None.
 
     Returns:
-        FastAPI: the configured application, recording events when its
-        environment provides `KRTR_EVENTS_KEY` and `NEON_DB_HOST`.
+        FastAPI: the configured application, recording events and logging
+        customers in when its environment provides their settings.
 
     Raises:
-        ValueError: in production, if either variable is missing or invalid.
+        ValueError: in production, if any of those settings is missing or invalid.
     """
     load_dotenv()
     config = WebConfig.from_environment()
-    return create_app(config, event_recorder=_build_event_recorder(config))
+    return create_app(
+        config,
+        event_recorder=_build_event_recorder(config),
+        auth_services=_build_auth_services(config),
+    )
 
 
 def _build_event_recorder(config: WebConfig) -> EventRecorder | None:
@@ -121,6 +146,44 @@ def _build_event_recorder(config: WebConfig) -> EventRecorder | None:
         return None
     logger.info("Event recording is on")
     return recorder
+
+
+def _build_auth_services(config: WebConfig) -> AuthServices | None:
+    """Builds the login and session services from the environment; mandatory in production.
+
+    Exists so production fails fast without a working login, while local
+    development can run without Keycloak (the login routes then answer 503).
+    The settings and the key are checked before any connection is opened.
+
+    Args:
+        config: The resolved WebConfig, whose environment decides whether a
+            missing or invalid setting stops the app.
+
+    Returns:
+        AuthServices | None: the services, or None outside production when the
+        environment cannot build them.
+
+    Raises:
+        ValueError: in production, naming the setting that is missing or invalid.
+    """
+    try:
+        oidc_config = OidcConfig.from_environment()
+        tokens_key = CryptoConfig.from_environment(CryptoEnvironmentVariable.TOKENS_KEY)
+        neon_client = NeonClient()
+    except ValueError as error:
+        if config.environment == WebEnvironment.PRODUCTION:
+            raise ValueError(f"krtr-web cannot start without login: {error}") from error
+        logger.warning("Login is off (environment=%s): %s", config.environment, error)
+        return None
+    cipher = AesGcmCipher(tokens_key.decoded_key())
+    oidc_client = KeycloakOidcClient(oidc_config, httpx.Client(timeout=KEYCLOAK_TIMEOUT_SECONDS))
+    session_service = SessionService(SessionStore(neon_client, cipher), oidc_client)
+    logger.info("Login is on (Keycloak at %s)", oidc_config.auth_origin)
+    return AuthServices(
+        oidc_client=oidc_client,
+        login_codec=LoginCookieCodec(cipher),
+        session_service=session_service,
+    )
 
 
 def _mount_frontend_assets(app: FastAPI, config: WebConfig) -> None:
