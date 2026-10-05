@@ -81,7 +81,7 @@ class UserTurn(BaseModel):
     incident_id: str
     customer_id: str
     text: str = Field(min_length=1)
-    language: InterfaceLanguage = InterfaceLanguage.SPANISH
+    language: InterfaceLanguage = InterfaceLanguage.SPANISH  # A hint: the interface's language.
 
 
 class AgentReply(BaseModel):
@@ -93,4 +93,5 @@ class AgentReply(BaseModel):
 
     incident_id: str
     reply: str
+    language: InterfaceLanguage  # The language the reply is written in.
     outcome: TurnOutcome

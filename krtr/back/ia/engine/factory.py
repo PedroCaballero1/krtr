@@ -15,6 +15,9 @@ from krtr.back.ia.engine.config import EngineConfig
 from krtr.back.ia.engine.engine import ConversationEngine
 from krtr.back.ia.engine.store import ConversationStateStore
 from krtr.back.ia.guardrails.policy import GuardrailPolicy
+from krtr.back.ia.language.base import LanguageDetector
+from krtr.back.ia.language.policy import ConversationLanguagePolicy
+from krtr.back.ia.language.py3langid_detector import Py3LangidLanguageDetector
 from krtr.back.ia.matching.base import Embedder
 from krtr.back.ia.matching.catalog import ExemplarCatalog
 from krtr.back.ia.matching.matcher import IntentMatcher
@@ -29,6 +32,7 @@ def build_engine(
     complaints: CustomerComplaintsReader,
     store: ConversationStateStore,
     config: EngineConfig | None = None,
+    language_detector: LanguageDetector | None = None,
 ) -> ConversationEngine:
     """Builds the phase 1 engine: deterministic actions, template clarifier and writer.
 
@@ -38,6 +42,7 @@ def build_engine(
         complaints: Reads the customers' complaints.
         store: Keeps each conversation's state.
         config: The settings; the defaults when None.
+        language_detector: Guesses each message's language; py3langid when None.
 
     Returns:
         ConversationEngine: the ready engine.
@@ -61,5 +66,8 @@ def build_engine(
         actions=actions,
         writer=TemplateResponseWriter.load(),
         store=store,
+        language=ConversationLanguagePolicy(
+            language_detector or Py3LangidLanguageDetector(), settings.language
+        ),
         recent_messages_kept=settings.conversation.recent_messages_kept,
     )

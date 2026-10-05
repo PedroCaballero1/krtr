@@ -1,7 +1,7 @@
 """Runs one customer message through the whole pipeline and returns the agent's reply.
 
 Exists as the only entry point the web chat endpoint and `krtr back ia` call
-(docs/ia-proposal.md §2.1): hard rules, then intent matching, then resolution, then an
+(docs/ia-proposal.md §2.1): the reply language, hard rules, intent matching, resolution, an
 action or a question, then the template writer, saving the conversation's state at the end.
 """
 
@@ -18,6 +18,7 @@ from krtr.back.ia.deterministic.registry import ActionRegistry
 from krtr.back.ia.engine.content import ending_content, question_content
 from krtr.back.ia.engine.store import ConversationStateStore
 from krtr.back.ia.guardrails.policy import GuardrailPolicy
+from krtr.back.ia.language.policy import ConversationLanguagePolicy
 from krtr.back.ia.matching.base import Embedder
 from krtr.back.ia.matching.matcher import IntentMatcher
 from krtr.back.ia.reasoning.artifacts import (
@@ -49,6 +50,7 @@ class ConversationEngine:
         actions: ActionRegistry,
         writer: ResponseWriter,
         store: ConversationStateStore,
+        language: ConversationLanguagePolicy,
         recent_messages_kept: int,
     ) -> None:
         """Keeps the pipeline's components.
@@ -61,6 +63,7 @@ class ConversationEngine:
             actions: Runs the resolved intent.
             writer: Phrases the reply.
             store: Loads and saves the conversation's state.
+            language: Decides the language each reply is written in.
             recent_messages_kept: How many past messages the repetition rule looks at.
         """
         self._embedder = embedder
@@ -70,19 +73,21 @@ class ConversationEngine:
         self._actions = actions
         self._writer = writer
         self._store = store
+        self._language = language
         self._recent_messages_kept = recent_messages_kept
 
     def handle(self, turn: UserTurn) -> AgentReply:
         """Answers one message of a case.
 
         Args:
-            turn: The message, its case and the session's customer.
+            turn: The message, its case, the session's customer and the caller's language.
 
         Returns:
-            AgentReply: the reply text and how the turn ended.
+            AgentReply: the reply text, its language and how the turn ended.
         """
         logger.info("Handling a message for incident %s", turn.incident_id)
         state = self._store.load(turn.customer_id, turn.incident_id)
+        language = self._language.resolve(state, turn.text, turn.language)
         if state.ended is not None:
             content, outcome = ReplyContent(message_key=MessageKey.CONVERSATION_ENDED), state.ended
         else:
@@ -94,7 +99,8 @@ class ConversationEngine:
         logger.info("Incident %s turn ended as %s", turn.incident_id, outcome)
         return AgentReply(
             incident_id=turn.incident_id,
-            reply=self._writer.write(content, turn.language),
+            reply=self._writer.write(content, language),
+            language=language,
             outcome=outcome,
         )
 

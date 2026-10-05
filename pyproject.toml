@@ -30,6 +30,7 @@ dependencies = [
     "slowapi>=0.1.10",
     "joserfc>=1.7.5",
     "numpy>=2.5.3",
+    "py3langid>=0.4.0",
 ]
 
 [tool.black]

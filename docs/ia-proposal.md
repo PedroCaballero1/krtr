@@ -291,7 +291,7 @@ injects it, the same way `auth_services` is wired today.
 | G11 reasoning in text | Matching and the clarifier always work on text (voice is transcribed first) |
 | G12 cost routing | Matcher first (free); LLM only on `AMBIGUOUS` / `NO_MATCH` / missing inputs |
 | G13 hard rules | `guardrails/` (repetition by similarity, guard labels) + clarifier confirmation; `CLOSED` outcome |
-| G14 ES / PT | Multilingual embedder + catalog per language + template catalog per language |
+| G14 ES / PT | Multilingual embedder + catalog per language + template catalog per language + `language/`: reply language detected per conversation (py3langid), the interface's language only as the starting hint |
 | G16 latency | Fast path: local embedding + action + template, no network model call |
 | G17 summary | `ConversationState.summary`, updated after each turn |
 | G19 ambiguity | `AMBIGUOUS` result and missing inputs → `NEEDS_CLARIFICATION` |

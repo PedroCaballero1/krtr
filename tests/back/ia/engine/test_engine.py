@@ -87,3 +87,25 @@ def test_the_same_message_three_times_closes_the_conversation() -> None:
     outcomes = [_say(engine, "hola banco").outcome for _ in range(3)]
 
     assert outcomes[-1] == TurnOutcome.CLOSED
+
+
+def test_the_reply_follows_the_language_the_customer_writes_in() -> None:
+    """Portuguese typed in a Spanish interface is answered in Portuguese, short replies too."""
+    engine = sample_engine()
+
+    question = _say(engine, "Quero saber o status da minha reclamação")
+    answer = _say(engine, DEMO_COMPLAINT_ID)
+
+    assert question.language == answer.language == InterfaceLanguage.PORTUGUESE
+    assert answer.reply.startswith(f"Seu caso {DEMO_COMPLAINT_ID} (tarifas)")
+
+
+def test_a_clear_sentence_in_the_other_language_switches_the_replies() -> None:
+    """The customer changes language mid-conversation and the agent follows."""
+    engine = sample_engine()
+
+    _say(engine, "Preciso consultar o saldo do meu cartão de crédito")
+    switched = _say(engine, "Ahora quiero saber el saldo de mi cuenta de ahorros")
+
+    assert switched.language == InterfaceLanguage.SPANISH
+    assert switched.reply.startswith("Saldo de cuenta de ahorros:")

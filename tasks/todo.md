@@ -91,6 +91,30 @@ model, writing the examples, and setting the thresholds from the evaluation set.
   `tests/cli/back/ia/test_handler.py`.
 - [x] **1.12 Verification** — `pytest` with coverage ≥85% on `krtr/back/ia/`; ruff, flake8
   and black clean; a review section added at the end of this file.
+- [x] **1.13 Language detection per conversation (G14)** — new sub-vertical
+  `krtr/back/ia/language/`. The reply language becomes a property of the conversation,
+  not a fixed input:
+  - `base.py` — `LanguageDetector` interface, returning a `LanguageGuess` (language +
+    confidence).
+  - `py3langid_detector.py` — `Py3LangidLanguageDetector`, limited to ES and PT, offline.
+    Added with `uv add py3langid`. Lingua was tried first and dropped:
+    - its wheel is about 170 MB;
+    - on the same phrases it was only 70–77% sure of plain Spanish sentences;
+    - it was 88% sure that "PQR-104233" is Portuguese.
+
+    py3langid is 4.4 MB, needs only numpy, and was above 92% on every full sentence.
+  - `config.py` — `LanguageConfig`: minimum words and minimum confidence for a message to
+    count.
+  - `policy.py` — `ConversationLanguagePolicy`:
+    - the caller's language (web selector or `--language`) is only the starting hint;
+    - a message long and clear enough sets the conversation's language, saved in
+      `ConversationState.language`;
+    - short or unclear messages ("1", "saldo", "PQR-104233") never change it;
+    - a later clear message in the other language switches it (the customer changed
+      language).
+  - `AgentReply.language` reports the language the reply was written in.
+  - Tests: the policy with a fake detector; the py3langid detector on real ES / PT
+    sentences; the engine switching language mid-conversation; the CLI.
 
 ## Out of scope for phase 1
 

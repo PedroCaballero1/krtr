@@ -19,6 +19,7 @@ from krtr.back.security.oidc.artifacts import InterfaceLanguage
 logger = logging.getLogger(__name__)
 
 ENDING_OUTCOMES = (TurnOutcome.ESCALATED, TurnOutcome.CLOSED)
+LANGUAGE_HELP = "Starting language; a clear message in the other one switches the replies."
 
 ia_app = typer.Typer(
     name="ia", help="Try the conversation agent on sample data.", no_args_is_help=True
@@ -34,13 +35,15 @@ class ChatCommand(StrEnum):
 @ia_app.command(name="ask")
 def ask(
     text: str = typer.Argument(..., help="The customer's message."),
-    language: InterfaceLanguage = typer.Option(InterfaceLanguage.SPANISH, "--language", "-l"),
+    language: InterfaceLanguage = typer.Option(
+        InterfaceLanguage.SPANISH, "--language", "-l", help=LANGUAGE_HELP
+    ),
 ) -> None:
     """Sends one message to the demo engine and shows the reply.
 
     Args:
         text: The customer's message.
-        language: The language to reply in.
+        language: The language to reply in until a message shows another one.
 
     Returns:
         None.
@@ -51,12 +54,14 @@ def ask(
 
 @ia_app.command(name="chat")
 def chat(
-    language: InterfaceLanguage = typer.Option(InterfaceLanguage.SPANISH, "--language", "-l"),
+    language: InterfaceLanguage = typer.Option(
+        InterfaceLanguage.SPANISH, "--language", "-l", help=LANGUAGE_HELP
+    ),
 ) -> None:
     """Holds a conversation with the demo engine until it ends or `/exit` is typed.
 
     Args:
-        language: The language to reply in.
+        language: The language to reply in until a message shows another one.
 
     Returns:
         None.
@@ -79,7 +84,7 @@ def _send(engine: ConversationEngine, text: str, language: InterfaceLanguage) ->
     Args:
         engine: The demo engine.
         text: The customer's message.
-        language: The language to reply in.
+        language: The language to reply in until a message shows another one.
 
     Returns:
         AgentReply: the engine's reply.

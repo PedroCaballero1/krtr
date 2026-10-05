@@ -8,6 +8,7 @@ from pydantic import BaseModel, Field
 
 from krtr.back.ia.config import IaConfig
 from krtr.back.ia.deterministic.config import DeterministicConfig
+from krtr.back.ia.language.config import LanguageConfig
 from krtr.back.ia.matching.config import CatalogConfig, MatchThresholds
 
 
@@ -21,3 +22,4 @@ class EngineConfig(BaseModel):
     deterministic: DeterministicConfig = Field(default_factory=DeterministicConfig)
     thresholds: MatchThresholds = Field(default_factory=MatchThresholds)
     catalog: CatalogConfig = Field(default_factory=CatalogConfig)
+    language: LanguageConfig = Field(default_factory=LanguageConfig)

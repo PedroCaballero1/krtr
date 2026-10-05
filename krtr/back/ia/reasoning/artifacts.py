@@ -12,6 +12,7 @@ from pydantic import BaseModel, Field
 
 from krtr.back.ia.artifacts import TurnOutcome
 from krtr.back.ia.deterministic.intents import Intent
+from krtr.back.security.oidc.artifacts import InterfaceLanguage
 
 
 class QuestionKind(StrEnum):
@@ -62,6 +63,7 @@ class ConversationState(BaseModel):
     clarification_attempts: int = 0
     recent_messages: list[str] = Field(default_factory=list)  # Normalised, newest last.
     ended: TurnOutcome | None = None  # Set once the case is escalated or closed.
+    language: InterfaceLanguage | None = None  # Set by the first clear message (G14).
 
 
 class Resolved(BaseModel):

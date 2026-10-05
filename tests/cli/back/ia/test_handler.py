@@ -47,3 +47,13 @@ def test_chat_stops_when_the_conversation_ends() -> None:
 
     assert result.exit_code == 0, result.output
     assert "[closed]" in result.output
+
+
+def test_ask_detects_portuguese_without_the_language_option() -> None:
+    """`--language` is only the starting point: Portuguese text gets a Portuguese reply."""
+    result = runner.invoke(
+        app, ["back", "ia", "ask", "Preciso consultar o saldo do meu cartão de crédito"]
+    )
+
+    assert result.exit_code == 0, result.output
+    assert "Saldo de cartão de crédito:" in result.output
