@@ -254,6 +254,32 @@ nullability (read from Postgres itself, not redeclared in Python), and bulk-inse
 `psycopg2.extras.execute_values`. A progress bar shows rows loaded; invalid rows are logged and
 skipped (unless `--strict`) and are counted separately from successfully loaded rows.
 
+### Loading a partitioned dataset (`load-dataset`)
+
+A dataset downloaded with `krtr database s3 download-dataset` into daily files (e.g.
+`transactions`, one `transactions_YYYYMMDD.csv` per day under `year=/month=/day=` folders) has no
+single `<table>.csv` for `load` to find. `load-dataset` loads every one of those files instead,
+in date order, through the exact same `neon-load` task `load` uses:
+
+```bash
+# Load every data/transactions/year=*/month=*/day=*/transactions_*.csv file
+krtr database neon load-dataset transactions
+
+# Truncate once, before the first file, so a retry never duplicates rows
+krtr database neon load-dataset transactions --truncate
+
+# Same --strict, --force-convert and --batch-size options as load
+krtr database neon load-dataset transactions --strict --batch-size 10000
+
+# Run every file's load on Modal instead of this machine (sequentially, waiting for each)
+krtr database neon load-dataset transactions --remote
+```
+
+Each file reports its own row counts in the log; the command finishes by logging the total rows
+read/loaded/failed across every file. `--truncate` only empties the table before the first file,
+never between later ones. There is no `--detach` for `load-dataset`, since detaching makes sense
+for one run, not a sequence of them.
+
 ## Modal (remote execution)
 
 Commands can optionally run on [Modal](https://modal.com) instead of your machine. Modal is an

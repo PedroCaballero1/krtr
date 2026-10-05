@@ -118,6 +118,29 @@ def load_table(
     return summary
 
 
+def merge_load_summaries(summaries: list[LoadSummary]) -> LoadSummary:
+    """Combines the LoadSummary of several files into one running total.
+
+    Exists so `krtr database neon load-dataset` can report one summary for a
+    whole partitioned dataset (e.g. `transactions`'s 1,097 daily files)
+    instead of one per file.
+
+    Args:
+        summaries: The LoadSummary returned by each file's load, in load order.
+
+    Returns:
+        LoadSummary: total rows read, total rows loaded, and every failure
+            concatenated in order. A failure's `row_number` stays relative to
+            its own source file, not to the dataset as a whole.
+    """
+    total = LoadSummary(rows_read=0, rows_loaded=0)
+    for summary in summaries:
+        total.rows_read += summary.rows_read
+        total.rows_loaded += summary.rows_loaded
+        total.failures.extend(summary.failures)
+    return total
+
+
 def _validate_batch(
     rows: list[dict], column_specs: list[ColumnSpec], summary: LoadSummary, strict: bool
 ) -> list[tuple]:
