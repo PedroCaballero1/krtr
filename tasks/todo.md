@@ -116,6 +116,38 @@ model, writing the examples, and setting the thresholds from the evaluation set.
   - Tests: the policy with a fake detector; the py3langid detector on real ES / PT
     sentences; the engine switching language mid-conversation; the CLI.
 
+- [x] **1.14 Latency per response (G16)** — the engine times every turn, in total and per
+  step: language, guardrails, embedding, matching, resolution, action, writing.
+  - Timing lives in `krtr/back/ia/timing.py` (`StepTimer`, with an injectable clock so tests
+    are exact).
+  - The result is returned as `AgentReply.timings` (`TurnTimings`), so the web chat endpoint
+    can store it in the `chat_response_received` event (G21).
+  - It is logged as one line per turn.
+  - The CLI shows the total next to the outcome; `--verbose` shows the steps.
+  - The engine records no events itself; the web layer does (it owns `EventRecorder`).
+
+- [x] **1.15 Turn metadata for the events log (G21)** — `AgentReply.details`
+  (`TurnDetails`): the intent resolved or asked about, the match kind and the guard flags.
+  Together with `outcome`, `language` and `timings`, it is everything the web chat endpoint
+  needs for the `chat_response_received` event, without the reply text.
+  - **Decided (2026-10-05):** metadata goes to `events`; message and reply text go to a
+    messages table (Q5).
+
+- [ ] **1.16 `messages` table (decided 2026-10-05)** — the text of every message and reply.
+  The contract is in `docs/ia-proposal.md` §9 and `docs/guia-web-seguridad_modal.md` §3.6.
+  - **Columns:** `message_id`, `incident_id`, `customer_id`, `sender`, `content`,
+    `language`, `outcome`, `sent_at`.
+  - **Encrypted:** `content` with AES-256-GCM, using its own key `KRTR_MESSAGES_KEY`.
+  - **Retention:** 3 months; `purge.sql`, run by the daily `purge_events` job.
+  - **Index:** on `(incident_id, customer_id)`, explicitly requested.
+  - **To build:**
+    - `krtr/database/queries/messages/`: `table.sql`, `insert_one.sql`,
+      `select_by_case.sql`, `purge.sql`;
+    - a `MessageStore` in `krtr/back/ia/`;
+    - the grants to `krtr_app` in both Neon branches.
+  - **Still open:** where the case summary lives (G17). Proposed: the cases table (web
+    task 4.8).
+
 ## Out of scope for phase 1
 
 - **Neon readers for products and complaints.** `products/table.sql` exists; a
@@ -124,7 +156,10 @@ model, writing the examples, and setting the thresholds from the evaluation set.
   of the web guide.
 - **The real embedder, the example phrases, and the thresholds** (phase 2).
 - **The LLM** (phase 3).
-- **A persistent conversation-state table** (Q5).
+- **The messages table** — its contract is decided (task 1.16, below); implementing it is a
+  separate step.
+- **A persistent conversation state.**
+- **Recording `chat_response_received`.** It belongs to the web chat endpoint (task 4.9).
 
 ## Parallel track — intent discovery from the call history (feeds phase 2)
 

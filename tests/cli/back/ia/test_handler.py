@@ -1,5 +1,7 @@
 """Tests `krtr back ia ask` and `chat`: replies, the clarification flow, and leaving."""
 
+import re
+
 from typer.testing import CliRunner
 
 from krtr.cli.main import app
@@ -12,7 +14,10 @@ def test_ask_answers_one_message() -> None:
     result = runner.invoke(app, ["back", "ia", "ask", "Saldo de mi cuenta de ahorros"])
 
     assert result.exit_code == 0, result.output
-    assert "[resolved] Saldo de cuenta de ahorros:\n- ****7781: 2,350,400.50 COP" in result.output
+    assert re.search(
+        r"\[resolved · \d+\.\d{2} ms\] Saldo de cuenta de ahorros:\n- \*{4}7781: 2,350,400\.50 COP",
+        result.output,
+    )
 
 
 def test_ask_replies_in_portuguese() -> None:
@@ -37,8 +42,8 @@ def test_chat_keeps_the_conversation_across_turns_until_exit() -> None:
     result = runner.invoke(app, ["back", "ia", "chat"], input="¿Cuál es mi saldo?\n3\n/exit\n")
 
     assert result.exit_code == 0, result.output
-    assert "[needs_clarification] ¿Sobre qué producto?" in result.output
-    assert "[resolved] Saldo de tarjeta de crédito:" in result.output
+    assert re.search(r"\[needs_clarification · [\d.]+ ms\] ¿Sobre qué producto\?", result.output)
+    assert re.search(r"\[resolved · [\d.]+ ms\] Saldo de tarjeta de crédito:", result.output)
 
 
 def test_chat_stops_when_the_conversation_ends() -> None:
@@ -46,7 +51,7 @@ def test_chat_stops_when_the_conversation_ends() -> None:
     result = runner.invoke(app, ["back", "ia", "chat"], input="hola banco\n" * 3)
 
     assert result.exit_code == 0, result.output
-    assert "[closed]" in result.output
+    assert "[closed · " in result.output
 
 
 def test_ask_detects_portuguese_without_the_language_option() -> None:

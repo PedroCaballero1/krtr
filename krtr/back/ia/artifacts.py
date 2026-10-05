@@ -1,14 +1,18 @@
 """Defines the contracts shared across the `krtr/back/ia/` vertical.
 
 Exists to keep what goes into a turn (`UserTurn`), what comes out (`AgentReply`) and what the
-writer phrases (`ReplyContent`) in one discoverable place that depends on no sub-vertical, so
-`deterministic/`, `reasoning/`, `writing/` and `engine/` can all import it without cycles.
+writer phrases (`ReplyContent`) in one discoverable place. It depends only on leaf modules (the
+intent and match enums), so `deterministic/`, `reasoning/`, `writing/` and `engine/` can all
+import it without cycles.
 """
 
 from enum import StrEnum
 
 from pydantic import BaseModel, Field
 
+from krtr.back.ia.deterministic.intents import Intent
+from krtr.back.ia.matching.artifacts import MatchKind
+from krtr.back.ia.matching.labels import GuardLabel
 from krtr.back.security.oidc.artifacts import InterfaceLanguage
 
 
@@ -84,6 +88,46 @@ class UserTurn(BaseModel):
     language: InterfaceLanguage = InterfaceLanguage.SPANISH  # A hint: the interface's language.
 
 
+class TurnStep(StrEnum):
+    """The steps of a turn whose duration is measured (G16).
+
+    Exists so every response's latency can be broken down the same way in the log, the CLI and
+    the `chat_response_received` event. Consumed by `timing.py` and `engine/engine.py`.
+    """
+
+    LANGUAGE = "language"
+    GUARDRAILS = "guardrails"
+    EMBEDDING = "embedding"
+    MATCHING = "matching"
+    RESOLUTION = "resolution"
+    ACTION = "action"  # Running the action, or recording the question or the ending.
+    WRITING = "writing"
+
+
+class TurnTimings(BaseModel):
+    """How long a turn took, in total and per step, in milliseconds.
+
+    Exists so each response carries its own latency. A step that did not run (e.g. matching on
+    a closed conversation) is absent; the total also covers loading and saving state.
+    """
+
+    total_ms: float = Field(ge=0)
+    steps_ms: dict[TurnStep, float] = Field(default_factory=dict)
+
+
+class TurnDetails(BaseModel):
+    """What the agent understood in a turn: the metadata recorded in `events` (G21).
+
+    Exists so the web chat endpoint can record each response's `chat_response_received`
+    event without the reply text, which belongs in the messages table instead. Every field
+    is empty when the turn never reached matching (a closed or ended conversation).
+    """
+
+    intent: Intent | None = None  # Resolved, or being asked about.
+    match_kind: MatchKind | None = None
+    guard_flags: list[GuardLabel] = Field(default_factory=list)
+
+
 class AgentReply(BaseModel):
     """The engine's answer to one turn.
 
@@ -95,3 +139,5 @@ class AgentReply(BaseModel):
     reply: str
     language: InterfaceLanguage  # The language the reply is written in.
     outcome: TurnOutcome
+    timings: TurnTimings
+    details: TurnDetails = Field(default_factory=TurnDetails)

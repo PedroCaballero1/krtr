@@ -2,16 +2,23 @@
 
 Exists as the only entry point the web chat endpoint and `krtr back ia` call
 (docs/ia-proposal.md §2.1): the reply language, hard rules, intent matching, resolution, an
-action or a question, then the template writer, saving the conversation's state at the end.
+action or a question, then the template writer, saving the conversation's state at the end
+and timing every step (G16).
 """
 
 import logging
+import time
+from collections.abc import Callable
 
 from krtr.back.ia.artifacts import (
     AgentReply,
     CustomerContext,
     MessageKey,
     ReplyContent,
+    TurnDetails,
+    TurnOutcome,
+    TurnStep,
+    TurnTimings,
     UserTurn,
 )
 from krtr.back.ia.deterministic.registry import ActionRegistry
@@ -19,6 +26,7 @@ from krtr.back.ia.engine.content import ending_content, question_content
 from krtr.back.ia.engine.store import ConversationStateStore
 from krtr.back.ia.guardrails.policy import GuardrailPolicy
 from krtr.back.ia.language.policy import ConversationLanguagePolicy
+from krtr.back.ia.matching.artifacts import MatchResult
 from krtr.back.ia.matching.base import Embedder
 from krtr.back.ia.matching.matcher import IntentMatcher
 from krtr.back.ia.reasoning.artifacts import (
@@ -29,6 +37,7 @@ from krtr.back.ia.reasoning.artifacts import (
 )
 from krtr.back.ia.reasoning.resolver import TurnResolver
 from krtr.back.ia.text import normalize_text
+from krtr.back.ia.timing import StepTimer
 from krtr.back.ia.writing.base import ResponseWriter
 
 logger = logging.getLogger(__name__)
@@ -52,6 +61,7 @@ class ConversationEngine:
         store: ConversationStateStore,
         language: ConversationLanguagePolicy,
         recent_messages_kept: int,
+        clock: Callable[[], float] = time.perf_counter,
     ) -> None:
         """Keeps the pipeline's components.
 
@@ -65,6 +75,7 @@ class ConversationEngine:
             store: Loads and saves the conversation's state.
             language: Decides the language each reply is written in.
             recent_messages_kept: How many past messages the repetition rule looks at.
+            clock: Returns the current time in seconds, for timing the turn.
         """
         self._embedder = embedder
         self._matcher = matcher
@@ -75,52 +86,86 @@ class ConversationEngine:
         self._store = store
         self._language = language
         self._recent_messages_kept = recent_messages_kept
+        self._clock = clock
 
     def handle(self, turn: UserTurn) -> AgentReply:
-        """Answers one message of a case.
+        """Answers one message of a case, timing each step of the turn.
 
         Args:
             turn: The message, its case, the session's customer and the caller's language.
 
         Returns:
-            AgentReply: the reply text, its language and how the turn ended.
+            AgentReply: the reply text, its language, how the turn ended and how long it took.
         """
+        timer = StepTimer(self._clock)
         logger.info("Handling a message for incident %s", turn.incident_id)
         state = self._store.load(turn.customer_id, turn.incident_id)
-        language = self._language.resolve(state, turn.text, turn.language)
-        if state.ended is not None:
-            content, outcome = ReplyContent(message_key=MessageKey.CONVERSATION_ENDED), state.ended
-        else:
-            resolution = self._resolve(state, turn.text)
-            content = self._apply(state, resolution, CustomerContext(customer_id=turn.customer_id))
-            outcome = resolution.kind
-            self._remember(state, turn.text)
+        with timer.measure(TurnStep.LANGUAGE):
+            language = self._language.resolve(state, turn.text, turn.language)
+        content, outcome, details = self._run_turn(state, turn, timer)
         self._store.save(state)
-        logger.info("Incident %s turn ended as %s", turn.incident_id, outcome)
+        with timer.measure(TurnStep.WRITING):
+            reply = self._writer.write(content, language)
+        timings = timer.finish()
+        _log_turn(turn.incident_id, outcome, timings)
         return AgentReply(
             incident_id=turn.incident_id,
-            reply=self._writer.write(content, language),
+            reply=reply,
             language=language,
             outcome=outcome,
+            timings=timings,
+            details=details,
         )
 
-    def _resolve(self, state: ConversationState, text: str) -> Resolution:
-        """Applies the hard rules, then matches and resolves the message.
+    def _run_turn(
+        self, state: ConversationState, turn: UserTurn, timer: StepTimer
+    ) -> tuple[ReplyContent, TurnOutcome, TurnDetails]:
+        """Resolves and applies the message, unless the conversation has already ended.
+
+        Args:
+            state: The conversation, updated in place.
+            turn: The message and the session's customer.
+            timer: Times the steps.
+
+        Returns:
+            tuple[ReplyContent, TurnOutcome, TurnDetails]: the facts to phrase, how the turn
+            ended, and what was understood.
+        """
+        if state.ended is not None:
+            ended = ReplyContent(message_key=MessageKey.CONVERSATION_ENDED)
+            return ended, state.ended, TurnDetails()
+        resolution, match = self._resolve(state, turn.text, timer)
+        with timer.measure(TurnStep.ACTION):
+            content = self._apply(state, resolution, CustomerContext(customer_id=turn.customer_id))
+        self._remember(state, turn.text)
+        return content, resolution.kind, _details(resolution, match)
+
+    def _resolve(
+        self, state: ConversationState, text: str, timer: StepTimer
+    ) -> tuple[Resolution, MatchResult | None]:
+        """Applies the hard rules, then embeds, matches and resolves the message.
 
         Args:
             state: The conversation so far.
             text: The customer's message.
+            timer: Times the steps.
 
         Returns:
-            Resolution: what the turn does.
+            tuple[Resolution, MatchResult | None]: what the turn does, and the matcher's verdict
+            (None when a hard rule closed the conversation before matching).
         """
-        closure = self._guardrails.check(state, text)
+        with timer.measure(TurnStep.GUARDRAILS):
+            closure = self._guardrails.check(state, text)
         if closure is not None:
-            return closure
-        match = self._matcher.match(self._embedder.embed([text])[0])
+            return closure, None
+        with timer.measure(TurnStep.EMBEDDING):
+            vector = self._embedder.embed([text])[0]
+        with timer.measure(TurnStep.MATCHING):
+            match = self._matcher.match(vector)
         if match.guard_flags:
             logger.warning("Guard flags %s on incident %s", match.guard_flags, state.incident_id)
-        return self._resolver.resolve(state, text, match)
+        with timer.measure(TurnStep.RESOLUTION):
+            return self._resolver.resolve(state, text, match), match
 
     def _apply(
         self, state: ConversationState, resolution: Resolution, context: CustomerContext
@@ -159,3 +204,39 @@ class ConversationEngine:
         state.recent_messages = [*state.recent_messages, normalize_text(text)][
             -self._recent_messages_kept :
         ]
+
+
+def _log_turn(incident_id: str, outcome: TurnOutcome, timings: TurnTimings) -> None:
+    """Logs how a turn ended and how long it took, with the per-step breakdown at debug level.
+
+    Args:
+        incident_id: The case.
+        outcome: How the turn ended.
+        timings: The turn's durations.
+
+    Returns:
+        None.
+    """
+    logger.info("Incident %s turn ended as %s in %.2f ms", incident_id, outcome, timings.total_ms)
+    steps = ", ".join(f"{step.value} {ms:.2f}" for step, ms in timings.steps_ms.items())
+    logger.debug("Incident %s step durations (ms): %s", incident_id, steps)
+
+
+def _details(resolution: Resolution, match: MatchResult | None) -> TurnDetails:
+    """Collects what was understood in a turn, for its `events` metadata.
+
+    Args:
+        resolution: What the turn does.
+        match: The matcher's verdict, or None if matching never ran.
+
+    Returns:
+        TurnDetails: the intent resolved or asked about, the match kind and any guard flags.
+    """
+    intent = None
+    if isinstance(resolution, Resolved):
+        intent = resolution.intent
+    elif isinstance(resolution, NeedsClarification):
+        intent = resolution.question.intent
+    if match is None:
+        return TurnDetails(intent=intent)
+    return TurnDetails(intent=intent, match_kind=match.kind, guard_flags=match.guard_flags)

@@ -100,25 +100,25 @@ a complaint's status.
 
 ```bash
 uv run krtr back ia ask "Necesito consultar el saldo de mi tarjeta de crédito"
-# [resolved] Saldo de tarjeta de crédito:
+# [resolved · 0.6 ms] Saldo de tarjeta de crédito:
 # - ****9921: saldo 812,300.00 COP, cupo 5,000,000.00 COP
 
 # Start in Portuguese (the interface's language, before any clear message)
 uv run krtr back ia ask "saldo da minha conta poupança" --language pt-BR
-# [resolved] Saldo de conta poupança:
+# [resolved · 0.6 ms] Saldo de conta poupança:
 # - ****7781: 2,350,400.50 COP
 
 uv run krtr back ia ask "estado de mi queja PQR-104233"
-# [resolved] Tu caso PQR-104233 (comisiones), abierto el 2026-09-14, está en estado: en proceso.
+# [resolved · 0.6 ms] Tu caso PQR-104233 (comisiones), abierto el 2026-09-14, está en estado: en proceso.
 
 # No --language needed: the reply follows the language the message is written in
 uv run krtr back ia ask "Preciso consultar o saldo do meu cartão de crédito"
-# [resolved] Saldo de cartão de crédito:
+# [resolved · 0.6 ms] Saldo de cartão de crédito:
 # - ****9921: saldo 812,300.00 COP, limite 5,000,000.00 COP
 ```
 
-Each reply starts with how the turn ended: `resolved`, `needs_clarification`, `escalated` (handed
-to a human) or `closed` (a hard rule ended it).
+Each reply starts with how the turn ended — `resolved`, `needs_clarification`, `escalated`
+(handed to a human) or `closed` (a hard rule ended it) — and how long the turn took.
 
 ### Holding a conversation
 
@@ -128,18 +128,18 @@ case. Type `/exit` to leave; the chat also stops by itself when the case is esca
 ```bash
 uv run krtr back ia chat
 > ¿Cuál es mi saldo?
-[needs_clarification] ¿Sobre qué producto? Responde con el número:
+[needs_clarification · 0.6 ms] ¿Sobre qué producto? Responde con el número:
 1. cuenta de ahorros
 2. cuenta corriente
 3. tarjeta de crédito
 ...
 > 1
-[resolved] Saldo de cuenta de ahorros:
+[resolved · 0.6 ms] Saldo de cuenta de ahorros:
 - ****7781: 2,350,400.50 COP
 > ¿Cómo va mi reclamo?
-[needs_clarification] Por favor, indícame el número de caso.
+[needs_clarification · 0.6 ms] Por favor, indícame el número de caso.
 > pqr-104233
-[resolved] Tu caso PQR-104233 (comisiones), abierto el 2026-09-14, está en estado: en proceso.
+[resolved · 0.6 ms] Tu caso PQR-104233 (comisiones), abierto el 2026-09-14, está en estado: en proceso.
 > /exit
 ```
 
@@ -165,13 +165,30 @@ web interface's selector will be.
 ```bash
 uv run krtr back ia chat
 > Quero saber o status da minha reclamação
-[needs_clarification] Por favor, informe o número do caso.
+[needs_clarification · 0.6 ms] Por favor, informe o número do caso.
 > pqr-104233
-[resolved] Seu caso PQR-104233 (tarifas), aberto em 2026-09-14, está com status: em andamento.
+[resolved · 0.6 ms] Seu caso PQR-104233 (tarifas), aberto em 2026-09-14, está com status: em andamento.
 > Ahora quiero saber el saldo de mi cuenta de ahorros
-[resolved] Saldo de cuenta de ahorros:
+[resolved · 0.6 ms] Saldo de cuenta de ahorros:
 - ****7781: 2,350,400.50 COP
 ```
+
+### Latency
+
+Every reply carries its latency (`AgentReply.timings`): the total and each step of the turn —
+language, guardrails, embedding, matching, resolution, action, writing — in milliseconds. The
+CLI shows the total next to the outcome; `--verbose` logs the steps:
+
+```bash
+uv run krtr --verbose back ia ask "¿Cuál es mi saldo?"
+# ... INFO  ... Incident INC-DEMO turn ended as needs_clarification in 0.53 ms
+# ... DEBUG ... Incident INC-DEMO step durations (ms): language 0.18, guardrails 0.01,
+#     embedding 0.04, matching 0.10, resolution 0.04, action 0.02, writing 0.01
+```
+
+Today's sub-millisecond turns come from the hashing embedder and in-memory data. The real
+multilingual model (phase 2), Neon reads and the LLM clarifier (phase 3) are what the < 1 s
+target (G16) will be measured against.
 
 Add `--verbose` before
 `back` (`uv run krtr --verbose back ia chat`) to see each step of the turn in the log.

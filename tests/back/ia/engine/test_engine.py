@@ -1,8 +1,11 @@
 """Tests whole conversations through the phase 1 engine: answers, questions and endings."""
 
-from krtr.back.ia.artifacts import AgentReply, TurnOutcome, UserTurn
+from krtr.back.ia.artifacts import AgentReply, TurnDetails, TurnOutcome, TurnStep, UserTurn
 from krtr.back.ia.demo import DEMO_COMPLAINT_ID
+from krtr.back.ia.deterministic.intents import Intent
 from krtr.back.ia.engine.engine import ConversationEngine
+from krtr.back.ia.matching.artifacts import MatchKind
+from krtr.back.ia.matching.labels import GuardLabel
 from krtr.back.security.oidc.artifacts import InterfaceLanguage
 from tests.back.ia.fakes import CUSTOMER_ID, OTHER_CUSTOMER_ID, sample_engine
 
@@ -109,3 +112,53 @@ def test_a_clear_sentence_in_the_other_language_switches_the_replies() -> None:
 
     assert switched.language == InterfaceLanguage.SPANISH
     assert switched.reply.startswith("Saldo de cuenta de ahorros:")
+
+
+def test_every_step_of_a_resolved_turn_is_timed() -> None:
+    """Each response carries its latency, broken down by step, within its total (G16)."""
+    reply = _say(sample_engine(), "Necesito consultar el saldo de mi tarjeta de crédito")
+
+    assert set(reply.timings.steps_ms) == set(TurnStep)
+    assert sum(reply.timings.steps_ms.values()) <= reply.timings.total_ms
+
+
+def test_an_ended_conversation_times_only_what_still_runs() -> None:
+    """After a closure nothing is matched or resolved, so those steps are absent."""
+    engine = sample_engine()
+    for _ in range(3):
+        _say(engine, "hola banco")
+
+    reply = _say(engine, "¿Cuál es mi saldo?")
+
+    assert set(reply.timings.steps_ms) == {TurnStep.LANGUAGE, TurnStep.WRITING}
+
+
+def test_the_reply_reports_what_was_understood_for_the_events_log() -> None:
+    """A resolved turn carries its intent and match kind, never needing the reply text (G21)."""
+    reply = _say(sample_engine(), "Necesito consultar el saldo de mi tarjeta de crédito")
+
+    assert reply.details == TurnDetails(intent=Intent.ACCOUNT_BALANCE, match_kind=MatchKind.MATCHED)
+
+
+def test_a_slot_question_reports_the_intent_it_is_filling() -> None:
+    """While asking for the product, the intent is already known."""
+    reply = _say(sample_engine(), "¿Cuál es mi saldo?")
+
+    assert reply.details.intent == Intent.ACCOUNT_BALANCE
+
+
+def test_guard_flags_are_reported_without_ending_the_conversation() -> None:
+    """An aggressive message is flagged in the metadata; closing on it waits for phase 3."""
+    reply = _say(sample_engine(), "Son unos ladrones, no sirven para nada")
+
+    assert reply.details.guard_flags == [GuardLabel.AGGRESSIVE]
+    assert reply.outcome != TurnOutcome.CLOSED
+
+
+def test_a_closure_before_matching_reports_no_match_details() -> None:
+    """When a hard rule closes the case, nothing was matched."""
+    engine = sample_engine()
+
+    replies = [_say(engine, "hola banco") for _ in range(3)]
+
+    assert replies[-1].details == TurnDetails()

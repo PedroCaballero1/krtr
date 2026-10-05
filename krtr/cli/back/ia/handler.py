@@ -101,7 +101,9 @@ def _send(engine: ConversationEngine, text: str, language: InterfaceLanguage) ->
 
 
 def _show(reply: AgentReply) -> None:
-    """Shows the reply and how the turn ended.
+    """Shows the reply, how the turn ended and how long it took.
+
+    The per-step durations are logged at debug level (`krtr --verbose back ia ...`).
 
     Args:
         reply: The engine's reply.
@@ -109,4 +111,4 @@ def _show(reply: AgentReply) -> None:
     Returns:
         None.
     """
-    typer.echo(f"[{reply.outcome.value}] {reply.reply}")
+    typer.echo(f"[{reply.outcome.value} · {reply.timings.total_ms:.2f} ms] {reply.reply}")
