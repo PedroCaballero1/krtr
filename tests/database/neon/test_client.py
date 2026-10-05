@@ -16,6 +16,7 @@ class FakeCursor:
     def __init__(self, connection: "FakeConnection") -> None:
         """Keeps a reference to the owning fake connection."""
         self.connection = connection
+        self.rowcount = connection.rowcount_result
 
     def __enter__(self) -> "FakeCursor":
         """Returns itself, like a real psycopg2 cursor context manager."""
@@ -48,6 +49,7 @@ class FakeConnection:
         self.committed = 0
         self.closed = False
         self.fetchall_result: list[tuple] = []
+        self.rowcount_result = 0
 
     def cursor(self) -> FakeCursor:
         """Returns a new FakeCursor bound to this connection."""
@@ -213,6 +215,20 @@ def test_execute_params_uses_the_pool_and_commits(monkeypatch: pytest.MonkeyPatc
     assert connection.committed == 1
     assert pools[0].getconn_calls == 1
     assert pools[0].putconn_calls == 1
+
+
+def test_execute_params_returns_how_many_rows_the_statement_affected(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Callers such as the session revocation need to know whether the UPDATE matched anything."""
+    client, connection, _ = make_pooled_client(monkeypatch)
+    connection.rowcount_result = 2
+
+    affected_rows = client.execute_params(
+        "UPDATE t SET revoked = true WHERE customer = %(c)s", {"c": "1"}
+    )
+
+    assert affected_rows == 2
 
 
 def test_fetch_one_returns_the_first_row(monkeypatch: pytest.MonkeyPatch) -> None:

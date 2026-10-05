@@ -1,11 +1,39 @@
-"""Tests create_app(): health, docs gating by environment, and the SPA fallback."""
+"""Tests create_app() (health, docs, SPA fallback) and create_served_app() (events and login)."""
 
+import base64
+import logging
 from pathlib import Path
 
+import pytest
 from fastapi.testclient import TestClient
 
+from krtr.back.security.audit import recorder as recorder_module
+from krtr.back.security.audit.event_names import EventName
+from krtr.back.security.audit.recorder import EventRecorder
+from krtr.back.security.crypto.config import CryptoEnvironmentVariable
+from krtr.back.security.oidc.config import OidcEnvironmentVariable
+from krtr.back.web import app as app_module
 from krtr.back.web.app import create_app
-from krtr.back.web.config import WebConfig, WebEnvironment
+from krtr.back.web.config import WebConfig, WebEnvironment, WebEnvironmentVariable
+from tests.back.security.audit.fakes import InMemoryRecorder, refuse_to_open_neon
+
+
+@pytest.fixture
+def served_environment(monkeypatch: pytest.MonkeyPatch) -> pytest.MonkeyPatch:
+    """Isolates create_served_app from the developer's .env, its keys and secrets, and Neon."""
+    monkeypatch.setattr(app_module, "load_dotenv", lambda: None)
+    monkeypatch.setattr(recorder_module, "NeonClient", refuse_to_open_neon)
+    monkeypatch.setattr(app_module, "NeonClient", refuse_to_open_neon)
+    for variable in (*CryptoEnvironmentVariable, *OidcEnvironmentVariable):
+        monkeypatch.delenv(variable, raising=False)
+    return monkeypatch
+
+
+def configure_login(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Gives the served app what its login needs, with a stand-in Neon client."""
+    monkeypatch.setenv(OidcEnvironmentVariable.CLIENT_SECRET, "test-client-secret")
+    monkeypatch.setenv(CryptoEnvironmentVariable.TOKENS_KEY, base64.b64encode(b"t" * 32).decode())
+    monkeypatch.setattr(app_module, "NeonClient", object)  # Sessions are not used by these tests.
 
 
 def test_healthz_reports_ok() -> None:
@@ -85,3 +113,92 @@ def test_response_carries_a_request_id_header() -> None:
     response = client.get("/healthz")
 
     assert response.headers.get("X-Request-Id")
+
+
+def test_served_app_records_every_request_in_production(
+    served_environment: pytest.MonkeyPatch,
+) -> None:
+    """In production, the served app must record an http_request for each request (G21)."""
+    recorder = InMemoryRecorder()
+    served_environment.setenv(WebEnvironmentVariable.ENVIRONMENT, WebEnvironment.PRODUCTION)
+    served_environment.setattr(EventRecorder, "from_environment", lambda: recorder)
+    configure_login(served_environment)
+
+    TestClient(app_module.create_served_app()).get("/healthz")
+
+    assert [event_name for event_name, _ in recorder.events] == [EventName.HTTP_REQUEST]
+
+
+def test_served_app_refuses_to_start_in_production_without_the_events_key(
+    served_environment: pytest.MonkeyPatch,
+) -> None:
+    """Production must fail fast, naming the missing variable, instead of dropping events."""
+    served_environment.setenv(WebEnvironmentVariable.ENVIRONMENT, WebEnvironment.PRODUCTION)
+
+    with pytest.raises(ValueError, match=CryptoEnvironmentVariable.EVENTS_KEY.value):
+        app_module.create_served_app()
+
+
+def test_served_app_runs_without_recording_in_development(
+    served_environment: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    """Development may run without Neon or a key: recording is off and a warning says why."""
+    served_environment.setenv(WebEnvironmentVariable.ENVIRONMENT, WebEnvironment.DEVELOPMENT)
+
+    with caplog.at_level(logging.WARNING, logger=app_module.__name__):
+        served_app = app_module.create_served_app()
+
+    assert served_app.state.event_recorder is None
+    assert CryptoEnvironmentVariable.EVENTS_KEY.value in caplog.text
+    assert TestClient(served_app).get("/healthz").status_code == 200
+
+
+def test_served_app_refuses_to_start_in_production_without_login_settings(
+    served_environment: pytest.MonkeyPatch,
+) -> None:
+    """Production without the OIDC client secret must fail fast, naming it."""
+    served_environment.setenv(WebEnvironmentVariable.ENVIRONMENT, WebEnvironment.PRODUCTION)
+    served_environment.setattr(EventRecorder, "from_environment", lambda: InMemoryRecorder())
+
+    with pytest.raises(ValueError, match=OidcEnvironmentVariable.CLIENT_SECRET.value):
+        app_module.create_served_app()
+
+
+def test_served_app_refuses_to_start_in_production_without_the_tokens_key(
+    served_environment: pytest.MonkeyPatch,
+) -> None:
+    """Sessions cannot store tokens without their key: production must not start."""
+    served_environment.setenv(WebEnvironmentVariable.ENVIRONMENT, WebEnvironment.PRODUCTION)
+    served_environment.setattr(EventRecorder, "from_environment", lambda: InMemoryRecorder())
+    served_environment.setenv(OidcEnvironmentVariable.CLIENT_SECRET, "test-client-secret")
+
+    with pytest.raises(ValueError, match=CryptoEnvironmentVariable.TOKENS_KEY.value):
+        app_module.create_served_app()
+
+
+def test_served_app_without_login_answers_503_on_login_routes(
+    served_environment: pytest.MonkeyPatch,
+) -> None:
+    """Development without Keycloak keeps the app up, and says login is unavailable."""
+    served_environment.setenv(WebEnvironmentVariable.ENVIRONMENT, WebEnvironment.DEVELOPMENT)
+
+    response = TestClient(app_module.create_served_app()).get("/auth/login", follow_redirects=False)
+
+    assert response.status_code == 503
+    assert response.json()["error"] == "auth_unavailable"
+
+
+def test_served_app_sends_logins_to_keycloak_when_configured(
+    served_environment: pytest.MonkeyPatch,
+) -> None:
+    """With its settings, the served app's /auth/login redirects to the krtr realm."""
+    served_environment.setenv(WebEnvironmentVariable.ENVIRONMENT, WebEnvironment.PRODUCTION)
+    served_environment.setattr(EventRecorder, "from_environment", lambda: InMemoryRecorder())
+    configure_login(served_environment)
+
+    response = TestClient(app_module.create_served_app()).get("/auth/login", follow_redirects=False)
+
+    assert response.status_code == 302
+    assert response.headers["location"].startswith(
+        "http://localhost:8080/realms/krtr/protocol/openid-connect/auth?"
+    )

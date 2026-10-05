@@ -33,7 +33,7 @@ const UNKNOWN_ERROR_CODE = "unknown_error";
 /**
  * Reads the CSRF cookie's raw value, if present.
  *
- * Exists so `apiFetch` can implement the double-submit pattern (§4.5): the
+ * Exists so `apiFetch` can implement the double-submit pattern (task 4.5): the
  * cookie is readable by JS by design, so its value is echoed back as a
  * header the server compares it against.
  *

@@ -1,17 +1,20 @@
 name: CI
 
+# No path filters: the security job must see every change (a secret can leak
+# from any file), and the deploy workflow (task 6.7 of
+# docs/guia-web-seguridad_modal.md) waits on this one.
 on:
   push:
     branches: [master]
-    paths:
-      - "krtr/**"
-      - "tests/**"
-      - ".github/workflows/ci.yml"
   pull_request:
-    paths:
-      - "krtr/**"
-      - "tests/**"
-      - ".github/workflows/ci.yml"
+
+permissions:
+  contents: read
+
+env:
+  SEMGREP_VERSION: "1.178.0"
+  GITLEAKS_VERSION: "8.28.0"
+  GITLEAKS_SHA256: "a65b5253807a68ac0cafa4414031fd740aeb55f54fb7e55f386acb52e6a840eb"
 
 jobs:
   lint-and-test:
@@ -28,8 +31,10 @@ jobs:
       - name: Set up Python
         run: uv python install
 
+      # The modal extra makes the tests behind pytest.importorskip("modal") run here too
+      # (krtr/compute/modal/ and krtr/back/deploy/); they need no Modal credentials.
       - name: Install dependencies
-        run: uv sync --locked
+        run: uv sync --locked --extra modal
 
       - name: Check formatting (black)
         run: uv run black --check krtr tests
@@ -42,3 +47,58 @@ jobs:
 
       - name: Run tests (pytest)
         run: uv run pytest tests
+
+  # Task 7.1 of docs/guia-web-seguridad_modal.md: fails on high or critical findings.
+  security:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository (full history for gitleaks)
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+        with:
+          enable-cache: true
+
+      - name: Set up Python
+        run: uv python install
+
+      - name: Install dependencies
+        run: uv sync --locked
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Install frontend dependencies
+        run: npm ci --no-fund
+
+      - name: Python static analysis (bandit, high severity)
+        run: uv run bandit -r krtr/back --severity-level high
+
+      - name: Static analysis (Semgrep, ERROR = high)
+        run: >-
+          uvx semgrep@${SEMGREP_VERSION} scan
+          --config p/python --config p/owasp-top-ten --config p/typescript
+          --severity ERROR --error --metrics=off
+
+      - name: Python dependency audit (pip-audit)
+        run: uv run pip-audit --skip-editable
+
+      - name: Frontend dependency audit (npm audit)
+        run: npm audit --audit-level=high
+
+      - name: Secret scan (gitleaks, full history)
+        run: |
+          curl -sSL -o gitleaks.tar.gz \
+            "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz"
+          echo "${GITLEAKS_SHA256}  gitleaks.tar.gz" | sha256sum --check
+          tar xzf gitleaks.tar.gz gitleaks
+          ./gitleaks git . --redact --no-banner
+
+      - name: Frontend tests (vitest)
+        run: npm --workspace krtr/front test

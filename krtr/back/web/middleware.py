@@ -1,7 +1,7 @@
 """Defines krtr-web's request-scoped logging middleware.
 
 Exists to give every request a `request_id` and a one-line start/end log
-entry, per §3.4 of docs/guia-web-seguridad.md ("Todas las respuestas llevan
+entry, per §3.4 of docs/guia-web-seguridad_modal.md ("Todas las respuestas llevan
 un request_id"). Consumed by `krtr/back/web/app.py`.
 """
 

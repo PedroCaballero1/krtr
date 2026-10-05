@@ -36,7 +36,7 @@ class NeonConfig(BaseModel):
 
     connection_string: SecretStr
     pool_min_size: int = 1
-    pool_max_size: int = 10  # Cloud Run runs krtr-web with a single instance (D8) serving <20
+    pool_max_size: int = 10  # Modal runs krtr-web in a single container (D8) serving <20
     # concurrent jurors; 10 pooled connections comfortably covers that load.
 
     @classmethod

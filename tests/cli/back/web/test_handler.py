@@ -19,17 +19,18 @@ def recorded_uvicorn_run(monkeypatch: pytest.MonkeyPatch) -> list[tuple[Any, ...
     return calls
 
 
-def test_serve_defaults_to_the_app_import_path_and_default_host_port(
+def test_serve_defaults_to_the_app_factory_and_default_host_port(
     recorded_uvicorn_run: list[tuple[Any, ...]], monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Verifies the default invocation points uvicorn at the app's import path."""
+    """Verifies uvicorn gets the served-app factory, so it runs it at startup, not on import."""
     monkeypatch.delenv("PORT", raising=False)
 
     result = runner.invoke(app, ["back", "web", "serve"])
 
     assert result.exit_code == 0, result.stdout
     args, kwargs = recorded_uvicorn_run[0]
-    assert args == ("krtr.back.web.app:app",)
+    assert args == ("krtr.back.web.app:create_served_app",)
+    assert kwargs["factory"] is True
     assert kwargs["host"] == handler.DEFAULT_HOST
     assert kwargs["port"] == handler.DEFAULT_PORT
     assert kwargs["reload"] is False

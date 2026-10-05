@@ -50,3 +50,24 @@ def test_from_environment_raises_when_the_key_is_missing(monkeypatch: pytest.Mon
 
     with pytest.raises(ValueError, match="Missing required environment variable"):
         CryptoConfig.from_environment()
+
+
+def test_from_environment_reads_the_tokens_key_apart_from_the_events_key(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The OIDC tokens get their own key, so leaking one key never exposes both kinds of data."""
+    tokens_key = base64.b64encode(b"1" * 32).decode("ascii")
+    monkeypatch.setenv(CryptoEnvironmentVariable.EVENTS_KEY, VALID_KEY_B64)
+    monkeypatch.setenv(CryptoEnvironmentVariable.TOKENS_KEY, tokens_key)
+
+    config = CryptoConfig.from_environment(CryptoEnvironmentVariable.TOKENS_KEY)
+
+    assert config.decoded_key() == b"1" * 32
+
+
+def test_a_missing_tokens_key_names_its_own_variable(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The error must say which key is missing, so the operator fixes the right secret."""
+    monkeypatch.delenv(CryptoEnvironmentVariable.TOKENS_KEY, raising=False)
+
+    with pytest.raises(ValueError, match=CryptoEnvironmentVariable.TOKENS_KEY.value):
+        CryptoConfig.from_environment(CryptoEnvironmentVariable.TOKENS_KEY)

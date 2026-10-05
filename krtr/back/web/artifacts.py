@@ -1,7 +1,7 @@
 """Defines the structured request/response contracts krtr-web's endpoints use.
 
 Exists to keep an endpoint's request/response shape discoverable apart from
-its implementation, per the §3.4 API contract in docs/guia-web-seguridad.md.
+its implementation, per the §3.4 API contract in docs/guia-web-seguridad_modal.md.
 Consumed by `krtr/back/web/routers/`.
 """
 
@@ -15,7 +15,7 @@ from krtr.back.security.audit.event_names import EventName
 class HealthStatus(BaseModel):
     """The `GET /healthz` response contract.
 
-    Exists so uptime checks (Cloud Run, GitHub Actions' smoke test) get a
+    Exists so uptime checks (the GitHub Actions deploy smoke test) get a
     typed, stable shape. Returned by `krtr/back/web/routers/health.py`.
     """
 

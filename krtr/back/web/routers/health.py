@@ -1,8 +1,8 @@
 """Defines the `GET /healthz` route.
 
-Exists as the single liveness/readiness check for krtr-web, used by Cloud
-Run's health probe and the GitHub Actions deploy smoke test (§6.8 of the
-guide). Consumed by `krtr/back/web/app.py`, which includes `health_router`.
+Exists as the single liveness/readiness check for krtr-web, used by the
+GitHub Actions deploy smoke test (task 6.7 of docs/guia-web-seguridad_modal.md).
+Consumed by `krtr/back/web/app.py`, which includes `health_router`.
 """
 
 from fastapi import APIRouter
@@ -16,8 +16,8 @@ health_router = APIRouter()
 async def get_health() -> HealthStatus:
     """Reports that the app process is up and able to serve requests.
 
-    Exists so infrastructure (Cloud Run, CI) can check liveness without
-    hitting an authenticated or database-backed route.
+    Exists so infrastructure (the deploy smoke test, uptime checks) can
+    check liveness without hitting an authenticated or database-backed route.
 
     Args:
         None.

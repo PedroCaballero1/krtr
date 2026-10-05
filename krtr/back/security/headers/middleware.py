@@ -1,7 +1,7 @@
 """Defines krtr-web's security-headers middleware.
 
-Exists to add the OWASP-recommended hardening headers (§4.2 of
-docs/guia-web-seguridad.md) to every response from one place, instead of
+Exists to add the OWASP-recommended hardening headers (task 4.2 of
+docs/guia-web-seguridad_modal.md) to every response from one place, instead of
 each route handler setting them itself. Consumed by `krtr/back/web/app.py`.
 """
 
@@ -34,8 +34,9 @@ def build_content_security_policy(auth_origin: str) -> str:
     rest of the (otherwise static) policy.
 
     Args:
-        auth_origin: Keycloak's origin (e.g. `https://auth.<dominio>`),
-            allowed in `form-action` alongside `'self'`.
+        auth_origin: Keycloak's origin (e.g.
+            `https://<workspace>--krtr-auth.modal.run`), allowed in
+            `form-action` alongside `'self'`.
 
     Returns:
         str: the full CSP header value.

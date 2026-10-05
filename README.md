@@ -22,6 +22,68 @@ La carpeta `data/` (en la raíz del repo, también ignorada por git) es donde
 se guardan y buscan por defecto los archivos descargados/cargados: listados y
 catálogos de S3, y los `.parquet`/`.csv` que carga `krtr database neon load`.
 
+## Probar la página en local (con login)
+
+Levanta krtr-web en http://localhost:8000 con el login real: Keycloak en Docker y las sesiones
+en la rama `dev` de Neon. Detalle en [`docs/guia-web-seguridad_modal.md`](docs/guia-web-seguridad_modal.md).
+
+Requisitos:
+
+- Docker (en Mac, Colima) y Node.
+- En `.env` (ver `.env.example`; pide los valores al equipo): `NEON_DEV_DB_HOST`,
+  `NEON_DEV_DIRECT_HOST`, `KRTR_KEYCLOAK_DB_PASSWORD`, `KRTR_KEYCLOAK_ADMIN_PASSWORD`,
+  `KRTR_WEB_OIDC_CLIENT_SECRET` y `KRTR_TOKENS_KEY`.
+
+1. Levantar Keycloak (la primera vez tarda unos minutos):
+
+   ```bash
+   docker compose --env-file .env -f krtr/back/security/keycloak/docker-compose.yml up -d
+   curl -s http://localhost:9000/health/ready   # listo cuando responde "UP"
+   ```
+
+2. Compilar el frontend:
+
+   ```bash
+   (cd krtr/front && npm ci && npm run build)
+   ```
+
+3. Levantar krtr-web contra la rama `dev` de Neon:
+
+   ```bash
+   uv run --env-file .env sh -c 'NEON_DB_HOST="$NEON_DEV_DB_HOST" KRTR_WEB_ENVIRONMENT=development krtr back web serve --host 127.0.0.1'
+   ```
+
+4. Crear el usuario de prueba. En otra terminal:
+
+   ```bash
+   uv run krtr back security keycloak test-user
+   ```
+
+   Muestra el usuario (`99999999`) y una **contraseña nueva** cada vez que se corre. La
+   contraseña no está escrita en ningún lado del repo.
+
+5. Abrir http://localhost:8000 en **Chrome o Firefox**, elegir idioma y entrar con ese usuario
+   y contraseña. Safari no guarda la cookie de sesión en `http://localhost`, así que el login
+   parece no hacer nada.
+
+6. Al terminar:
+
+   ```bash
+   uv run krtr back security keycloak test-user --delete
+   docker compose --env-file .env -f krtr/back/security/keycloak/docker-compose.yml down
+   ```
+
+Ten en cuenta:
+
+- Keycloak guarda sus datos en la rama `dev` de Neon, así que el usuario de prueba es **el mismo
+  para todo el equipo**. Si alguien vuelve a correr `test-user`, la contraseña anterior deja de
+  servir y las sesiones abiertas se cierran.
+- La sesión se cierra tras 5 minutos sin actividad o 30 minutos desde el login, y solo puede
+  haber una sesión abierta por usuario.
+- Mientras no estén las tareas 4.8 y 4.9 de la guía, crear un caso y el chat todavía no
+  funcionan.
+- La versión en Modal todavía no está desplegada (fase 6 de la guía).
+
 ## S3 downloads
 
 `krtr` can download a single file or a whole "directory" (key prefix) from S3.

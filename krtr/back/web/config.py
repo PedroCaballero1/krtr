@@ -65,7 +65,7 @@ class WebConfig(BaseModel):
     def from_environment(cls) -> "WebConfig":
         """Builds a WebConfig from the environment, defaulting to production.
 
-        Exists so the CLI and the app's module-level `app` instance get their
+        Exists so `create_served_app` and any other caller get their
         settings without reading the environment themselves.
 
         Args:
