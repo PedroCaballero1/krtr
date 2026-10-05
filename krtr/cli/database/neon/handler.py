@@ -18,13 +18,14 @@ import typer
 
 from krtr.cli.compute.modal.options import DetachOption, RemoteOption, resolve_execution_mode
 from krtr.cli.compute.modal.reporting import report_launched
-from krtr.compute.modal.config import RemoteTask, RunStatus
+from krtr.compute.modal.config import ExecutionMode, RemoteTask, RunStatus
 from krtr.compute.modal.errors import RemoteExecutionError
 from krtr.compute.modal.runner import run_task
+from krtr.database.neon.artifacts import LoadSummary
 from krtr.database.neon.client import NeonClient
-from krtr.database.neon.loader import DEFAULT_BATCH_SIZE
+from krtr.database.neon.loader import DEFAULT_BATCH_SIZE, merge_load_summaries
 from krtr.database.neon.schema import create_table_schema
-from krtr.database.neon.source import resolve_table_source
+from krtr.database.neon.source import resolve_partitioned_sources, resolve_table_source
 from krtr.database.neon.validation import RowValidationError
 
 logger = logging.getLogger(__name__)
@@ -169,3 +170,116 @@ def load(
     logger.info(
         "Loaded %d/%d rows (%d failed)", summary.rows_loaded, summary.rows_read, summary.rows_failed
     )
+
+
+@neon_app.command(name="load-dataset")
+def load_dataset(
+    table: TableArgument,
+    source: SourceOption = DEFAULT_SOURCE_DIRECTORY,
+    truncate: Annotated[
+        bool, typer.Option("--truncate", help="Truncate the table before the first file.")
+    ] = False,
+    strict: Annotated[
+        bool,
+        typer.Option("--strict", help="Stop on the first invalid row instead of skipping it."),
+    ] = False,
+    force_convert: Annotated[
+        bool,
+        typer.Option(
+            "--force-convert", help="Reconvert every <table>_*.csv to Parquet even if cached."
+        ),
+    ] = False,
+    batch_size: BatchSizeOption = DEFAULT_BATCH_SIZE,
+    remote: RemoteOption = False,
+) -> None:
+    """Loads every daily file of a partitioned dataset into Neon, one by one.
+
+    Exists for datasets split into many daily files (e.g. `transactions`,
+    1,097 files under `year=/month=/day=` folders), which `load` cannot
+    handle since it looks for a single `<table>.parquet`/`.csv`. Each file is
+    loaded through the same `neon-load` task `load` uses, in path order
+    (which is date order), so a single-file table and a partitioned one share
+    the exact same loading logic.
+
+    Args:
+        table: Table name, matching `krtr/database/queries/<table>/query.sql`
+            and the dataset directory `<source>/<table>/`.
+        source: Directory holding `<table>/`.
+        truncate: When True, truncate the table before the first file, so a
+            retry never duplicates rows. Later files never truncate.
+        strict: When True, stop the whole load on the first invalid row.
+        force_convert: When True, reconvert every partition's CSV to Parquet
+            even if a cached `.parquet` already exists next to it.
+        batch_size: Rows read and inserted per round trip, per file.
+        remote: When True, load each file from Modal, waiting for its result.
+
+    Returns:
+        None.
+
+    Examples:
+        Load every data/transactions/year=*/month=*/day=*/transactions_*.csv file::
+
+            krtr database neon load-dataset transactions
+
+        Restart from scratch, so a retry never duplicates rows::
+
+            krtr database neon load-dataset transactions --truncate
+
+        Run every file's load on Modal instead of this machine::
+
+            krtr database neon load-dataset transactions --remote
+    """
+    mode = ExecutionMode.REMOTE if remote else ExecutionMode.LOCAL
+    try:
+        parquet_paths = resolve_partitioned_sources(table, source, force_convert)
+        summaries = _load_each_partition(table, parquet_paths, truncate, strict, batch_size, mode)
+    except HANDLED_ERRORS as error:
+        raise _exit_with_error(error) from error
+    summary = merge_load_summaries(summaries)
+    logger.info(
+        "Loaded %d/%d rows across %d files into %s (%d failed)",
+        summary.rows_loaded,
+        summary.rows_read,
+        len(parquet_paths),
+        table,
+        summary.rows_failed,
+    )
+
+
+def _load_each_partition(
+    table: str,
+    parquet_paths: list[Path],
+    truncate: bool,
+    strict: bool,
+    batch_size: int,
+    mode: ExecutionMode,
+) -> list[LoadSummary]:
+    """Loads every partition file in order, truncating only before the first.
+
+    Exists to keep `load_dataset` focused on parsing input and reporting the
+    result; this is the loop that dispatches one `neon-load` task per file.
+
+    Args:
+        table: Target table name.
+        parquet_paths: The partition files to load, in load order.
+        truncate: When True, truncate the table before the first file.
+        strict: When True, stop on the first invalid row.
+        batch_size: Rows read and inserted per round trip, per file.
+        mode: Where each file's load runs (LOCAL or REMOTE).
+
+    Returns:
+        list[LoadSummary]: one summary per file, in load order.
+    """
+    summaries = []
+    for index, parquet_path in enumerate(parquet_paths):
+        arguments = {
+            "table_name": table,
+            "parquet_path": parquet_path,
+            "truncate": truncate and index == 0,
+            "strict": strict,
+            "batch_size": batch_size,
+        }
+        outcome = run_task(RemoteTask.NEON_LOAD, arguments, mode)
+        logger.info("Loaded file %d/%d: %s", index + 1, len(parquet_paths), parquet_path.name)
+        summaries.append(outcome.result)
+    return summaries

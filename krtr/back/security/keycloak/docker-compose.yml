@@ -1,0 +1,38 @@
+# Local Keycloak for krtr (task 3.1 of docs/guia-web-seguridad_modal.md).
+#
+# Runs the official image in dev mode (themes are not cached, which task 3.3 needs) against the
+# `keycloak` database of Neon's `dev` branch, so local work never touches production (D10).
+# Production runs on Modal instead (task 6.3). The variables come from the repo's .env; see
+# .env.example.
+#
+# From the repo root:
+#   docker compose --env-file .env -f krtr/back/security/keycloak/docker-compose.yml up -d
+#   curl -s localhost:9000/health/ready
+name: krtr-keycloak
+
+services:
+  keycloak:
+    image: quay.io/keycloak/keycloak:26.8.0  # Latest stable on 2026-10-02.
+    # --import-realm creates the krtr realm from realm-krtr.json on startup if it does not exist
+    # yet; an existing realm is left as it is (task 3.2).
+    command: ["start-dev", "--import-realm"]
+    volumes:
+      - ./realm-krtr.json:/opt/keycloak/data/import/realm-krtr.json:ro
+    environment:
+      # Read by realm-krtr.json's ${KRTR_WEB_OIDC_CLIENT_SECRET} placeholder at import time.
+      KRTR_WEB_OIDC_CLIENT_SECRET: ${KRTR_WEB_OIDC_CLIENT_SECRET:?missing in .env, see .env.example}
+      KC_DB: postgres
+      # Direct connection: Keycloak runs its own pool and Liquibase migrations, which Neon's
+      # transaction-mode pooler does not support.
+      KC_DB_URL_HOST: ${NEON_DEV_DIRECT_HOST:?missing in .env, see .env.example}
+      KC_DB_URL_DATABASE: keycloak
+      KC_DB_URL_PROPERTIES: "?sslmode=require"
+      KC_DB_USERNAME: krtr_keycloak
+      KC_DB_PASSWORD: ${KRTR_KEYCLOAK_DB_PASSWORD:?missing in .env, see .env.example}
+      KC_HEALTH_ENABLED: "true"
+      KC_CACHE: local
+      KC_BOOTSTRAP_ADMIN_USERNAME: admin
+      KC_BOOTSTRAP_ADMIN_PASSWORD: ${KRTR_KEYCLOAK_ADMIN_PASSWORD:?missing in .env, see .env.example}
+    ports:
+      - "127.0.0.1:8080:8080"  # Login and OIDC; bound to this machine only.
+      - "127.0.0.1:9000:9000"  # Management interface (/health/ready).

@@ -18,17 +18,6 @@ export async function sendVoiceMessage(
   audio: Blob,
   language: Language,
 ): Promise<ChatMessageResponse> {
-  // TEMP DEMO MOCK — revert before continuing real work.
-  await new Promise((resolve) => setTimeout(resolve, 900));
-  return {
-    incident_id: incidentId,
-    reply:
-      language === "es"
-        ? "Recibimos tu nota de voz. Un asesor la revisará pronto."
-        : "Recebemos sua nota de voz. Um consultor irá analisá-la em breve.",
-    responded_at: new Date().toISOString(),
-  };
-  // eslint-disable-next-line no-unreachable
   const formData = new FormData();
   formData.append("audio", audio);
   formData.append("incident_id", incidentId);

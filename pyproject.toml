@@ -28,6 +28,7 @@ dependencies = [
     "argon2-cffi>=25.1.0",
     "python-multipart>=0.0.32",
     "slowapi>=0.1.10",
+    "joserfc>=1.7.5",
 ]
 
 [tool.black]

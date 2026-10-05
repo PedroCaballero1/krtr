@@ -1,7 +1,7 @@
 """Implements AES-256-GCM encryption for at-rest-only, opaque columns.
 
 Exists so `events.properties` and `app_sessions.tokens_ciphertext` (§3.5 and
-D1 of docs/guia-web-seguridad.md) are encrypted the same way, through one
+D1 of docs/guia-web-seguridad_modal.md) are encrypted the same way, through one
 small, reusable class, instead of each caller handling nonces and AEAD
 tags itself. Consumed by `krtr/back/security/audit/recorder.py` and
 `krtr/back/security/sessions/`.

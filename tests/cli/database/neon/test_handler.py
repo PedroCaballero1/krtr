@@ -236,3 +236,113 @@ def test_load_error_exits_with_code_one(monkeypatch: pytest.MonkeyPatch, tmp_pat
 
     assert result.exit_code == 1
     assert isinstance(result.exception, SystemExit)
+
+
+def _record_load_dataset_calls(
+    monkeypatch: pytest.MonkeyPatch, parquet_paths: list[Path]
+) -> list[tuple[object, ...]]:
+    """Replaces partitioned source resolution and the runner with recorders."""
+    calls: list[tuple[object, ...]] = []
+
+    def _resolve(table: str, source: Path, force_convert: bool) -> list[Path]:
+        calls.append(("resolve", table, source, force_convert))
+        return parquet_paths
+
+    def _run(task: RemoteTask, arguments: dict[str, Any], mode: ExecutionMode) -> RunOutcome:
+        calls.append(("run", task, dict(arguments), mode))
+        return RunOutcome(
+            status=RunStatus.SUCCEEDED,
+            result=LoadSummary(rows_read=2, rows_loaded=2),
+            run_id="run-1",
+            call_id="fc-1",
+        )
+
+    monkeypatch.setattr(handler, "resolve_partitioned_sources", _resolve)
+    monkeypatch.setattr(handler, "run_task", _run)
+    return calls
+
+
+def test_load_dataset_loads_every_file_locally_in_order(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Verifies each partition file is dispatched as its own neon-load task, in order."""
+    parquet_paths = [
+        tmp_path / "transactions_20260101.parquet",
+        tmp_path / "transactions_20260102.parquet",
+    ]
+    calls = _record_load_dataset_calls(monkeypatch, parquet_paths)
+
+    result = runner.invoke(
+        app, ["database", "neon", "load-dataset", "transactions", "--source", str(tmp_path)]
+    )
+
+    assert result.exit_code == 0
+    run_calls = [call for call in calls if call[0] == "run"]
+    assert [call[2]["parquet_path"] for call in run_calls] == parquet_paths
+    assert all(call[3] is ExecutionMode.LOCAL for call in run_calls)
+
+
+def test_load_dataset_truncates_only_before_the_first_file(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Verifies --truncate empties the table once, never between later files."""
+    parquet_paths = [
+        tmp_path / "transactions_20260101.parquet",
+        tmp_path / "transactions_20260102.parquet",
+    ]
+    calls = _record_load_dataset_calls(monkeypatch, parquet_paths)
+
+    result = runner.invoke(
+        app,
+        [
+            "database",
+            "neon",
+            "load-dataset",
+            "transactions",
+            "--source",
+            str(tmp_path),
+            "--truncate",
+        ],
+    )
+
+    assert result.exit_code == 0
+    run_calls = [call for call in calls if call[0] == "run"]
+    assert [call[2]["truncate"] for call in run_calls] == [True, False]
+
+
+def test_load_dataset_runs_remote_for_every_file(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Verifies --remote dispatches every file's load to Modal, not just the first."""
+    parquet_paths = [
+        tmp_path / "transactions_20260101.parquet",
+        tmp_path / "transactions_20260102.parquet",
+    ]
+    calls = _record_load_dataset_calls(monkeypatch, parquet_paths)
+
+    result = runner.invoke(
+        app,
+        ["database", "neon", "load-dataset", "transactions", "--source", str(tmp_path), "--remote"],
+    )
+
+    assert result.exit_code == 0
+    run_calls = [call for call in calls if call[0] == "run"]
+    assert all(call[3] is ExecutionMode.REMOTE for call in run_calls)
+
+
+def test_load_dataset_error_exits_with_code_one(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Verifies no matching partition files becomes exit code 1."""
+
+    def _raise(table: str, source: Path, force_convert: bool) -> list[Path]:
+        raise FileNotFoundError("no transactions_*.csv files found")
+
+    monkeypatch.setattr(handler, "resolve_partitioned_sources", _raise)
+
+    result = runner.invoke(
+        app, ["database", "neon", "load-dataset", "transactions", "--source", str(tmp_path)]
+    )
+
+    assert result.exit_code == 1
+    assert isinstance(result.exception, SystemExit)
