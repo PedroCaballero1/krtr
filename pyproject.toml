@@ -29,6 +29,7 @@ dependencies = [
     "python-multipart>=0.0.32",
     "slowapi>=0.1.10",
     "joserfc>=1.7.5",
+    "numpy>=2.5.3",
 ]
 
 [tool.black]
