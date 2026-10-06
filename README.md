@@ -25,10 +25,9 @@ answers from that customer's own data, or hands the case to a person.
 
 ### For the jury
 
-Log in at `https://juan-alvarezo-2002--krtr.modal.run/` with one of the 50 test accounts.
-The accounts (customer number and password), with what each one can ask the assistant, are
-handed to the jury separately through a private channel: passwords are never stored in this
-repository.
+Log in to the krtr page with the test accounts in
+`https://juan-alvarezo-2002--krtr.modal.run/`
+using: `krtr-security/data/credentials/jury_credentials.csv`.
 
 ## The solution: deterministic first
 
