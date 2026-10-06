@@ -6,6 +6,7 @@ import * as events from "@/api/events";
 import i18n from "@/i18n/config";
 import { Language } from "@/i18n/languages";
 import es from "@/i18n/locales/es.json";
+import pt from "@/i18n/locales/pt-BR.json";
 import { LandingPage } from "@/pages/landing-page";
 
 describe("LandingPage", () => {
@@ -21,6 +22,14 @@ describe("LandingPage", () => {
     });
     vi.spyOn(events, "trackEvent").mockResolvedValue(undefined);
   });
+
+  function renderWithSearch(search: string) {
+    Object.defineProperty(window, "location", {
+      configurable: true,
+      value: { ...originalLocation, assign: assignSpy, search },
+    });
+    return render(<LandingPage />);
+  }
 
   afterEach(() => {
     Object.defineProperty(window, "location", {
@@ -83,14 +92,6 @@ describe("LandingPage", () => {
   });
 
   describe("logout reason notice", () => {
-    function renderWithSearch(search: string) {
-      Object.defineProperty(window, "location", {
-        configurable: true,
-        value: { ...originalLocation, assign: assignSpy, search },
-      });
-      return render(<LandingPage />);
-    }
-
     it.each([
       ["?logout=idle", es.session_expired_idle_message],
       ["?logout=absolute", es.session_expired_absolute_message],
@@ -108,6 +109,31 @@ describe("LandingPage", () => {
 
       renderWithSearch("?logout=<script>");
       expect(screen.queryByRole("status")).not.toBeInTheDocument();
+    });
+  });
+
+  describe("login notice", () => {
+    it("announces a rejected login in Spanish", () => {
+      renderWithSearch("?login=failed");
+
+      expect(screen.getByRole("alert")).toHaveTextContent(es.login_failed);
+    });
+
+    it("announces a rejected login in Portuguese", async () => {
+      await i18n.changeLanguage(Language.Portuguese);
+
+      renderWithSearch("?login=failed");
+
+      expect(screen.getByRole("alert")).toHaveTextContent(pt.login_failed);
+    });
+
+    it("shows nothing without a notice, or for an unknown one", () => {
+      const { unmount } = renderWithSearch("");
+      expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+      unmount();
+
+      renderWithSearch("?login=<script>");
+      expect(screen.queryByRole("alert")).not.toBeInTheDocument();
     });
   });
 });
