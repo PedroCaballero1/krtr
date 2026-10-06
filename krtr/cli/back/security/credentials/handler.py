@@ -18,7 +18,12 @@ from krtr.back.security.credentials.config import (
     CredentialsConfig,
 )
 from krtr.back.security.credentials.generator import generate_credentials
-from krtr.back.security.credentials.importer import import_users, users_files
+from krtr.back.security.credentials.importer import (
+    DEFAULT_CHUNK_SIZE,
+    DEFAULT_PARALLEL_REQUESTS,
+    import_users,
+    users_files,
+)
 from krtr.back.security.credentials.remote import (
     IMPORT_VOLUME,
     KeycloakIsServing,
@@ -83,6 +88,8 @@ def import_command(
     force: bool = typer.Option(
         False, "--force", help="With --remote: import even while the auth function is running."
     ),
+    chunk_size: int = typer.Option(DEFAULT_CHUNK_SIZE, help="Users per request (local only)."),
+    parallel: int = typer.Option(DEFAULT_PARALLEL_REQUESTS, help="Requests at once (local only)."),
 ) -> None:
     """Imports the generated users into Keycloak, skipping those already there.
 
@@ -93,31 +100,38 @@ def import_command(
         source: The folder the generator wrote the users files to.
         remote: Whether to import on Modal instead of locally.
         force: Whether to import on Modal while the serving Keycloak is up.
+        chunk_size: Users per partialImport request, locally.
+        parallel: How many requests run at once, locally.
 
     Returns:
         None.
     """
     try:
         files = users_files(source)
-        result = _import_remotely(files, force) if remote else _import_locally(files)
+        if remote:
+            result = _import_remotely(files, force)
+        else:
+            result = _import_locally(files, chunk_size, parallel)
     except (FileNotFoundError, ValueError, KeycloakIsServing, httpx.HTTPError) as error:
         logger.error("%s", error)
         raise typer.Exit(code=1) from error
     logger.info("%d users added, %d already there", result.added, result.skipped)
 
 
-def _import_locally(files: list[Path]) -> PartialImportResult:
+def _import_locally(files: list[Path], chunk_size: int, parallel: int) -> PartialImportResult:
     """Imports the files into the docker compose Keycloak.
 
     Args:
         files: The users files.
+        chunk_size: Users per request.
+        parallel: Requests at once.
 
     Returns:
         PartialImportResult: the totals.
     """
     with httpx.Client(timeout=LOCAL_IMPORT_TIMEOUT_SECONDS) as http_client:
         admin = KeycloakAdminClient(KeycloakAdminConfig.from_environment(), http_client)
-        return import_users(admin, files)
+        return import_users(admin, files, chunk_size, parallel)
 
 
 def _import_remotely(files: list[Path], force: bool) -> PartialImportResult:

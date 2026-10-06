@@ -82,3 +82,29 @@ def test_a_file_for_another_realm_is_rejected(tmp_path: Path) -> None:
 
     with pytest.raises(ValueError, match="master"):
         import_users(FakeImportClient(), users_files(tmp_path))
+
+
+def test_users_are_sent_in_chunks_that_never_span_files(tmp_path: Path) -> None:
+    """Keycloak aborts a request after 300 s, so big files go in several small requests."""
+    write_users_file(tmp_path, 0, [f"CLI-A{number}" for number in range(5)])
+    write_users_file(tmp_path, 1, ["CLI-B0"])
+    client = RecordingImportClient()
+
+    result = import_users(client, users_files(tmp_path), chunk_size=2, parallel_requests=3)
+
+    assert sorted(client.batch_sizes) == [1, 1, 2, 2]
+    assert result.added == 6
+
+
+class RecordingImportClient(FakeImportClient):
+    """A FakeImportClient that also records each request's size."""
+
+    def __init__(self) -> None:
+        """Starts with no users and no requests."""
+        super().__init__()
+        self.batch_sizes: list[int] = []
+
+    def partial_import(self, users: list[dict[str, Any]]) -> PartialImportResult:
+        """Records the request's size, then imports."""
+        self.batch_sizes.append(len(users))
+        return super().partial_import(users)
