@@ -1,4 +1,4 @@
-"""Loads the evaluation set from `data/<language>/`.
+"""Loads the evaluation set from `messages/<language>/`.
 
 Exists so the labelled messages live as plain text, one per line in `<label>.txt` (the same
 cheap format as the catalog), and the repetition pairs as `kind<TAB>first<TAB>second` lines in
@@ -20,7 +20,8 @@ from krtr.back.ia.matching.evaluation.artifacts import (
 from krtr.back.ia.matching.labels import GuardLabel
 from krtr.back.security.oidc.artifacts import InterfaceLanguage
 
-EVALUATION_DIRECTORY = Path(__file__).parent / "data"
+# Not `data/`: the repository ignores every folder with that name (it is reserved for datasets).
+EVALUATION_DIRECTORY = Path(__file__).parent / "messages"
 PAIR_FIELDS = 3
 
 

@@ -221,7 +221,7 @@ uv run krtr back ia evaluate --embedding-model hashing
 #   proposed: ...
 ```
 
-The report is based on the evaluation set (`krtr/back/ia/matching/evaluation/data/<language>/`),
+The report is based on the evaluation set (`krtr/back/ia/matching/evaluation/messages/<language>/`),
 which is kept separate from the catalog's example phrases
 (`krtr/back/ia/matching/exemplars/<language>/`). Both use one file per label, one phrase per
 line. The proposal follows four rules:
