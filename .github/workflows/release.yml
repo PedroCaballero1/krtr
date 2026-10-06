@@ -37,4 +37,6 @@ jobs:
       - name: Bump version, update changelog, tag, and create release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: uvx --from python-semantic-release semantic-release version
+        # master only accepts changes through pull requests, so the bot cannot push a
+        # version commit: tag the merged commit and publish the GitHub Release instead.
+        run: uvx --from python-semantic-release semantic-release version --no-commit
