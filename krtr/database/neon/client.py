@@ -109,7 +109,7 @@ class NeonClient:
         self.execute(f"TRUNCATE TABLE {table_name}")
         logger.info("Truncated table %s", table_name)
 
-    def insert_rows(self, insert_statement: str, rows: Sequence[tuple[Any, ...]]) -> None:
+    def insert_rows(self, insert_statement: str, rows: Sequence[tuple[Any, ...]]) -> int:
         """Bulk-inserts rows using a single `execute_values` call.
 
         Exists so loaders insert a batch in one round trip instead of one
@@ -120,13 +120,16 @@ class NeonClient:
             rows: The row tuples to insert, in column order.
 
         Returns:
-            None.
+            int: how many rows the database inserted; fewer than `rows` when
+            the template skips conflicting rows (`ON CONFLICT DO NOTHING`).
         """
         if not rows:
-            return
+            return 0
         with self._connection.cursor() as cursor:
             execute_values(cursor, insert_statement, rows, page_size=len(rows))
+            inserted_rows = cursor.rowcount
         self._connection.commit()
+        return inserted_rows
 
     def get_column_specs(self, table_name: str) -> list[ColumnSpec]:
         """Reads a table's columns, in order, with their type and nullability.

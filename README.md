@@ -25,9 +25,10 @@ answers from that customer's own data, or hands the case to a person.
 
 ### For the jury
 
-Log in to the krtr page with the test accounts in
-`https://juan-alvarezo-2002--krtr.modal.run/`
-using: `krtr-security/data/credentials/jury_credentials.csv`.
+Log in at `https://juan-alvarezo-2002--krtr.modal.run/` with one of the 50 test accounts.
+The accounts (customer number and password), with what each one can ask the assistant, are
+handed to the jury separately through a private channel: passwords are never stored in this
+repository.
 
 ## The solution: deterministic first
 
@@ -223,9 +224,44 @@ Ten en cuenta:
   servir y las sesiones abiertas se cierran.
 - La sesión se cierra tras 5 minutos sin actividad o 30 minutos desde el login, y solo puede
   haber una sesión abierta por usuario.
-- Mientras no estén las tareas 4.8 y 4.9 de la guía, crear un caso y el chat todavía no
-  funcionan.
-- La versión en Modal todavía no está desplegada (fase 6 de la guía).
+- El chat responde con el motor de IA, leyendo la rama `dev`. Sin `KRTR_MESSAGES_KEY`, los
+  mensajes quedan solo en memoria; sin `NEON_DB_HOST`, responde el mensaje genérico de D15.
+- El contrato entre el frontend y el backend está en [`docs/api.md`](docs/api.md).
+
+## Producción en Modal (krtr-web)
+
+La página vive en Modal, en el workspace `juan-alvarezo-2002` (ver `docs/guia-web-seguridad_modal.md`, fase 6):
+
+- App: https://juan-alvarezo-2002--krtr.modal.run
+- Keycloak: https://juan-alvarezo-2002--krtr-auth.modal.run (con `/admin`, `/realms/master`, `/metrics` y `/health*` bloqueados)
+
+Todos los comandos se corren desde la raíz del repo, con el extra `modal` instalado (`uv sync --extra modal`):
+
+```bash
+# 1. Secretos (krtr-web, krtr-auth, krtr-jobs) desde .env; genera la primera vez la
+#    contraseña del admin de Keycloak y el secreto del cliente OIDC de producción
+uv run --env-file .env krtr back deploy push-secrets
+
+# 2. Front compilado + despliegue. Siempre como módulo (-m), no por ruta.
+#    KRTR_WARM=true deja un contenedor de cada servicio siempre encendido (modo demo, D17)
+npm --prefix krtr/front run build
+KRTR_WARM=true uv run --env-file .env modal deploy -m krtr.back.deploy.app
+
+# 3. Credenciales (una sola vez): 150.000 cuentas, más las muestras del jurado y de QA
+uv run krtr back security credentials generate
+#    Importarlas a producción: primero desplegar con KRTR_WARM=false para que `auth` se
+#    apague, y no abrir krtr-auth mientras corre (tarda unos 20-50 minutos)
+uv run --env-file .env krtr back security credentials import --remote
+
+# 4. Pruebas de seguridad contra producción (usa las cuentas QA)
+uv run pytest e2e/security
+```
+
+- Las credenciales quedan en `data/credentials/` (fuera de git, permisos `600`). `jury_credentials.csv` se entrega al jurado por un canal privado.
+- La purga diaria (`purge_events`, 03:00 COT) borra eventos y mensajes de más de 3 meses. Para correrla a mano: `uv run --env-file .env modal run -m krtr.back.deploy.app::purge_events`.
+- Cada despliegue reinicia Keycloak (unos 30 s sin login): no desplegar durante la evaluación.
+- Desde la tarea 6.7, el despliegue lo hace GitHub Actions con cada merge a `master` que pasa el CI (`.github/workflows/deploy.yml`). El modo demo se controla con la variable del repositorio `KRTR_WARM`. Los pasos 1 y 2 de arriba quedan para la puesta en marcha y para emergencias.
+- Cómo operar producción (desplegar, modo demo, rotar secretos, reimportar usuarios, desbloquear cuentas, purga): [`docs/runbook.md`](docs/runbook.md). El gasto diario se registra en [`docs/modal-platform.md`](docs/modal-platform.md#registro-de-gasto-diario).
 
 ## Conversation agent (`krtr back ia`)
 

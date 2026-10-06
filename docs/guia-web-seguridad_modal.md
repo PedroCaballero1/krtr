@@ -1,6 +1,6 @@
 # Guía de trabajo — Web y seguridad de krtr
 
-_Versión 2.8 · 2-oct-2026 · **Cambio de plataforma: de Google Cloud a Modal** · Fuente: [`docs/goals.md`](goals.md) + decisiones acordadas con el equipo_
+_Versión 3.1 · 6-oct-2026 · **Cambio de plataforma: de Google Cloud a Modal** · Fuente: [`docs/goals.md`](goals.md) + decisiones acordadas con el equipo_
 _Fecha límite de la hackathon: 5-oct-2026 · Rama de trabajo: `web-develop-security`_
 
 > **Qué cambió en la v2.** Google Cloud quedó descartado porque la prueba gratuita exige un pago. Todo se despliega en **Modal** (plan Starter, con 30 USD/mes de créditos y sin pagos adicionales). Por eso:
@@ -28,6 +28,12 @@ _Fecha límite de la hackathon: 5-oct-2026 · Rama de trabajo: `web-develop-secu
 > **v2.6.** 0.5 y 3.1 hechas, con Keycloak 26.8.0 en local y su imagen para Modal. El CI instala el extra `modal`. El permiso de auditoría quedó dado en `dev`. La 6.3 suma lo aprendido en la 3.1.
 >
 > **v2.7.** 3.2 hecha: el realm `krtr` como código, verificado al reimportarlo (22 de 22). La 6.3 suma lo que la 3.2 deja para producción.
+>
+> **v3.1 (6-oct) — integración.** Una sola rama, `release-integration`, junta `web-finish-guide`, `keycloak-theme` (3.3, 4.10 y su cron), `security-tests` (7.2–7.6, 4.4) y `delivery-docs` (8.1, 8.2, 6.8) con el `master` de Pedro (#14 MiniLM y #15 LLM Qwen). El chat de producción corre **MiniLM + Qwen 2.5 1.5B int4** (decidido el 6-oct): los modelos viven en el Volume `krtr-models`, preparados una vez con `modal run -m krtr.back.deploy.app::prepare_models`, y `web` sube a **2 CPU / 4 GiB** (cambia D8 y la §8: ≈ 7,8 USD/día con el modo demo).
+>
+> **v3.0 (5-oct) — salida al aire.** Hechas 3.4–3.7, 4.5, 4.6, 4.8, 4.9 (el chat responde con el motor de IA de Pedro), la purga de 4.10 y 6.1–6.5; 6.6 en curso. **D20 cambió:** los usuarios se importan con `partialImport` de la API de administración, desde dentro del contenedor, no con `kc.sh import` (ver D20 y 3.5). Además: `customer_id` se pasa a mayúsculas al iniciar sesión (Keycloak guarda los usernames en minúsculas), y `krtr_app` puede leer `products` y `complaints`. El despliegue se hace con `modal deploy -m krtr.back.deploy.app` (como módulo, no por ruta). Pendientes: 3.3, 4.10 (sincronización de eventos de Keycloak), 6.7, 7.2–7.6, 8.x.
+>
+> **v3.1 (5-oct) — entrega.** 8.1 hecha: [`docs/runbook.md`](runbook.md), [`docs/api.md`](api.md) (la §3.4 tal como quedó en el código) y el README al día. 6.8: el registro de gasto empezó en [`docs/modal-platform.md`](modal-platform.md#registro-de-gasto-diario); el CLI de Modal muestra el gasto (`modal billing`), pero el saldo de créditos y un posible límite de gasto solo se ven en el dashboard. La 8.2 tiene su checklist.
 >
 > **v2.8.** 4.3 y 4.4 hechas: login OIDC, sesiones del servidor y sus endpoints, verificados contra Keycloak local y la rama `dev` de Neon (13 de 13). La 4.5 y el frontend heredan dos puntos abiertos (ver la 4.4).
 
@@ -104,7 +110,7 @@ Las decisiones D1–D15 son las de la v1. Si alguna cambió por el paso a Modal,
 | **D17** 🆕 | ✅ **Aprobada** (1-oct). **"Modo demo"**: `min_containers=1` (siempre encendido) solo desde que la página sale al aire hasta que termina la evaluación. Fuera de esa ventana, `min_containers=0`: se apaga sin tráfico y arranca en frío (Keycloak tarda unos 20–40 s). Se controla con la variable `KRTR_WARM` al hacer `modal deploy`. | Los créditos de 30 USD/mes no alcanzan para tener todo encendido el mes completo (§8). |
 | **D18** 🆕 | ✅ **Aprobada** y ejecutada en 0.2 (`24d7dba`). **Retirar** el `Dockerfile` y el `.dockerignore` de la tarea 6.1 v1. La imagen de la app se arma con la API de imágenes de Modal (`uv_sync` + `add_local_python_source` + `add_local_dir` del front compilado), **igual que `krtr/compute/modal/app.py`**. | Evita mantener dos formas de construir la misma imagen; reutiliza lo que ya funciona en Modal. |
 | **D19** 🆕 | ✅ **Aprobada** (1-oct). Keycloak corre dentro del contenedor detrás de un **gateway ASGI propio**. Keycloak escucha en `127.0.0.1:8081`, y el gateway lo publica bloqueando `/admin/*`, `/realms/master/*`, `/metrics` y `/health*` (responden 404). La administración se hace con `kcadm.sh` desde `modal container exec`, nunca desde internet. | Reemplaza la regla de Cloud Armor que restringía `/admin` por IP. |
-| **D20** 🆕 | ✅ **Aprobada** (1-oct). Los 150.000 usuarios se importan con **`kc.sh import`** (directo a la base, sin la API HTTP), desde una función de Modal que lee un **Volume** con los JSON. La importación se hace **antes** de la salida al aire, con Keycloak detenido. Al terminar, se vacía el Volume. | Con `/admin` bloqueado, no se puede usar `partialImport` por HTTP. |
+| **D20** 🆕 | ✅ **Cambiada** (5-oct). Los 150.000 usuarios se importan con el **`partialImport`** de la API de administración (`ifResourceExists=SKIP`), desde la función de Modal `auth_import`, que arranca su propio Keycloak y llama a `127.0.0.1:8081` (el gateway nunca expone `/admin`). Los JSON llegan por un **Volume**, que se vacía al terminar aunque falle. Se hace con el servicio `auth` detenido. | `kc.sh import --dir` solo importa usuarios mientras crea el realm: con el realm ya importado, `--override false` se salta a todos los usuarios y `--override true` borra el realm (verificado en el código de Keycloak 26). `partialImport` es idempotente y no toca el realm. |
 | **D21** 🆕 | ✅ **Aprobada** (1-oct). La app de Modal se llama **`krtr-web`** y tiene 5 funciones: `web`, `auth`, `auth_import`, `purge_events` (cron diario, 03:00 COT) y `sync_auth_events` (cada 15 min). Vive en `krtr/back/deploy/`. | Un `modal deploy` despliega todo junto. |
 | **D22** 🆕 | ✅ **Aprobada** (1-oct). La cookie temporal del login OIDC (`__Host-krtr_oidc`, guarda `state`, `nonce` y el verificador PKCE) usa **`SameSite=Lax`**. La cookie de sesión sigue en `Strict`. **Todas** las cookies llevan el prefijo `__Host-`. | La vuelta desde Keycloak puede contar como navegación entre sitios distintos. Con `Strict`, esa cookie no llegaría al callback. El prefijo `__Host-` impide que otra app en `modal.run` sobrescriba nuestras cookies. **0.4(d):** `modal.run` no está en la Public Suffix List, así que la vuelta desde Keycloak es del mismo sitio y `Strict` también llegaría. `Lax` sigue siendo válido; lo esencial es el prefijo `__Host-`. |
 | **D23** 🆕 | ✅ **Aprobada** (1-oct). Nuevo calendario (§4): salida al aire el **sábado 3-oct**; congelar cambios el **domingo 4-oct** a las 18:00. | La meta del 2-oct ya no es realista con el cambio de plataforma. |
@@ -162,8 +168,7 @@ krtr/
   front/          # ✅ SPA
   compute/modal/  # ✅ existente: se REUTILIZA (imagen, secretos, volúmenes)
   cli/back/{web,security,deploy}/      # comandos typer, espejo de krtr/back
-  database/queries/{events,app_sessions}/   # ✅
-  database/queries/messages/                # 🟡 texto del chat (§3.6): SQL listo, falta crearla en Neon
+  database/queries/{events,app_sessions,messages}/   # ✅ (messages: texto del chat, §3.6; creada en Neon el 5-oct)
 tests/...  (espejo 1:1)     e2e/{security,browser,load}/  (contra producción)
 deploy/gcp/, Dockerfile, .dockerignore  ❌ eliminados en 0.2 (D18, 24d7dba)
 ```
@@ -207,8 +212,10 @@ Nunca se guardan contraseñas, tokens ni cookies en `properties`.
 
 🟡 **Código listo (5-oct):** los SQL de `krtr/database/queries/messages/`, `NeonMessageStore` en `krtr/back/ia/messages/store.py` y `KRTR_MESSAGES_KEY`.
 
+✅ **Tabla creada (5-oct)** en `production` y en `dev` con `uv run krtr database neon create-schema messages` (como `neondb_owner`, dueño de `events` y `app_sessions`), con el permiso de `krtr_app` de abajo. Verificado en las dos ramas: 8 columnas, la llave primaria, el índice `messages_incident_customer_idx` y `SELECT, INSERT, DELETE` para `krtr_app`.
+
 Falta:
-- crear la tabla en Neon (`uv run krtr database neon create-schema messages`, en la rama principal y en `dev`) y dar los permisos de abajo;
+- generar `KRTR_MESSAGES_KEY` en `.env` (y en el secreto `krtr-web`, 6.1);
 - conectarla a la app servida (4.9) y a la purga diaria (4.10 / 6.5).
 
 Guarda el texto de la conversación, separado de `events`, por dos razones:
@@ -248,6 +255,11 @@ Guarda el texto de la conversación, separado de `events`, por dos razones:
 | 4.11 Registrar eventos · 5.11 Lint · 5.12 Favicon | ✅ | `1634b54` · `ea27df2` · `fa1c646` |
 | 1.1 Herramientas (Docker con Colima) · 1.3 Neon (roles, base `keycloak`, tablas, rama `dev`) | ✅ (el permiso de auditoría ya está en `dev`; en `production` va en 6.3) | — (configuración fuera del repo) |
 | 3.2 Realm `krtr` como código | ✅ | `d272e96` |
+| 3.4 Credenciales · 3.5 Importación · 3.6 Prueba en `dev` · 3.7 Gateway | ✅ | `8b327c6` · `7e2ac1f` · `b7c62a4` · `e82b168` |
+| 4.5 CSRF · 4.6 Límites · 4.8 Casos · 4.9 Chat (motor de IA) · mensajes de error en el front | ✅ | `827f4b5` · `9491fd7` · `ac6355d` · `a3e60a2` · `48b4641` |
+| `customer_id` en mayúsculas al iniciar sesión | ✅ | `01e6854` |
+| 4.10 Purga (eventos y mensajes) · 6.1–6.5 App de Modal | ✅ (falta la sincronización de eventos de Keycloak) | `fa1354c` |
+| 8.1 Runbook, contrato de la API y README · 6.8 Registro de gasto | ✅ · 🟡 (el registro sigue a diario) | `b4afaae` · `3e1c086` |
 | 4.3 Cliente OIDC (BFF) · 4.4 Sesiones del servidor | ✅ | `a7c601a` (clave) · `0af3a00` (OIDC) · `a26970f` (sesiones) · `0f89cd5` (endpoints) |
 | 0.5 Reglas de Modal en el `CLAUDE.md` · 3.1 Imagen de Keycloak (local y Modal) | ✅ | `2d8d921` · `a4c2a4e` (CI) · `983cebb` · `bd88576` |
 | Test inestable de `chat-page` (fuera de la guía; fallaba 2 de cada 3 veces) | ✅ | `a52ae22` |
@@ -344,7 +356,7 @@ Guarda el texto de la conversación, separado de `events`, por dos razones:
   - La rama `dev` (compute `ep-wispy-fire-b5ixpa32`, sin borrado automático) se creó desde `production` **después** de todo lo anterior y lo heredó: roles, contraseñas, base, tablas y permisos. Su conexión de administrador está en `.env` como `NEON_DEV_DB_HOST`.
   - Verificado entrando con cada rol en las dos ramas: `krtr_app` solo usa `events` y `app_sessions` (no puede leer `products`); `krtr_keycloak` puede crear tablas en `keycloak`; `krtr_audit_reader` solo entra.
   - ✅ 🆕 **Tablas de la app**, en la rama principal y en `dev`: con el rol dueño, `uv run krtr database neon create-schema events` y `uv run krtr database neon create-schema app_sessions` (el SQL es el de 2.1 y 2.2). Después, `GRANT SELECT, INSERT, UPDATE, DELETE ON events, app_sessions TO krtr_app`. Sin esto, la 4.11 no puede guardar eventos ni la 4.4 sesiones.
-  - ✅ en `dev` (3.1) · ⬜ en `production` (6.3) — 🆕 **Permiso de `krtr_audit_reader`:** `GRANT SELECT ON event_entity` en la base `keycloak` se da **después del primer arranque de Keycloak** (3.1 en `dev`, 6.3 en producción), porque esa tabla la crea Keycloak. No usar `ALTER DEFAULT PRIVILEGES`: también le daría lectura de `credential`, donde están los hashes de las contraseñas.
+  - ✅ en `dev` (3.1) · ✅ en `production` (5-oct, 6.5) — 🆕 **Permiso de `krtr_audit_reader`:** `GRANT SELECT ON event_entity` en la base `keycloak` se da **después del primer arranque de Keycloak** (3.1 en `dev`, 6.3 en producción), porque esa tabla la crea Keycloak. No usar `ALTER DEFAULT PRIVILEGES`: también le daría lectura de `credential`, donde están los hashes de las contraseñas.
 - **1.4 · 1.5 · 1.6** ✅
 
 ### Fase 2 — Base de datos
@@ -398,13 +410,18 @@ Guarda el texto de la conversación, separado de `events`, por dos razones:
 - **Commit:** `feat(back/security/keycloak): add krtr realm configuration`
 - **Depende de:** 3.1
 
-#### 3.3 🤖 Tema de login mínimo "krtr"
+#### 3.3 🤖 Tema de login mínimo "krtr" ✅ `a6b1b8f` · `dec1d57`
 - **Objetivo:** `themes/krtr/login` extendiendo el tema base, con el nombre krtr, el selector ES/PT y CSS sin estilos inline. Debe seguir la línea visual de `docs/krtr diseño.html` en lo básico (colores y tipografía).
 - **Aceptación:** la pantalla de login se ve en ES y en PT según `ui_locales`.
 - **Commit:** `feat(back/security/keycloak): add krtr login theme`
+- **Resultado (5-oct):**
+  - `krtr/back/security/keycloak/themes/krtr/login` hereda de `base` (no de `keycloak.v2`) y copia la pantalla de login de `docs/krtr diseño.html`: cabecera con la marca y el selector ES/PT, título a la izquierda y formulario a la derecha. Usa la tipografía Archivo (servida desde el tema, sin Google Fonts) y los colores del diseño, todo en `css/krtr.css` y sin estilos inline. Las propiedades `kc*Class` de `theme.properties` aplican las mismas clases a las demás páginas de `base` (OTP, acciones requeridas, errores).
+  - Textos propios en `messages_es` y `messages_pt_BR` ("Número de cliente", la pista del bloqueo tras 5 intentos); el resto sale de `base`.
+  - **Local:** el `docker compose` monta el tema (en modo dev, los cambios se ven sin reiniciar). Verificado con Chrome en escritorio y en móvil: ES, PT y el error de credenciales, sin errores de consola; CSS, fuentes, logo y JS responden 200.
+  - **Producción:** la imagen de Keycloak copia el tema a `/opt/keycloak/themes/krtr` (`images.py`; un test comprueba que la carpeta coincide con el `loginTheme` del realm). Como el realm ya existía (IGNORE_EXISTING), `loginTheme=krtr` se aplicó con `kcadm.sh` dentro del contenedor de `auth`. Verificado en `https://<ws>--krtr-auth.modal.run`: la pantalla sale en ES y en PT según `ui_locales`, y no quedó `/tmp/kc.cfg` en el contenedor.
 - **Depende de:** 3.2
 
-#### 3.4 🤖 Generador de credenciales (G6)
+#### 3.4 🤖 Generador de credenciales (G6) ✅ `8b327c6`
 - **Objetivo:** comando `krtr back security generate-credentials`. Mismo comportamiento que en la v1:
   - **(a)** Contraseña aleatoria de 8 caracteres (mayúsculas, minúsculas y dígitos) con `secrets`, para los 150.000 `customer_id`.
   - **(b)** Hash argon2id en el formato que importa Keycloak (verificar con la versión fijada en 3.1). Usar multiproceso.
@@ -414,9 +431,10 @@ Guarda el texto de la conversación, separado de `events`, por dos razones:
   - **(f)** **No guarda** las demás contraseñas en claro.
 - **Aceptación:** los tests de comportamiento de la v1 + un test que comprueba que los JSON cumplen el formato de `kc.sh import`.
 - **Commit:** `feat(back/security/credentials): generate customer credentials`
+- **Resultado:** `uv run krtr back security credentials generate` (se agrupa bajo `credentials`, como manda el espejo del CLI). Lee `data/customers.parquet` (150.000 IDs `CLI-XXXXXXXXXXXX`, 127.700 Active), y escribe 150 archivos `krtr-users-N.json`, `jury_credentials.csv`, `qa_credentials.csv` y `manifest.json` (con la semilla), todos con permisos `600`. El hash es argon2id con los parámetros por defecto de Keycloak 26.8 (5 iteraciones, 7 MB); se verificó iniciando sesión con el formulario real del Keycloak local. Las 150.000 cuentas tardan 3 min 52 s con 15 procesos. No reescribe una corrida anterior sin `--overwrite`.
 - **Depende de:** 1.6
 
-#### 3.5 🤖 Importación de usuarios con `kc.sh import` (D20)
+#### 3.5 🤖 Importación de usuarios con `partialImport` (D20) ✅ `7e2ac1f` · `b7c62a4`
 - **Objetivo:** comando `krtr back security import-users --source data/credentials/import [--local]`.
   - **Local:** monta la carpeta en el `docker compose` y ejecuta `kc.sh import --dir … --override false`.
   - **Modal:** **reutiliza `krtr/compute/modal/volume.py` y `staging.py`** para subir los JSON al Volume `krtr-credentials-import`. Luego llama a la función `auth_import` (6.4), que ejecuta `kc.sh import` contra la base `keycloak` de producción. Al terminar, borra el contenido del Volume.
@@ -426,16 +444,18 @@ Guarda el texto de la conversación, separado de `events`, por dos razones:
   - Los tests (con Volume y ejecutor simulados) cubren la subida, la invocación y la limpieza del Volume aunque la importación falle.
   - Si Keycloak está corriendo, el comando avisa y pide `--force`.
 - **Commit:** `feat(back/security/credentials): import users with kc.sh import`
+- **Resultado (cambia D20):** `uv run krtr back security credentials import` (local) y `... import --remote` (producción). Cada archivo se manda en tramos de 100 usuarios por `partialImport`, porque Keycloak aborta una petición a los 300 s. En remoto sube los archivos al Volume `krtr-credentials-import`, ejecuta `auth_import` y vacía el Volume siempre; se niega si `auth` tiene contenedores, salvo con `--force`. El cliente de administración renueva su token de 60 s durante la importación.
 - **Depende de:** 3.2, 3.4
 
-#### 3.6 👤🤖 Probar la importación en `dev`
+#### 3.6 👤🤖 Probar la importación en `dev` ✅
 - **Objetivo:** importar primero 1.000 usuarios y después los 150.000 en local (Neon `dev`).
 - **Aceptación:**
   - 3 cuentas del jurado entran bien y una contraseña incorrecta es rechazada.
   - Se anota cuánto tardó (sirve para planear 6.7).
 - **Depende de:** 3.5
+- **Resultado:** en `dev` se importaron 2.000 usuarios (los dos archivos con 3 cuentas del jurado) en 293 s: desde Colombia cada consulta a Ohio tarda ~200 ms, así que los 150.000 en local tardarían ~6 h y no se hizo. Las 3 cuentas del jurado entran con el formulario real, una contraseña incorrecta se rechaza, y una segunda corrida no agrega a nadie (2.000 ya existentes).
 
-#### 3.7 🤖 Gateway delante de Keycloak (D19) 🆕
+#### 3.7 🤖 Gateway delante de Keycloak (D19) 🆕 ✅ `e82b168`
 - **Objetivo:** `krtr/back/security/keycloak/gateway.py`, una app ASGI (Starlette + `httpx.AsyncClient`) que:
   - Reenvía todo a `http://127.0.0.1:8081`, conservando el método, el cuerpo, los headers (incluidos varios `Set-Cookie`) y las redirecciones.
   - Agrega `X-Forwarded-Proto: https`, `X-Forwarded-Host` y `X-Forwarded-For`, **reemplazando** lo que mande el cliente: `X-Forwarded-For` sale de `request.client.host`. Descarta `Forwarded` y `X-Real-IP`, que Modal deja pasar sin tocar (0.4a).
@@ -443,6 +463,7 @@ Guarda el texto de la conversación, separado de `events`, por dos razones:
   - Aplica las cabeceras de seguridad del vertical `headers/` que correspondan, reutilizando ese código.
 - **Aceptación:** los tests (con `respx`) cubren las rutas bloqueadas (404, sin llegar a Keycloak), el reenvío de `Set-Cookie` múltiples, las redirecciones 302 sin reescribir y un timeout (→ 504).
 - **Commit:** `feat(back/security/keycloak): add gateway that hides admin endpoints`
+- **Resultado:** `krtr/back/security/keycloak/gateway.py`. Normaliza la ruta antes de comparar (barras repetidas, `.`/`..`, parámetros `;`, mayúsculas) y reenvía a Keycloak exactamente la ruta revisada, así `//admin`, `/x/../admin` o `/ADMIN` también dan 404. Agrega las cabeceras de seguridad que Keycloak no pone, quita `Server`, y responde 413 a cuerpos de más de 64 KB y 502 si Keycloak no está.
 - **Depende de:** 1.6
 
 ### Fase 4 — Backend (FastAPI)
@@ -457,7 +478,7 @@ Guarda el texto de la conversación, separado de `events`, por dos razones:
   - Logout RP-initiated y revocación del refresh token.
   - Las URLs de Keycloak salen de la configuración (`KRTR_AUTH_ORIGIN`).
 - **Aceptación:**
-  - Los tests con Keycloak simulado cubren el callback correcto, el `state` inválido y el `nonce` inválido (→ 400 + evento), y que el logout limpia la sesión.
+  - Los tests con Keycloak simulado cubren el callback correcto, el `state` inválido y el `nonce` inválido (→ 400 + evento; desde la 4.4, → 302 a `/?login=failed` + evento), y que el logout limpia la sesión.
   - La cookie temporal es `Lax` y se borra después del callback.
   - Se registran `auth_login_started`, `auth_login_succeeded`, `auth_login_failed` y `auth_logout`.
 - **Commit:** `feat(back/security/oidc): add OIDC login flow` (quedó en `0af3a00`, el núcleo, y `0f89cd5`, los endpoints junto con los de la 4.4)
@@ -482,16 +503,18 @@ Guarda el texto de la conversación, separado de `events`, por dos razones:
 - **Puntos abiertos:**
   - **CSRF:** `POST /auth/logout` y `POST /api/session/activity` todavía no exigen el token CSRF. La 4.5 debe cubrirlos.
   - **Frontend:** los locales tienen `session_expired_idle_message` y `session_expired_absolute_message`, pero faltan `unauthorized`, `login_failed` y `auth_unavailable`. Además, un callback rechazado responde 400 con JSON (como pide la aceptación), y el navegador lo muestra tal cual. Hay que decidir si conviene redirigir a la página de inicio con un aviso.
+  - ✅ **Resuelto (5-oct):** las tres claves ya estaban en los locales. Un callback rechazado ahora responde **302 a `/?login=failed`** y la landing muestra un aviso (`role="alert"`) con `login_failed`, en ES o PT según el idioma guardado. El motivo no viaja en la URL: sigue solo en el evento `auth_login_failed`, que no cambió. Se quitó el código de error `login_failed` de la API, que ya nadie usaba. ⬜ Requiere desplegar.
 - **Depende de:** 2.2, 2.3, 4.3
 
-#### 4.5 🤖 Protección CSRF
+#### 4.5 🤖 Protección CSRF ✅ `827f4b5`
 - Igual que la v1: validar `Origin`/`Referer` contra la URL pública de la app (configurable) + double-submit (`__Host-krtr_csrf` + cabecera `X-KRTR-CSRF`).
 - **Importante:** como `modal.run` es un dominio compartido entre muchas apps, `SameSite` **no basta**; estos dos controles son obligatorios.
 - **Aceptación:** sin cabecera, con token distinto o con Origin ajeno (incluso otro `*.modal.run`) → 403 + `csrf_rejected`.
 - **Commit:** `feat(back/security/csrf): add CSRF protection`
+- **Resultado:** la cookie `__Host-krtr_csrf` se crea al iniciar sesión (no es `HttpOnly`, porque la SPA la copia en `X-KRTR-CSRF`) y se borra con la sesión. `POST /api/events` solo exige el `Origin` (la landing manda eventos antes de que haya sesión). Sin sesión la respuesta es 401, no 403, para que la SPA vuelva a la landing.
 - **Depende de:** 4.4
 
-#### 4.6 🤖 Límites de peticiones
+#### 4.6 🤖 Límites de peticiones ✅ `9491fd7`
 - **Objetivo:**
   - 20 mensajes por minuto por `customer_id` en `/api/chat/*`.
   - Un límite moderado por sesión en `/api/*`.
@@ -502,26 +525,34 @@ Guarda el texto de la conversación, separado de `events`, por dos razones:
   - La petición 601 desde la misma IP da 429.
   - Un `X-Forwarded-For`, `X-Real-IP` o `Forwarded` falsificado por el cliente no evade el límite (0.4a).
 - **Commit:** `feat(back/security/rate_limit): add per-user and per-IP rate limiting`
+- **Resultado:** ventanas deslizantes en memoria (un solo contenedor, D8): 20 mensajes por minuto por cliente en el chat, 240 por minuto por sesión en `/api/*` y 600 por minuto por IP. Los límites corren dentro del log, la auditoría y las cabeceras, así que un 429 también queda registrado y endurecido.
 - **Depende de:** 4.4, 0.4
 
-#### 4.8 🤖 Casos (datos de prueba, G18)
+#### 4.8 🤖 Casos (datos de prueba, G18) ✅ `ac6355d`
 - Igual que la v1: interfaz `CaseRepository` + `StubCaseRepository`; coincidencia exacta `incident_id` + `customer_id`; un caso inexistente y uno ajeno dan **el mismo 404**.
 - **Commit:** `feat(back/web/cases): add case endpoints with stub repository`
+- **Resultado:** `StubCaseRepository` en memoria: 2 casos de prueba por cliente más los que abra; IDs `INC-` + 10 caracteres aleatorios. Abrir y retomar exigen CSRF.
 - **Depende de:** 4.4, 4.5
 
-#### 4.9 🤖 Chat de texto y voz (datos de prueba)
+#### 4.9 🤖 Chat de texto y voz ✅ `a3e60a2`
 - Igual que la v1: `ChatResponder` + `StubChatResponder` (D15); validación de texto, idioma, content-type, **magic bytes**, 2 MB y 60 s; el audio no se guarda.
 - **Commit:** `feat(back/web/chat): add chat endpoints with stub responder`
+- **Resultado:** la app servida responde con el **motor de IA** de `krtr/back/ia/` (`AgentChatResponder`), sobre lectores de Neon nuevos para `products` y `complaints` y la tabla `messages` cifrada; sin Neon, en desarrollo, responde el texto de D15. El patrón del ID de queja sigue el formato real (`CMP-` + 20 caracteres). La voz se valida (tipo, bytes mágicos, 2 MB) y responde el texto de D15, porque la voz a texto está fuera de alcance; la duración no se valida en el servidor (el front corta a 60 s). Cada respuesta registra `chat_response_received` con los metadatos del turno y la latencia, nunca el texto. Un límite global de `Content-Length` rechaza cuerpos grandes antes de leer el multipart.
 - **Depende de:** 4.5, 4.6
 
-#### 4.10 🤖 Jobs de eventos (como funciones, sin programación)
+#### 4.10 🤖 Jobs de eventos (como funciones, sin programación) ✅ `fa1354c` · `95d22ab`
 - **Objetivo:**
   - Funciones del vertical `audit/`: `purge_expired_events()` (ejecuta `purge.sql` y registra cuántas filas borró) y `sync_auth_events()` (lee `event_entity` desde la última marca y los inserta como `auth_*` cifrados, D3).
   - Comandos CLI `krtr back security purge-events` y `sync-auth-events` que las llaman.
   - **La programación la pone Modal** (6.5).
 - **Aceptación:** los tests cubren la idempotencia de la sincronización y que la purga no borra eventos recientes.
-- **Commit:** `feat(back/security/audit): add purge and Keycloak event sync jobs`
-- **Depende de:** 4.7
+- **Commit:** `feat(back/security/audit): add purge and Keycloak event sync jobs` (quedó en `fa1354c`, la purga, y `95d22ab`, la sincronización)
+- **Resultado (5-oct):**
+  - `sync_auth_events()` en `krtr/back/security/audit/keycloak_sync.py`. Lee `event_entity` como `krtr_audit_reader` (variable `KRTR_AUDIT_DB_URL`) y guarda cada evento como **`auth_keycloak_<tipo>`** (`auth_keycloak_login`, `auth_keycloak_login_error`, `auth_keycloak_logout`, `auth_keycloak_user_disabled_by_temporary_lockout`…). El prefijo evita que choque con los `auth_*` de la app, como su `auth_logout`.
+  - **Marca e idempotencia:** la fila conserva el id del evento de Keycloak, y `events/insert_new.sql` usa `ON CONFLICT (id) DO NOTHING`. La marca es el último `auth_keycloak_*` de `events` menos 15 min de solape, para atrapar eventos que Keycloak confirme tarde. No hace falta tabla nueva. La primera corrida copia todo lo que Keycloak guarda (90 días).
+  - `properties` (cifrado) lleva el tipo, el realm, el cliente, el usuario y la sesión de Keycloak, la IP, el error y los detalles (que traen el `customer_id` en `username`). Se descarta cualquier detalle con nombre de credencial, igual que en `EventRecorder`.
+  - **CLI:** `uv run krtr back security audit sync-auth-events`. Va bajo `audit` por el espejo del CLI, como `credentials`. Para correrlo a mano hace falta `KRTR_AUDIT_DB_URL` en `.env` (ver `.env.example`). No se hizo un comando `purge-events`: la purga se corre con `modal run` (README).
+  - Verificado contra `dev`: la primera corrida copió 45 eventos y la segunda 0 nuevos; las propiedades se descifran con `KRTR_EVENTS_KEY`.
 
 #### 4.11 🤖 Registrar eventos en la app servida 🆕 ✅ `1634b54`
 - **Objetivo:** hoy `krtr/back/web/app.py` crea `app = create_app()` sin `EventRecorder`, así que la app servida (con `krtr back web serve` o en Modal) descarta todos los eventos y solo deja un warning en el log. Ninguna tarea lo conectaba. Hay que construir el `EventRecorder` (pool de `NeonClient` + `AesGcmCipher` con `KRTR_EVENTS_KEY`) desde el entorno para la app servida. Los tests siguen inyectando el suyo.
@@ -556,7 +587,7 @@ Guarda el texto de la conversación, separado de `events`, por dos razones:
 
 ### Fase 6 — Despliegue en Modal 🆕 (reemplaza toda la fase 6 de la v1)
 
-#### 6.1 🤖 Secretos de Modal
+#### 6.1 🤖 Secretos de Modal ✅ `fa1354c`
 - **Objetivo:** comando `krtr back deploy push-secrets`, que **reutiliza `krtr/compute/modal/secrets.push_secret`**. Crea o actualiza 3 secretos:
 
   | Secreto | Contenido | Lo usa |
@@ -574,7 +605,7 @@ Guarda el texto de la conversación, separado de `events`, por dos razones:
 - **Commit:** `feat(back/deploy): push Modal secrets for web, auth and jobs`
 - **Depende de:** 0.1, 0.2, 0.5
 
-#### 6.2 🤖 Función `web`
+#### 6.2 🤖 Función `web` ✅ `fa1354c`
 - **Objetivo:** `krtr/back/deploy/app.py` define `app = modal.App("krtr-web")` y la función `web`:
   - Imagen: **extraer** la construcción de imagen de `krtr/compute/modal/app.py` a una función compartida (DRY) y agregarle `add_local_dir("krtr/front/dist", "/app/frontend")`.
   - 🆕 v2.6: la imagen también **incluye los pesos del modelo de embeddings** del agente (`multilingual_minilm`, unos 220 MB, ver `tasks/todo.md`, fase 2 de IA). Se descargan al construir la imagen, no en el arranque en frío, y `KRTR_IA_EMBEDDING_MODEL` elige el modelo.
@@ -592,7 +623,7 @@ Guarda el texto de la conversación, separado de `events`, por dos razones:
 - **Commit:** `feat(back/deploy): serve krtr-web on Modal`
 - **Depende de:** 6.1, 4.11
 
-#### 6.3 🤖 Función `auth` (Keycloak + gateway)
+#### 6.3 🤖 Función `auth` (Keycloak + gateway) ✅ `fa1354c`
 - **Objetivo:** en la misma app:
   - Función `auth` con la imagen de 3.1, `cpu=1`, `memory=1536`, `max_containers=1`, `min_containers` según `KRTR_WARM`, región según D16, `secrets=[krtr-auth]`.
   - Un `@modal.enter` arranca `kc.sh start --optimized --import-realm` (escuchando en `127.0.0.1:8081`) y **espera** a que `/health/ready` responda (timeout de 180 s).
@@ -610,20 +641,25 @@ Guarda el texto de la conversación, separado de `events`, por dos razones:
 - **Commit:** `feat(back/deploy): run Keycloak behind the gateway on Modal`
 - **Depende de:** 3.1, 3.2, 3.3, 3.7, 6.1
 
-#### 6.4 🤖 Función `auth_import`
+#### 6.4 🤖 Función `auth_import` ✅ `fa1354c`
 - **Objetivo:** función con la imagen de Keycloak, que monta el Volume `krtr-credentials-import` y ejecuta `kc.sh import --dir /import --override false`. `timeout` amplio (según lo medido en 3.6) y `secrets=[krtr-auth]`. Solo se invoca desde 3.5; no se publica en la web.
 - **Aceptación:** con 1.000 usuarios en Neon `dev` (cambiando el secreto de forma temporal), la importación termina y el comando de 3.5 muestra el resumen.
 - **Commit:** `feat(back/deploy): add Keycloak import function`
 - **Depende de:** 3.5, 6.3
 
-#### 6.5 🤖 Crons
+#### 6.5 🤖 Crons 🟡 purga programada (`fa1354c`) · sincronización lista sin desplegar (`ec237aa`)
 - **Objetivo:** funciones `purge_events` con `schedule=modal.Cron("0 8 * * *")` (03:00 COT) y `sync_auth_events` con `schedule=modal.Period(minutes=15)`. Ambas con `cpu=0.125`, `secrets=[krtr-jobs]`, y llaman a las funciones de 4.10.
   - 🆕 v2.5: `purge_events` también ejecuta `messages/purge.sql` (retención de 3 meses, §3.6). Siguen siendo 2 crons.
 - **Aceptación:** al ejecutarlas a mano (`uv run --env-file .env modal run …`), terminan bien y dejan logs.
-- **Commit:** `feat(back/deploy): schedule event purge and Keycloak sync`
+- **Commit:** `feat(back/deploy): schedule event purge and Keycloak sync` (quedó en `fa1354c`, la purga, y `ec237aa`, la sincronización)
 - **Depende de:** 4.10, 6.2
+- **Resultado (5-oct):**
+  - `sync_auth_events` está en `krtr/back/deploy/app.py` con `modal.Period(minutes=15)`, `cpu=0.125` y `krtr-jobs`, y llama a la función de 4.10.
+  - `krtr-jobs` lleva ahora `KRTR_AUDIT_DB_URL` (la base `keycloak` en el host directo, como `krtr_audit_reader`), armada en `krtr/back/deploy/secrets.py` desde `KRTR_AUDIT_DB_PASSWORD`. Subido con `push-secrets` el 5-oct.
+  - `GRANT SELECT ON event_entity TO krtr_audit_reader` dado en `production` el 5-oct, como `krtr_keycloak` y sin `ALTER DEFAULT PRIVILEGES`. Verificado: el rol lee `event_entity` (120 eventos) y no puede leer `credential` ni `user_entity`.
+  - ⬜ **Falta desplegar** (`KRTR_WARM=true uv run --env-file .env modal deploy -m krtr.back.deploy.app`) y correrla una vez a mano. La rama `keycloak-theme` ya incluye `security-tests`, que es lo que corre hoy en producción (v9). Quien despliegue después tiene que partir de una rama con las dos; si no, el cron desaparece.
 
-#### 6.6 👤🤖 Primer despliegue y datos de producción
+#### 6.6 👤🤖 Primer despliegue y datos de producción ✅ (5-oct)
 - **Objetivo:**
   1. `npm run build --workspace krtr/front` y `KRTR_WARM=false uv run --env-file .env modal deploy krtr/back/deploy/app.py`.
   2. Anotar las 2 URLs reales. Confirmar que coinciden con `KRTR_PUBLIC_URL`, `KRTR_AUTH_ORIGIN`, los redirect URIs del realm y `KC_HOSTNAME`; si no, corregirlas y volver a desplegar.
@@ -634,14 +670,25 @@ Guarda el texto de la conversación, separado de `events`, por dos razones:
   - En `https://<ws>--krtr.modal.run`, el recorrido login → soporte → chat → voz → cerrar sesión funciona en ES y en PT.
   - Una cuenta del jurado entra, la cuenta con MFA pide TOTP y una cuenta QA entra.
 - **Depende de:** 6.2–6.5, 5.13
+- **Resultado (5-oct):**
+  - Desplegado con `KRTR_WARM=true uv run --env-file .env modal deploy -m krtr.back.deploy.app`. Por ruta de archivo fallaba (`No module named 'app'`), porque la imagen lleva las fuentes de `krtr` y no el archivo suelto. Las URLs reales coinciden con D11.
+  - Primer arranque de Keycloak contra `production`: unos 3 minutos (migraciones, realm `master` y `realm-krtr.json`). `issuer` correcto; `/admin`, `/realms/master`, `/health*` y `/metrics` dan 404.
+  - **150.000 usuarios importados** con `import --remote` en ~30 min (1,5 de subida y 26 de importación, 8 peticiones en paralelo), con `auth` detenido (desplegado con `KRTR_WARM=false`). El Volume quedó vacío.
+  - Realm `master`: protección contra fuerza bruta (5 fallos → 15 min) activada con `kcadm.sh` vía `modal container exec`.
+  - **Cuenta con MFA:** `CLI-MFA000000001`, con la acción obligatoria "Configure OTP". El TOTP se enrola en su primer login. Su contraseña está en `data/credentials/mfa_credentials.csv` (fuera de git, `600`).
+  - Medido: página 0,4 s con el contenedor encendido (6 s en frío), login 1,8 s, chat 0,5 s con saldos reales enmascarados en ES y PT.
+  - ⬜ Falta: guardar las credenciales QA en GitHub Secrets (para 6.7). El `GRANT SELECT ON event_entity TO krtr_audit_reader` en `production` quedó dado el 5-oct (6.5).
 
-#### 6.7 🤖 Despliegue continuo
+#### 6.7 🤖 Despliegue continuo ✅
 - **Objetivo:** `.github/workflows/deploy.yml`:
   - Al hacer push a `master`, espera que pasen `lint-and-test` y `security`.
   - Luego: `npm ci` + build del front → `uv sync --locked --extra modal` → `uv run modal deploy krtr/back/deploy/app.py`, con `MODAL_TOKEN_ID` y `MODAL_TOKEN_SECRET` y `KRTR_WARM` desde una variable del repositorio.
   - Smoke test: `/healthz` de la app y `/.well-known/openid-configuration` de Keycloak.
 - **Aceptación:** un merge de prueba despliega sin intervención manual.
 - **Commit:** `ci(deploy): deploy to Modal on master`
+- **Resultado (5-oct):** `.github/workflows/deploy.yml` corre con `workflow_run` cuando el workflow `CI` termina **en verde** sobre un push a `master` (nunca en un PR), y también a mano (`workflow_dispatch`). Despliega exactamente el commit que probó el CI, con `modal deploy -m krtr.back.deploy.app`, y uno a la vez (`concurrency`). El smoke test espera hasta 10 min a `/healthz` y al `.well-known` de Keycloak (que se reinicia en cada despliegue), y comprueba que `/admin/` siga en 404. `KRTR_WARM` sale de la variable del repositorio, con `true` por defecto mientras dure la evaluación.
+  - 👤 Requisitos en GitHub: los secretos `MODAL_TOKEN_ID` / `MODAL_TOKEN_SECRET` (0.1 dice que ya existen) y, al terminar la evaluación, la variable `KRTR_WARM=false`.
+  - ⬜ Sin verificar todavía: la primera corrida real. Si el job `security` del CI no está en verde (7.1), el despliegue nunca arranca.
 - **Depende de:** 6.6, 7.1
 
 #### 6.8 👤 Modo demo y control de costos (D17)
@@ -652,12 +699,18 @@ Guarda el texto de la conversación, separado de `events`, por dos razones:
   - Configurar un límite de gasto en el workspace, si Modal lo ofrece.
 - **Aceptación:** existe un registro diario del gasto en `docs/modal-platform.md` y el gasto proyectado queda dentro de los créditos.
 - **Depende de:** 6.7
+- **Estado (5-oct):** 🟡 `3e1c086`.
+  - El registro empezó en [`docs/modal-platform.md`](modal-platform.md#registro-de-gasto-diario). Primera entrada: 0,35 USD medidos en octubre, cubiertos por créditos (0,00 USD cobrados). Proyección con el modo demo: ≈ 3,15 USD/día, ≈ 9 días.
+  - **Desde el CLI** se lee el gasto: `modal billing summary` (mes) y `modal billing report` (por día u hora y por recurso).
+  - **Solo en el dashboard** (Settings → Usage and Billing): el saldo de créditos que queda y, si existe, el límite de gasto. `modal workspace settings` no tiene ninguno de los dos.
+  - **Neon:** sin CLI ni API key; se lee en la consola (Billing y Monitoring).
+  - ⬜ 👤 Completar en la primera entrada los créditos restantes y el consumo de Neon, y anotar una fila por día. La variable `KRTR_WARM` del repositorio no hace falta mientras dure la evaluación: el workflow usa `true` si no existe.
 
 ### Fase 7 — Seguridad y pruebas
 
 - **7.1** ✅ (`43b3d82`). Pendiente: verlo en verde en GitHub y decidir sobre el hallazgo medio de Semgrep en `krtr/compute/modal/secrets.py:87`. Agregar `krtr/back/deploy/` al alcance de bandit (ya lo cubre `-r krtr/back`).
 
-#### 7.2 🤖 Pruebas de seguridad contra producción
+#### 7.2 🤖 Pruebas de seguridad contra producción 🟡
 - **Objetivo:** `e2e/security/` con pytest y `--base-url` / `--auth-url` apuntando a Modal. Casos:
   - Cabeceras y flags de las cookies (todas `__Host-`; sesión `Strict`; la del OIDC `Lax`).
   - `/api/*` sin sesión → 401.
@@ -673,7 +726,13 @@ Guarda el texto de la conversación, separado de `events`, por dos razones:
   - `properties` cifrado en la base.
 - **TLS:** **no** se exige; se anota lo hallado en 0.4(b) como evidencia o como excepción (7.6).
 - **Aceptación:** todo en verde. Se ejecuta después de cada despliegue y a mano antes de la demo.
-- **Commit:** `test(e2e/security): add production security suite`
+- **Commit:** `test(e2e/security): add production security suite` ✅ `e48606a`
+- **Resultado (5-oct):** `uv run pytest e2e/security`: **20 de 20** en producción. Cubre cabeceras, sin `/docs`, 401 sin sesión, `Origin` ajeno → 403, rutas ocultas de Keycloak → 404, cookies `__Host-` (sesión segura, la del OIDC `Lax`), login real con cuentas QA, contraseña incorrecta, sesión única, CSRF, IDOR, límite de 20 mensajes → 429 y voz falsa → 415. Quedan para después: el bloqueo de Keycloak tras 5 intentos, la inactividad de 5 min y el cifrado de `properties`.
+- **Resultado (5-oct, segunda parte):** **26 de 26** más 1 lento, todos en verde en producción.
+  - **Bloqueo:** 5 contraseñas malas y la buena ya no entra. Usa **solo la fila 50 de `qa_credentials.csv`** (`LOCKOUT_ACCOUNT_ROW` en `e2e/security/conftest.py`), que queda **bloqueada 15 min** después de cada corrida (la última, el 5-oct a las 22:44 COT). Primero entra bien, así prueba que la cuenta funciona y deja el contador en 0; si sigue bloqueada de una corrida anterior, el test falla y dice que hay que esperar.
+  - **Contraseña incorrecta:** ahora termina con un login correcto. Keycloak recuerda los fallos 12 h (`maxDeltaTimeSeconds`), así que antes cinco corridas de la suite en un día habrían bloqueado la fila 2.
+  - **Inactividad:** `@pytest.mark.slow`, corre solo con `--run-slow` (5 min 30 s). A los 4:30 sin actividad `/api/me` sigue en 200; a los 5:30 da 401 `session_expired_idle`. Usa la fila 9.
+  - **Cifrado en la base** (`e2e/security/test_encryption_at_rest.py`): lee las últimas 50 filas de `events.properties` y de `messages.content` con `NEON_DB_HOST` (solo lectura, SQL en `select_latest_*.sql`) y comprueba que cada valor tiene al menos nonce + tag (28 bytes), que ningún nonce se repite, que nada se lee como UTF-8/JSON, que todos abren con la llave de la app (`KRTR_EVENTS_KEY`, `KRTR_MESSAGES_KEY`) y ninguno con otra, y que `properties` descifrado es un objeto JSON. Los fallos solo muestran conteos, nunca los bytes ni el texto.
 - **Depende de:** 6.6
 
 #### 7.3 🤖 Pruebas E2E de navegador
@@ -686,28 +745,53 @@ Guarda el texto de la conversación, separado de `events`, por dos razones:
 - **Aceptación:** 0 alertas altas; cada alerta media está justificada.
 - **Commit:** `ci(security): add OWASP ZAP baseline scan`
 - **Depende de:** 6.7
+- **Resultado (5-oct):** `.github/workflows/zap.yml` corre a mano (`workflow_dispatch`) y cuando el workflow `Deploy` termina en verde (`workflow_run`; como todo `workflow_run`, solo se activa cuando el archivo esté en `master`). Un job por URL: la app desde `/` y Keycloak desde su página de login real (la URL a la que redirige `/auth/login`, porque la raíz de `krtr-auth` lleva a `/admin`, que da 404). Ambos usan `.zap/baseline.sh`, que corre ZAP 2.17.0 (imagen fijada por digest) y aplica la aceptación: **ninguna alerta alta y ninguna media fuera de `.zap/rules.tsv`**. El mismo script corre en local con Docker (Colima) y deja los reportes en `.zap/reports/` (fuera de git); en GitHub se suben como artefactos.
+  - **Corrida local (5-oct, 23:15) — app:** 0 altas, 0 medias. Avisos bajos o informativos: directivas de caché (10015, 10049) en el HTML y los assets, un comentario sospechoso en el JS compilado (10027), COEP ausente (90004) y "Modern Web Application" (10109).
+  - **Keycloak:** 0 altas. Dos reglas medias, aceptadas en `rules.tsv`:
+    - **10202** (sin token anti-CSRF): falso positivo. El formulario está atado a la cookie `AUTH_SESSION_ID` y al `session_code`/`execution`/`tab_id` de un solo uso de su URL.
+    - **10055** (CSP): Keycloak pone una CSP mínima (`frame-src 'self'; frame-ancestors 'self'; object-src 'none'`) y el tema usa un `onsubmit` en línea. Se aceptó como **pendiente**: arreglarla requiere quitar el `onsubmit` del tema, fijar la CSP del realm con `kcadm.sh` y desplegar ([checklist](security-checklist.md) §5).
+  - Bajas en Keycloak: las respuestas 404 del gateway (`/`, `/admin/`) no llevan HSTS; las cookies de Keycloak usan `SameSite=None` y `KC_AUTH_SESSION_HASH` no es `HttpOnly` (así las define Keycloak).
 
 #### 7.5 🤖 Pruebas de carga
 - Igual que la v1: Locust con cuentas QA. Base de 20 usuarios por 10 min, pico de 50 y prueba sostenida de 30 min con 20. El objetivo es D7.
 - Se corren **con el modo demo encendido**. Ojo: Modal limita las cuentas nuevas a unas 200 peticiones por segundo; la prueba no debe pasar de eso.
 - **Commit:** `test(e2e/load): add Locust load scenarios`
 - **Depende de:** 6.8
+- **Resultado (5-oct):** `e2e/load/locustfile.py`, un usuario de Locust por cuenta QA, con el login real de Keycloak. Perfiles con `--load-profile`: `smoke` (20 usuarios, 3 min), `baseline` (20 × 10 min) y `spike` (20 → 50 → 20 en 5 min). La prueba sostenida de 30 min no se corrió (no se pidió en esta tarea).
+  - **Límite por IP:** Locust sale de una sola IP, así que todas las peticiones a la app, incluidas las del login, pasan por un regulador común de **8 por segundo** (480/min, el 80% de los 600). Más usuarios significa más sesiones simultáneas, no más tráfico. Un 429 cuenta como fallo de la prueba.
+  - **Qué mide D7:** el grupo `api` (todo `/api/*` y `/app`). El login (Keycloak) y el chat (motor de IA, ~1 mensaje por minuto por usuario) se reportan aparte. Al terminar, se registra el veredicto y el código de salida es 1 si el p95 pasa de 300 ms, o si hubo algún 5xx o 429.
+  - **Números** (desde Colombia; unos 130 ms de cada petición son la ida y vuelta a us-east):
+
+    | Perfil | Peticiones `api` | p50 | **p95 `api`** | 5xx | 429 | Chat p95 | Login p95 |
+    |---|---:|---:|---:|---:|---:|---:|---:|
+    | smoke | 1.281 | 170 ms | **250 ms** | 0 | 0 | 360 ms | 1,1 s |
+    | baseline | 4.365 | 170 ms | **250 ms** | 0 | 0 | 300 ms | 1,5 s |
+    | spike (pico de 50) | 2.060 | 170 ms | **240 ms** | 0 | 0 | 300 ms | 1,2 s |
+
+  - ✅ **D7 se cumple** en los tres. El endpoint más lento es `/api/session/activity` (p95 330–430 ms), porque a veces renueva el token con Keycloak.
+  - **Ojo:** en la base hubo 405 respuestas 401 (9%). Mientras corría, otra persona o proceso inició sesión con las filas 1–9 de `qa_credentials.csv` (el patrón de `e2e/security`), y cada login cerró la sesión de un usuario de Locust (G15). Se comprobó con los eventos `session_created` y `session_revoked_by_new_login` en `events`. No es un fallo de la app, pero **no hay que correr `e2e/security` al mismo tiempo que Locust**. El pico, sin interferencias, tuvo 0 fallos.
 
 #### 7.6 👤 Revisión contra ASVS nivel 2
 - **Objetivo:** `docs/security-checklist.md` con los controles aplicables de ASVS 5.0 L2. Cada control con estado y evidencia.
 - **Excepciones documentadas** por la plataforma: sin WAF, política TLS que no controlamos (0.4b), sin dominio propio, la administración de Keycloak solo por `modal container exec`, y lo que haya encontrado 0.4(f) (cabeceras que agrega Modal y usuario del contenedor).
 - **Aceptación:** no queda ningún control aplicable sin evidencia ni sin excepción justificada.
 - **Depende de:** 7.2–7.5
+- **Borrador (5-oct):** [`docs/security-checklist.md`](security-checklist.md), con los 253 controles L1 + L2 de ASVS 5.0.0, cada uno una sola vez: 152 ✅, 27 🟡, 16 ⚠️ (8 excepciones: E1–E6 de la plataforma, E7–E8 de diseño), 1 ❌ (V15.1.1, plazos para dependencias vulnerables) y 57 que no aplican. Incluye el inventario criptográfico, la clasificación de datos, el inventario de registros y 11 pendientes priorizados. ⬜ Falta la revisión y la firma de una persona del equipo.
 
 ### Fase 8 — Entrega
 
-#### 8.1 🤖 Documentación
+#### 8.1 🤖 Documentación ✅ `b4afaae`
 - **Objetivo:**
   - Actualizar el `README.md` (cómo levantar en local, comandos nuevos, `modal serve` / `modal deploy`, modo demo).
   - `docs/runbook.md`: desplegar, rotar secretos, volver a importar usuarios, desbloquear una cuenta con `kcadm.sh`, ejecutar los crons a mano, y encender o apagar el modo demo.
   - `docs/api.md` con el contrato de la §3.4.
 - **Commit:** `docs(repo): add web runbook and API contract`
 - **Depende de:** 7.x
+- **Resultado (5-oct):** se adelantó a 7.3–7.6 porque la entrega es hoy.
+  - [`docs/runbook.md`](runbook.md): desplegar (CI, workflow `Deploy`, comando de emergencia, `modal app rollback`), modo demo, rotar cada secreto con sus efectos, reimportar usuarios, desbloquear cuentas y correr la purga a mano.
+  - El desbloqueo con `kcadm.sh` vía `modal container exec` se verificó en producción hasta la lectura del estado; el `DELETE` y la rotación de los secretos de Keycloak no se probaron.
+  - Ojo: `modal container exec` no reenvía stdin, y hay que poner `--` antes del comando.
+  - [`docs/api.md`](api.md): la §3.4 tal como está en el código. Diferencias con la §3.4: `POST /api/cases` responde 201; el `request_id` va en la cabecera `X-Request-Id` y no en el cuerpo; los 422 de validación y el 413 de `/api/events` usan el cuerpo de FastAPI (`{"detail": …}`), no `{error, message_key}`.
 
 #### 8.2 👤 Congelar y entregar
 - **Objetivo:**
@@ -718,6 +802,47 @@ Guarda el texto de la conversación, separado de `events`, por dos razones:
   - **No hacer merges a `master` durante la evaluación**: cada deploy reinicia Keycloak.
 - **Aceptación:** checklist firmado por el revisor humano.
 - **Depende de:** 8.1
+- **Checklist (preparada el 5-oct).** Se marca en orden. Los procedimientos están en [`docs/runbook.md`](runbook.md).
+
+  **A. Código en `master` y desplegado**
+  - [ ] El PR de los docs de entrega (`delivery-docs`) está mergeado en `web-finish-guide`, para que todo entre con **un solo** despliegue.
+  - [ ] PR `web-finish-guide` → `master`: los jobs `lint-and-test` y `security` del CI están en verde.
+  - [ ] GitHub tiene los secretos `MODAL_TOKEN_ID` y `MODAL_TOKEN_SECRET`. La variable `KRTR_WARM` no existe o vale `true`.
+  - [ ] Después del merge: el CI de `master` y el workflow `Deploy` están en verde, con el smoke test incluido.
+  - [ ] `uv run --env-file .env modal app history krtr-web` muestra arriba el commit del merge **sin** asterisco (es decir, no se desplegó desde un árbol con cambios sin commit).
+  - [ ] El workflow `Release` creó la etiqueta de la versión (ver "Etiquetar" abajo).
+
+  **B. Producción verificada**
+  - [ ] El modo demo está encendido: `uv run --env-file .env modal container list` muestra 2 contenedores de `krtr-web`.
+  - [ ] `uv run pytest e2e/security` da 20 de 20 contra producción, después del último despliegue.
+  - [ ] Recorrido a mano con una cuenta del jurado, en ES y en PT: la página de login con el tema krtr → soporte → caso → chat → voz → cerrar sesión. La cuenta con MFA pide TOTP.
+  - [ ] 7.3 (pruebas de navegador): no existe todavía. El revisor decide si el recorrido a mano la reemplaza para esta entrega.
+  - [ ] Sesiones QA cerradas: no hay un comando para revocarlas, pero las sesiones de la app y las de Keycloak vencen a los 30 min como máximo. Basta con no usar las cuentas QA en los 30 min antes de avisar al jurado.
+
+  **C. Costos**
+  - [ ] Hay una fila del día en el [registro de gasto](modal-platform.md#registro-de-gasto-diario), con los créditos restantes leídos en el dashboard. La proyección (≈ 3,15 USD/día) alcanza hasta el final de la evaluación.
+
+  **D. Entrega al jurado**
+  - [ ] Se envía el documento `data/credentials/cuentas_jurado.md` (URL, instrucciones y cuentas) **solo por un canal privado**. Es confidencial: nunca se sube al repo (está ignorado por `data/`), ni se adjunta a un PR o un issue, ni se publica.
+  - [ ] Se confirma que lo recibieron y que una cuenta entra.
+
+  **E. Congelar**
+  - [ ] Se avisa a **todo el equipo**, incluido el vertical de IA (que también hace merges a `master`), que no hay merges a `master` hasta que termine la evaluación. Cada merge despliega y reinicia Keycloak. Un PR abierto no despliega; solo el merge.
+  - [ ] Si hay que corregir algo durante la evaluación: un merge y nada más, en un momento acordado con el jurado. El despliegue a mano solo se hace en emergencias (runbook §1.4).
+
+  **F. Al terminar la evaluación**
+  - [ ] `KRTR_WARM=false` en las variables del repositorio y correr `Deploy` (runbook §2).
+  - [ ] Última fila del registro de gasto.
+
+  **Etiquetar la versión.** No hace falta crear la etiqueta a mano. Al hacer merge a `master`, el workflow `Release` (semantic-release) crea `vX.Y.Z` y su release en GitHub: con los commits `feat` de `web-finish-guide`, pasará de `v1.8.0` a **`v1.9.0`**. Esa es la versión entregada. Si además se quiere un nombre fijo para la entrega, se agrega una etiqueta anotada sobre **el mismo commit que desplegó `Deploy`** (no sobre el `chore(release)`). Subir una etiqueta no dispara ni el CI ni el despliegue.
+
+  ```bash
+  git fetch origin --tags
+  git tag -a hackathon-entrega <sha-del-merge> -m "Entrega de la hackathon: krtr-web en Modal"
+  git push origin hackathon-entrega
+  ```
+
+  **Firma del revisor:** ______________________ · Fecha: __________
 
 ---
 
@@ -744,12 +869,13 @@ Guarda el texto de la conversación, separado de `events`, por dos razones:
 
 ## 8. Costos estimados en Modal
 
-Precios publicados por Modal: CPU 0,0000131 USD/núcleo/s; memoria 0,00000222 USD/GiB/s. La región fija `us-east` cuesta ×1,75. Recursos de D8: `web` 0,25 CPU / 0,5 GiB y `auth` 1 CPU / 1,5 GiB.
+Precios publicados por Modal: CPU 0,0000131 USD/núcleo/s; memoria 0,00000222 USD/GiB/s. La región fija `us-east` cuesta ×1,75. Recursos de D8: `web` 0,25 CPU / 0,5 GiB y `auth` 1 CPU / 1,5 GiB. **Desde el 6-oct, `web` usa 2 CPU / 4 GiB** para correr MiniLM y el LLM Qwen.
 
 | Escenario (ambos contenedores encendidos 24 h) | USD/día | Días que alcanzan 30 USD |
 |---|---:|---:|
 | Sin región fija | ≈ 1,80 | ≈ 16 |
 | Región `us-east` (D16) | ≈ 3,15 | ≈ 9 |
+| Región `us-east` con `web` a 2 CPU / 4 GiB (6-oct, MiniLM + Qwen) | ≈ 7,8 | ≈ 3,8 |
 
 - Los crons, las compilaciones y el modo apagado (`KRTR_WARM=false`) cuestan centavos al día.
-- **Del 3 al 5 de octubre con región fija: ≈ 9,5 USD.** Cada día extra de evaluación suma unos 3,15 USD.
+- **Del 3 al 5 de octubre con región fija: ≈ 9,5 USD.** Cada día extra de evaluación sumaba unos 3,15 USD; **con el LLM en `web`, unos 7,8 USD**. Revisar el saldo cada día (6.8) y, si no alcanza, volver a `KRTR_IA_LLM_MODEL=none` y a 0,25 CPU / 0,5 GiB, o apagar el modo demo.

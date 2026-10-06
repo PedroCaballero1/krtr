@@ -1,7 +1,7 @@
 """Defines why an OIDC login can fail (task 4.3).
 
 Exists so every failure of the login callback carries one reason from a closed set, which the
-router turns into a 400 and an `auth_login_failed` event. Consumed by
+router turns into a redirect to the landing page and an `auth_login_failed` event. Consumed by
 `krtr/back/security/oidc/` and `krtr/back/web/routers/auth.py`.
 """
 
@@ -26,8 +26,8 @@ class LoginFailureReason(StrEnum):
 class LoginError(Exception):
     """Raised when a login callback must be rejected.
 
-    Exists so the reason travels with the exception up to the router, which answers 400 and
-    records it. Raised by `krtr/back/security/oidc/`.
+    Exists so the reason travels with the exception up to the router, which sends the browser
+    back to the landing page and records it. Raised by `krtr/back/security/oidc/`.
     """
 
     def __init__(self, reason: LoginFailureReason) -> None:

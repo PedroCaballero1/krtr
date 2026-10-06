@@ -8,11 +8,12 @@ database directly. Consumed by `krtr/back/web/app.py`.
 import json
 import logging
 
-from fastapi import APIRouter, HTTPException, Request, Response
+from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from starlette.background import BackgroundTask
 
 from krtr.back.security.audit.recorder import EventRecorder
 from krtr.back.web.artifacts import RecordEventRequest
+from krtr.back.web.csrf import require_same_origin
 
 logger = logging.getLogger(__name__)
 
@@ -21,14 +22,21 @@ events_router = APIRouter()
 MAX_PROPERTIES_BYTES = 4096
 
 
-@events_router.post("/api/events", status_code=202, include_in_schema=False)
+@events_router.post(
+    "/api/events",
+    status_code=202,
+    include_in_schema=False,
+    dependencies=[Depends(require_same_origin)],
+)
 async def record_event(payload: RecordEventRequest, request: Request) -> Response:
     """Accepts a frontend-originated event and records it in the background.
 
     Exists so the frontend's `trackEvent` (task 5.3) has one endpoint to
     call for every UI event; `event_name` is already validated against the
     `EventName` catalog by `RecordEventRequest` (an unknown name never
-    reaches this function — FastAPI returns 422 first).
+    reaches this function — FastAPI returns 422 first). Only the Origin check
+    applies (task 4.5): the landing page reports events before any session,
+    and so before any CSRF cookie, exists.
 
     Args:
         payload: The event name and properties, from the request body.

@@ -14,3 +14,33 @@ import type { Language } from "@/i18n/languages";
 export function getLoginUrl(language: Language): string {
   return `/auth/login?lang=${language}`;
 }
+
+/**
+ * What the landing page tells the user about a login that came back to it.
+ *
+ * Mirrors `LoginNotice` in `krtr/back/web/routers/auth.py`: a rejected
+ * `/auth/callback` redirects to `/?login=failed` instead of answering a raw
+ * JSON error (task 4.4). The reason itself never reaches the URL.
+ */
+export const LoginNotice = {
+  Failed: "failed",
+} as const;
+
+export type LoginNotice = (typeof LoginNotice)[keyof typeof LoginNotice];
+
+/** The landing page query parameter that carries the `LoginNotice`. */
+export const LOGIN_NOTICE_PARAM = "login";
+
+/**
+ * Parses a raw query-string value back into a `LoginNotice`.
+ *
+ * Exists so the landing page only shows a notice the backend actually
+ * sends, never one for an arbitrary value typed into the URL.
+ *
+ * @param value - The raw `?login=` value, or null when absent.
+ * @returns The matching notice, or null if absent or unknown.
+ */
+export function parseLoginNotice(value: string | null): LoginNotice | null {
+  const notices: readonly string[] = Object.values(LoginNotice);
+  return value !== null && notices.includes(value) ? (value as LoginNotice) : null;
+}

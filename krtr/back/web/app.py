@@ -13,26 +13,41 @@ from dotenv import load_dotenv
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 
+from krtr.back.ia.messages.store import InMemoryMessageStore, MessageStore, NeonMessageStore
 from krtr.back.security.audit.middleware import record_http_request
 from krtr.back.security.audit.recorder import EventRecorder
 from krtr.back.security.crypto.cipher import AesGcmCipher
 from krtr.back.security.crypto.config import CryptoConfig, CryptoEnvironmentVariable
+from krtr.back.security.csrf.config import CsrfConfig
 from krtr.back.security.headers.config import HeadersConfig
 from krtr.back.security.headers.middleware import add_security_headers
 from krtr.back.security.oidc.client import KeycloakOidcClient
 from krtr.back.security.oidc.config import OidcConfig
 from krtr.back.security.oidc.login_cookie import LoginCookieCodec
+from krtr.back.security.rate_limit.config import RateLimitConfig
 from krtr.back.security.sessions.service import SessionService
 from krtr.back.security.sessions.store import SessionStore
+from krtr.back.web.cases.repository import CaseRepository, StubCaseRepository
+from krtr.back.web.chat.agent import build_agent_responder
+from krtr.back.web.chat.responder import ChatResponder, StubChatResponder
 from krtr.back.web.config import WebConfig, WebEnvironment
+from krtr.back.web.csrf import register_csrf_error_handler
 from krtr.back.web.dependencies import AuthServices, register_auth_error_handlers
-from krtr.back.web.middleware import log_request
+from krtr.back.web.middleware import limit_request_size, log_request
+from krtr.back.web.rate_limit import (
+    RateLimiters,
+    enforce_rate_limits,
+    register_rate_limit_error_handler,
+)
 from krtr.back.web.routers.auth import auth_router
+from krtr.back.web.routers.cases import cases_router
+from krtr.back.web.routers.chat import chat_router
 from krtr.back.web.routers.events import events_router
 from krtr.back.web.routers.health import health_router
 from krtr.back.web.routers.session import session_router
 from krtr.back.web.routers.spa import spa_router
 from krtr.database.neon.client import NeonClient
+from krtr.database.neon.config import NeonConfig
 
 logger = logging.getLogger(__name__)
 
@@ -44,6 +59,10 @@ def create_app(
     headers_config: HeadersConfig | None = None,
     event_recorder: EventRecorder | None = None,
     auth_services: AuthServices | None = None,
+    csrf_config: CsrfConfig | None = None,
+    case_repository: CaseRepository | None = None,
+    chat_responder: ChatResponder | None = None,
+    rate_limit_config: RateLimitConfig | None = None,
 ) -> FastAPI:
     """Builds and configures the krtr-web FastAPI application.
 
@@ -63,6 +82,13 @@ def create_app(
         auth_services: The OIDC login and session services (tasks 4.3, 4.4).
             When None, the login and session routes answer 503;
             `create_served_app` always provides them in production.
+        csrf_config: The origin state-changing requests must come from (task 4.5). When
+            None, it is loaded from the environment via `CsrfConfig.from_environment`.
+        case_repository: Where the customers' cases live (task 4.8). When None, an
+            in-memory `StubCaseRepository` with sample cases.
+        chat_responder: Who answers chat messages (task 4.9). When None, the D15
+            placeholder (`StubChatResponder`); `create_served_app` passes the engine.
+        rate_limit_config: The request limits (task 4.6). When None, the defaults.
 
     Returns:
         FastAPI: the configured application, ready to serve.
@@ -79,16 +105,44 @@ def create_app(
     app.state.headers_config = resolved_headers_config
     app.state.event_recorder = event_recorder
     app.state.auth_services = auth_services
-    app.middleware("http")(add_security_headers)
-    app.middleware("http")(record_http_request)
-    app.middleware("http")(log_request)
+    app.state.csrf_config = csrf_config or CsrfConfig.from_environment()
+    app.state.case_repository = case_repository or StubCaseRepository()
+    app.state.chat_responder = chat_responder or StubChatResponder()
+    app.state.rate_limiters = RateLimiters.from_config(rate_limit_config or RateLimitConfig())
+    _add_middleware(app)
     register_auth_error_handlers(app)
-    for router in (health_router, events_router, auth_router, session_router):
+    register_csrf_error_handler(app)
+    register_rate_limit_error_handler(app)
+    routers = (health_router, events_router, auth_router, session_router, cases_router)
+    for router in (*routers, chat_router):
         app.include_router(router)
     _mount_frontend_assets(app, resolved_config)
     app.include_router(spa_router)
     logger.info("krtr-web app created (environment=%s)", resolved_config.environment)
     return app
+
+
+def _add_middleware(app: FastAPI) -> None:
+    """Adds krtr-web's HTTP middleware, outermost last.
+
+    Order, from the outside in: the request_id log, the `http_request` event, the security
+    headers, the request limits (task 4.6), and the body size limit. Limits run inside the
+    first three, so a 429 or 413 is still logged, recorded and sent with the security headers.
+
+    Args:
+        app: The app to add them to.
+
+    Returns:
+        None.
+    """
+    for middleware in (
+        limit_request_size,
+        enforce_rate_limits,
+        add_security_headers,
+        record_http_request,
+        log_request,
+    ):
+        app.middleware("http")(middleware)
 
 
 def create_served_app() -> FastAPI:
@@ -117,6 +171,7 @@ def create_served_app() -> FastAPI:
         config,
         event_recorder=_build_event_recorder(config),
         auth_services=_build_auth_services(config),
+        chat_responder=_build_chat_responder(config),
     )
 
 
@@ -184,6 +239,57 @@ def _build_auth_services(config: WebConfig) -> AuthServices | None:
         login_codec=LoginCookieCodec(cipher),
         session_service=session_service,
     )
+
+
+def _build_chat_responder(config: WebConfig) -> ChatResponder:
+    """Builds the chat over the conversation engine and Neon; mandatory in production.
+
+    Exists so production answers with the engine and keeps every message (G17, G21), while
+    local development can run without Neon (the D15 placeholder answers instead).
+
+    Args:
+        config: The resolved WebConfig, whose environment decides whether a missing setting
+            stops the app.
+
+    Returns:
+        ChatResponder: the engine-backed responder, or the placeholder outside production when
+        Neon is not configured.
+
+    Raises:
+        ValueError: in production, if NEON_DB_HOST or KRTR_MESSAGES_KEY is missing or invalid.
+    """
+    try:
+        neon_config = NeonConfig.from_environment()
+        messages = _build_message_store(config)
+    except ValueError as error:
+        if config.environment == WebEnvironment.PRODUCTION:
+            raise ValueError(f"krtr-web cannot start without the chat: {error}") from error
+        logger.warning(
+            "The chat answers the placeholder (environment=%s): %s", config.environment, error
+        )
+        return StubChatResponder()
+    return build_agent_responder(NeonClient(neon_config), messages)
+
+
+def _build_message_store(config: WebConfig) -> MessageStore:
+    """Builds the `messages` store; outside production, falls back to memory without the key.
+
+    Args:
+        config: The resolved WebConfig.
+
+    Returns:
+        MessageStore: the Neon store, or an in-memory one in development without the key.
+
+    Raises:
+        ValueError: in production, if KRTR_MESSAGES_KEY or NEON_DB_HOST is missing or invalid.
+    """
+    try:
+        return NeonMessageStore.from_environment()
+    except ValueError as error:
+        if config.environment == WebEnvironment.PRODUCTION:
+            raise
+        logger.warning("Chat messages are kept in memory only: %s", error)
+        return InMemoryMessageStore()
 
 
 def _mount_frontend_assets(app: FastAPI, config: WebConfig) -> None:

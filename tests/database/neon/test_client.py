@@ -97,8 +97,9 @@ def test_insert_rows_skips_the_database_call_when_empty(monkeypatch: pytest.Monk
     recorded = []
     monkeypatch.setattr(client_module, "execute_values", lambda *a: recorded.append(a))
 
-    client.insert_rows("INSERT INTO t (a) VALUES %s", [])
+    inserted = client.insert_rows("INSERT INTO t (a) VALUES %s", [])
 
+    assert inserted == 0
     assert recorded == []
     assert connection.committed == 0
 
@@ -117,6 +118,19 @@ def test_insert_rows_calls_execute_values_and_commits(monkeypatch: pytest.Monkey
 
     assert recorded == [("INSERT INTO t (a) VALUES %s", [(1,), (2,)], 2)]
     assert connection.committed == 1
+
+
+def test_insert_rows_reports_what_the_database_inserted(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Verifies the count is the database's, so rows skipped by ON CONFLICT are not counted."""
+    client, connection = make_client(monkeypatch)
+    connection.rowcount_result = 1
+    monkeypatch.setattr(client_module, "execute_values", lambda *args, **kwargs: None)
+
+    inserted = client.insert_rows(
+        "INSERT INTO t (a) VALUES %s ON CONFLICT DO NOTHING", [(1,), (2,)]
+    )
+
+    assert inserted == 1
 
 
 def test_get_column_specs_maps_nullability_and_preserves_order(

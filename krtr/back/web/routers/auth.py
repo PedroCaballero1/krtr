@@ -9,11 +9,14 @@ Consumed by `krtr/back/web/app.py`.
 
 import logging
 import secrets
+from enum import StrEnum
+from urllib.parse import urlencode
 
 from fastapi import APIRouter, BackgroundTasks, Depends, Request, Response
 from fastapi.responses import RedirectResponse
 
 from krtr.back.security.audit.event_names import EventName
+from krtr.back.security.csrf.guard import new_csrf_token
 from krtr.back.security.oidc.artifacts import (
     InterfaceLanguage,
     LoginIdentity,
@@ -25,17 +28,33 @@ from krtr.back.security.oidc.errors import LoginError, LoginFailureReason
 from krtr.back.security.sessions.artifacts import SessionRecord
 from krtr.back.web.auditing import schedule_event
 from krtr.back.web.cookies import (
+    clear_csrf_cookie,
     clear_login_cookie,
     clear_session_cookie,
+    set_csrf_cookie,
     set_login_cookie,
     set_session_cookie,
 )
-from krtr.back.web.dependencies import AuthServices, get_auth_services, require_session
-from krtr.back.web.errors import ApiErrorCode, MessageKey, api_error
+from krtr.back.web.csrf import require_session_with_csrf
+from krtr.back.web.dependencies import AuthServices, get_auth_services
 
 logger = logging.getLogger(__name__)
 
 APP_HOME_PATH = "/app"  # The SPA's authenticated home (AppPath.Home in the frontend).
+LANDING_PATH = "/"  # The SPA's landing page (AppPath.Landing in the frontend).
+LOGIN_NOTICE_PARAM = "login"  # LOGIN_NOTICE_PARAM in krtr/front/src/lib/auth.ts.
+
+
+class LoginNotice(StrEnum):
+    """What the landing page tells the customer about their login, in its `login` parameter.
+
+    Exists so a rejected callback sends the browser back to the landing page with a translated
+    notice instead of a raw JSON body (task 4.4). Never carries the failure reason, which only
+    goes to the `auth_login_failed` event. Mirrors `LoginNotice` in krtr/front/src/lib/auth.ts.
+    """
+
+    FAILED = "failed"
+
 
 auth_router = APIRouter(prefix="/auth")
 
@@ -85,7 +104,8 @@ def callback(
         services: The app's login and session services.
 
     Returns:
-        Response: 302 to /app with the session cookie, or 400 if the login is rejected.
+        Response: 302 to /app with the session cookie, or to the landing page with a notice if
+        the login is rejected.
     """
     try:
         login_state = services.login_codec.decode(
@@ -102,10 +122,10 @@ def callback(
 def logout(
     request: Request,
     tasks: BackgroundTasks,
-    session: SessionRecord = Depends(require_session),
+    session: SessionRecord = Depends(require_session_with_csrf),
     services: AuthServices = Depends(get_auth_services),
 ) -> Response:
-    """Logs out of krtr and of Keycloak, and clears the session cookie.
+    """Logs out of krtr and of Keycloak, and clears the session and CSRF cookies.
 
     Args:
         request: The current request.
@@ -120,6 +140,7 @@ def logout(
     services.session_service.end(session)
     response = Response(status_code=204)
     clear_session_cookie(response)
+    clear_csrf_cookie(response)
     schedule_event(request, tasks, EventName.AUTH_LOGOUT, {"customer_id": session.customer_id})
     return response
 
@@ -154,7 +175,10 @@ def _checked_code(
 
 
 def _reject_login(request: Request, tasks: BackgroundTasks, failure: LoginError) -> Response:
-    """Answers a rejected callback with 400, clearing the login cookie and recording why.
+    """Sends a rejected callback back to the landing page, clearing the login cookie.
+
+    The browser arrives here by a top-level navigation, so a JSON error would be shown raw; the
+    landing page shows a translated notice instead. Why it failed is only recorded in the event.
 
     Args:
         request: The callback.
@@ -162,10 +186,11 @@ def _reject_login(request: Request, tasks: BackgroundTasks, failure: LoginError)
         failure: Why the login was rejected.
 
     Returns:
-        Response: 400 with the §3.4 body.
+        Response: 302 to `/?login=failed`.
     """
     logger.warning("Rejected a login callback: %s", failure.reason.value)
-    response = api_error(400, ApiErrorCode.LOGIN_FAILED, MessageKey.LOGIN_FAILED)
+    notice = urlencode({LOGIN_NOTICE_PARAM: LoginNotice.FAILED.value})
+    response = RedirectResponse(f"{LANDING_PATH}?{notice}", status_code=302)
     clear_login_cookie(response)
     schedule_event(request, tasks, EventName.AUTH_LOGIN_FAILED, {"reason": failure.reason.value})
     return response
@@ -188,11 +213,13 @@ def _open_session(
         tokens: The tokens Keycloak issued.
 
     Returns:
-        Response: 302 to /app with the session cookie set and the login cookie cleared.
+        Response: 302 to /app with the session and CSRF cookies set and the login cookie
+        cleared.
     """
     started = services.session_service.start(identity.customer_id, tokens)
     response = RedirectResponse(APP_HOME_PATH, status_code=302)
     set_session_cookie(response, started.token)
+    set_csrf_cookie(response, new_csrf_token())
     clear_login_cookie(response)
     customer = {"customer_id": identity.customer_id}
     schedule_event(request, tasks, EventName.AUTH_LOGIN_SUCCEEDED, customer)

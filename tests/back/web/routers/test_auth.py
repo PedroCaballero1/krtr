@@ -36,6 +36,13 @@ def callback(web: WebHarness, query: str) -> httpx.Response:
     return web.client.get(f"/auth/callback?{query}", follow_redirects=False)
 
 
+def assert_sent_back_to_the_landing_page(response: httpx.Response) -> None:
+    """Checks a rejected callback: 302 to the landing page's notice, never to /app (task 4.4)."""
+    assert response.status_code == 302
+    assert response.headers["location"] == "/?login=failed"
+    assert SESSION_COOKIE_NAME not in response.cookies
+
+
 def test_login_redirects_to_keycloak_with_an_encrypted_login_cookie(web: WebHarness) -> None:
     """The secrets of the login travel only encrypted, in a __Host- Lax cookie for 10 minutes."""
     response = web.client.get("/auth/login?lang=pt-BR", follow_redirects=False)
@@ -108,8 +115,7 @@ def test_a_callback_that_does_not_answer_this_login_is_rejected(
 
     response = callback(web, query.format(state=state))
 
-    assert response.status_code == 400
-    assert response.json() == {"error": "login_failed", "message_key": "login_failed"}
+    assert_sent_back_to_the_landing_page(response)
     assert web.oidc.exchanged_codes == []
     assert web.store.sessions == {}
     assert "Max-Age=0" in set_cookie_header(
@@ -125,7 +131,7 @@ def test_a_callback_without_the_login_cookie_is_rejected(web: WebHarness) -> Non
 
     response = callback(web, f"code=abc&state={state}")
 
-    assert response.status_code == 400
+    assert_sent_back_to_the_landing_page(response)
     assert web.properties_of(EventName.AUTH_LOGIN_FAILED) == {
         "reason": LoginFailureReason.MISSING_LOGIN_COOKIE.value
     }
@@ -138,7 +144,7 @@ def test_a_callback_after_the_login_cookie_expired_is_rejected(web: WebHarness) 
 
     response = callback(web, f"code=abc&state={state}")
 
-    assert response.status_code == 400
+    assert_sent_back_to_the_landing_page(response)
     assert web.properties_of(EventName.AUTH_LOGIN_FAILED) == {
         "reason": LoginFailureReason.EXPIRED_LOGIN.value
     }
@@ -151,20 +157,20 @@ def test_a_tampered_login_cookie_is_rejected(web: WebHarness) -> None:
 
     response = callback(web, f"code=abc&state={state}")
 
-    assert response.status_code == 400
+    assert_sent_back_to_the_landing_page(response)
     assert web.properties_of(EventName.AUTH_LOGIN_FAILED) == {
         "reason": LoginFailureReason.INVALID_LOGIN_COOKIE.value
     }
 
 
 def test_a_code_keycloak_rejects_does_not_log_in(web: WebHarness) -> None:
-    """A failed token exchange or ID token check (e.g. wrong nonce) answers 400, no session."""
+    """A failed token exchange or ID token check (e.g. wrong nonce) never opens a session."""
     web.oidc.rejection = LoginFailureReason.NONCE_MISMATCH
     state = start_login(web)
 
     response = callback(web, f"code=abc&state={state}")
 
-    assert response.status_code == 400
+    assert_sent_back_to_the_landing_page(response)
     assert web.store.sessions == {}
     assert web.properties_of(EventName.AUTH_LOGIN_FAILED) == {
         "reason": LoginFailureReason.NONCE_MISMATCH.value
@@ -179,7 +185,7 @@ def test_a_used_login_cookie_is_gone_so_the_callback_cannot_be_replayed(web: Web
     response = callback(web, f"code=abc&state={state}")
 
     assert LOGIN_COOKIE_NAME not in web.client.cookies
-    assert response.status_code == 400
+    assert_sent_back_to_the_landing_page(response)
     assert web.properties_of(EventName.AUTH_LOGIN_FAILED) == {
         "reason": LoginFailureReason.MISSING_LOGIN_COOKIE.value
     }
@@ -210,7 +216,7 @@ def test_logout_ends_the_session_here_and_in_keycloak(web: WebHarness) -> None:
     token = web.log_in()
     tokens = web.store.find(hash_session_token(token)).tokens
 
-    response = web.client.post("/auth/logout")
+    response = web.post("/auth/logout")
 
     assert response.status_code == 204
     assert "Max-Age=0" in set_cookie_header(
@@ -224,7 +230,7 @@ def test_logout_ends_the_session_here_and_in_keycloak(web: WebHarness) -> None:
 
 def test_logout_without_a_session_is_401(web: WebHarness) -> None:
     """Logout is a session route: no session, nothing to end, and Keycloak is not called."""
-    response = web.client.post("/auth/logout")
+    response = web.post("/auth/logout")
 
     assert response.status_code == 401
     assert web.oidc.ended_sessions == []

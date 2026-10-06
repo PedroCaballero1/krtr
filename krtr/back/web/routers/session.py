@@ -9,6 +9,7 @@ Expired sessions answer 401 through the session error handler. Consumed by
 from fastapi import APIRouter, Depends
 
 from krtr.back.security.sessions.artifacts import SessionRecord, SessionStatus
+from krtr.back.web.csrf import require_session_with_csrf
 from krtr.back.web.dependencies import AuthServices, get_auth_services, require_session
 
 session_router = APIRouter(prefix="/api")
@@ -33,7 +34,7 @@ def get_current_session(
 
 @session_router.post("/session/activity")
 def record_session_activity(
-    session: SessionRecord = Depends(require_session),
+    session: SessionRecord = Depends(require_session_with_csrf),
     services: AuthServices = Depends(get_auth_services),
 ) -> SessionStatus:
     """Records the customer's activity and returns the session's new deadlines.

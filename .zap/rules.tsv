@@ -1,0 +1,4 @@
+# OWASP ZAP baseline rules accepted for krtr (task 7.4): <rule id> TAB <IGNORE|WARN|FAIL> TAB <justification>.
+# IGNORE = accepted Medium alert; .zap/baseline.sh fails on any High alert and on Medium alerts not listed here.
+10202	IGNORE	(Absence of Anti-CSRF Tokens) False positive on Keycloak login form: it is bound to the AUTH_SESSION_ID cookie and the one-time session_code/execution/tab_id in its action URL.
+10055	IGNORE	(CSP) Keycloak sets its own minimal CSP (no script-src/default-src) and the login theme uses an inline onsubmit. Page only serves the login form. Accepted as pending: see docs/security-checklist.md section 5.

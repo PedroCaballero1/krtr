@@ -75,6 +75,19 @@ def test_login_redirect_carries_state_nonce_pkce_and_language() -> None:
     assert "code_verifier" not in query  # The verifier only travels in the encrypted cookie.
 
 
+def test_the_customer_id_has_the_case_of_the_source_data(
+    realm: FakeRealm, keycloak: respx.MockRouter
+) -> None:
+    """Keycloak lowercases usernames; the session must hold CLI-..., as `products` stores it."""
+    client, login_state, _ = start()
+    id_token = realm.id_token(login_state.nonce, preferred_username="cli-g4x2amvd62nr")
+    answer_token_request(keycloak, realm.token_response(id_token))
+
+    identity, _ = client.complete_login(login_state, "the-code")
+
+    assert identity.customer_id == "CLI-G4X2AMVD62NR"
+
+
 def test_each_login_gets_fresh_secrets_valid_for_10_minutes() -> None:
     """Reusing state, nonce or verifier across logins would weaken all three protections."""
     _, first, _ = start()
