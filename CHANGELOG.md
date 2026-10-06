@@ -2,6 +2,21 @@
 
 <!-- version list -->
 
+## v1.8.0 (2026-10-06)
+
+### Bug Fixes
+
+- **back/ia/matching**: Ship the evaluation set outside an ignored data folder
+  ([#14](https://github.com/PedroCaballero1/krtr/pull/14),
+  [`6adf2ac`](https://github.com/PedroCaballero1/krtr/commit/6adf2acf845e061087ab291f3a598f515b7a356d))
+
+### Features
+
+- **back/ia**: Select models by Enum, add MiniLM and measured thresholds
+  ([#14](https://github.com/PedroCaballero1/krtr/pull/14),
+  [`6adf2ac`](https://github.com/PedroCaballero1/krtr/commit/6adf2acf845e061087ab291f3a598f515b7a356d))
+
+
 ## v1.7.0 (2026-10-06)
 
 ### Documentation
