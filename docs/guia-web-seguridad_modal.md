@@ -743,6 +743,7 @@ Guarda el texto de la conversación, separado de `events`, por dos razones:
 - **Excepciones documentadas** por la plataforma: sin WAF, política TLS que no controlamos (0.4b), sin dominio propio, la administración de Keycloak solo por `modal container exec`, y lo que haya encontrado 0.4(f) (cabeceras que agrega Modal y usuario del contenedor).
 - **Aceptación:** no queda ningún control aplicable sin evidencia ni sin excepción justificada.
 - **Depende de:** 7.2–7.5
+- **Borrador (5-oct):** [`docs/security-checklist.md`](security-checklist.md), con los 253 controles L1 + L2 de ASVS 5.0.0, cada uno una sola vez: 152 ✅, 27 🟡, 16 ⚠️ (8 excepciones: E1–E6 de la plataforma, E7–E8 de diseño), 1 ❌ (V15.1.1, plazos para dependencias vulnerables) y 57 que no aplican. Incluye el inventario criptográfico, la clasificación de datos, el inventario de registros y 11 pendientes priorizados. ⬜ Falta la revisión y la firma de una persona del equipo.
 
 ### Fase 8 — Entrega
 
