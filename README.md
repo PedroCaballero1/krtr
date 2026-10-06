@@ -26,7 +26,9 @@ answers from that customer's own data, or hands the case to a person.
 ### For the jury
 
 Log in at `https://juan-alvarezo-2002--krtr.modal.run/` with one of the 50 test accounts.
-The accounts (customer number and password) are listed in [`JURY_ACCESS.md`](JURY_ACCESS.md).
+The accounts (customer number and password), with what each one can ask the assistant, are
+handed to the jury separately through a private channel: passwords are never stored in this
+repository.
 
 ## The solution: deterministic first
 
@@ -255,7 +257,7 @@ uv run --env-file .env krtr back security credentials import --remote
 uv run pytest e2e/security
 ```
 
-- Las credenciales quedan en `data/credentials/` (fuera de git, permisos `600`). Las cuentas del jurado están en [`JURY_ACCESS.md`](JURY_ACCESS.md).
+- Las credenciales quedan en `data/credentials/` (fuera de git, permisos `600`). `jury_credentials.csv` se entrega al jurado por un canal privado.
 - La purga diaria (`purge_events`, 03:00 COT) borra eventos y mensajes de más de 3 meses. Para correrla a mano: `uv run --env-file .env modal run -m krtr.back.deploy.app::purge_events`.
 - Cada despliegue reinicia Keycloak (unos 30 s sin login): no desplegar durante la evaluación.
 - Desde la tarea 6.7, el despliegue lo hace GitHub Actions con cada merge a `master` que pasa el CI (`.github/workflows/deploy.yml`). El modo demo se controla con la variable del repositorio `KRTR_WARM`. Los pasos 1 y 2 de arriba quedan para la puesta en marcha y para emergencias.
