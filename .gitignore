@@ -1,27 +1,3 @@
 .env
 
 data/
-__pycache__/
-*.pyc
-*.pyo
-*.pyd
-*.cpython-*
-
-# Local CLI state (e.g. Modal run records)
-.krtr/
-
-# Frontend build artifacts (krtr/front is a separate Vite/npm project,
-# installed as an npm workspace so its deps hoist to /node_modules and
-# are resolvable from tests/front/, per D2)
-/node_modules/
-krtr/front/node_modules/
-krtr/front/dist/
-
-# Python package build output (uv build)
-/dist/
-
-# Generated customer credentials (jury/QA/import batches) — never committed
-data/credentials/
-
-# OWASP ZAP reports (.zap/baseline.sh)
-.zap/reports/
