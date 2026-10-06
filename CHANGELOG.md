@@ -2,6 +2,29 @@
 
 <!-- version list -->
 
+## v1.7.0 (2026-10-06)
+
+### Documentation
+
+- **repo**: Define the messages table for chat text
+  ([#13](https://github.com/PedroCaballero1/krtr/pull/13),
+  [`ed16f5e`](https://github.com/PedroCaballero1/krtr/commit/ed16f5e067feefb53632140e470c76242c66c5b3))
+
+### Features
+
+- **back/ia**: Add deterministic conversation engine and krtr back ia CLI
+  ([#13](https://github.com/PedroCaballero1/krtr/pull/13),
+  [`ed16f5e`](https://github.com/PedroCaballero1/krtr/commit/ed16f5e067feefb53632140e470c76242c66c5b3))
+
+- **back/ia/language**: Detect the reply language per conversation
+  ([#13](https://github.com/PedroCaballero1/krtr/pull/13),
+  [`ed16f5e`](https://github.com/PedroCaballero1/krtr/commit/ed16f5e067feefb53632140e470c76242c66c5b3))
+
+- **back/ia/messages**: Store chat messages and replies, encrypted
+  ([#13](https://github.com/PedroCaballero1/krtr/pull/13),
+  [`ed16f5e`](https://github.com/PedroCaballero1/krtr/commit/ed16f5e067feefb53632140e470c76242c66c5b3))
+
+
 ## v1.6.0 (2026-10-05)
 
 ### Bug Fixes
