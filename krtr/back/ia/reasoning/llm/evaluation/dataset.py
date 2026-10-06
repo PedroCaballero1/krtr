@@ -1,16 +1,21 @@
 """Loads the LLM evaluation cases: free-form replies, plus guard confirmations.
 
 Exists so the replies live as `task<TAB>subject<TAB>options<TAB>reply<TAB>expected` lines in
-`messages/<language>/replies.tsv` (options comma-separated, empty for free slots). The guard
-confirmations reuse the matcher's evaluation set: its aggressive and off-topic messages must be
-confirmed, and its `unsupported` banking requests (angry or not) must not, since confirming
-one would close a real customer's conversation. Consumed by `reasoning/llm/evaluation/runner.py`.
+`messages/<language>/replies.tsv` (options comma-separated, empty for free slots), with an
+optional sixth field, `history`: the earlier messages as `<sender>: <text>` entries joined by
+` || `, where a literal backslash-n inside a text is a line break (an agent's numbered
+question). The guard confirmations reuse the matcher's evaluation set: its aggressive and
+off-topic messages must be confirmed, and its `unsupported` banking requests (angry or not) must
+not, since confirming one would close a real customer's conversation. Consumed by
+`reasoning/llm/evaluation/runner.py`.
 """
 
 from pathlib import Path
 
 from krtr.back.ia.matching.evaluation.artifacts import EvaluationSet
 from krtr.back.ia.matching.labels import GuardLabel
+from krtr.back.ia.messages.artifacts import MessageSender
+from krtr.back.ia.reasoning.llm.artifacts import ConversationTranscript, TranscriptEntry
 from krtr.back.ia.reasoning.llm.evaluation.artifacts import LlmCase, LlmTask
 from krtr.back.security.oidc.artifacts import InterfaceLanguage
 
@@ -18,6 +23,10 @@ from krtr.back.security.oidc.artifacts import InterfaceLanguage
 REPLIES_DIRECTORY = Path(__file__).parent / "messages"
 REPLIES_FILE = "replies.tsv"
 REPLY_FIELDS = 5
+REPLY_FIELDS_WITH_HISTORY = 6
+HISTORY_SEPARATOR = " || "
+SENDER_SEPARATOR = ": "
+ESCAPED_LINE_BREAK = "\\n"
 CONFIRMED, NOT_CONFIRMED = "true", "false"
 CLOSING_LABELS = (GuardLabel.AGGRESSIVE, GuardLabel.OFF_TOPIC)
 
@@ -54,7 +63,7 @@ def _read_replies(path: Path, language: InterfaceLanguage) -> list[LlmCase]:
         list[LlmCase]: the cases, empty without a file.
 
     Raises:
-        ValueError: if a line doesn't have the five tab-separated fields.
+        ValueError: if a line doesn't have five or six tab-separated fields.
     """
     if not path.is_file():
         return []
@@ -63,9 +72,9 @@ def _read_replies(path: Path, language: InterfaceLanguage) -> list[LlmCase]:
         fields = line.split("\t")
         if not line.strip():
             continue
-        if len(fields) != REPLY_FIELDS:
-            raise ValueError(f"{path}: expected 5 tab-separated fields, got {line!r}")
-        task, subject, options, reply, expected = fields
+        if len(fields) not in (REPLY_FIELDS, REPLY_FIELDS_WITH_HISTORY):
+            raise ValueError(f"{path}: expected 5 or 6 tab-separated fields, got {line!r}")
+        task, subject, options, reply, expected, *history = fields
         cases.append(
             LlmCase(
                 language=language,
@@ -74,9 +83,36 @@ def _read_replies(path: Path, language: InterfaceLanguage) -> list[LlmCase]:
                 options=[option for option in options.split(",") if option],
                 reply=reply,
                 expected=expected,
+                history=_parse_history(history[0] if history else ""),
             )
         )
     return cases
+
+
+def _parse_history(field: str) -> ConversationTranscript:
+    """Reads a case's `history` field into a transcript.
+
+    Args:
+        field: `<sender>: <text>` entries joined by ` || `; empty for no history.
+
+    Returns:
+        ConversationTranscript: the earlier messages, in the order written.
+
+    Raises:
+        ValueError: if an entry has no `<sender>: ` prefix or names an unknown sender.
+    """
+    entries = []
+    for entry in filter(None, field.split(HISTORY_SEPARATOR)):
+        sender, separator, content = entry.partition(SENDER_SEPARATOR)
+        if not separator:
+            raise ValueError(f"History entry without a sender: {entry!r}")
+        entries.append(
+            TranscriptEntry(
+                sender=MessageSender(sender),
+                content=content.replace(ESCAPED_LINE_BREAK, "\n"),
+            )
+        )
+    return ConversationTranscript(entries=entries)
 
 
 def _confirmation_cases(matcher_set: EvaluationSet) -> list[LlmCase]:

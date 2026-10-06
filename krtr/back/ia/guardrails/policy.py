@@ -35,18 +35,25 @@ CLOSING_FLAGS: dict[GuardLabel, ClosureReason] = {
 
 
 class GuardConfirmer(Protocol):
-    """Confirms a guard flag. Implemented by `reasoning/llm/tasks.LlmTasks`."""
+    """Confirms guard flags. Implemented by `reasoning/llm/guard.LlmGuardConfirmer`."""
 
-    def confirm_guard(self, label: GuardLabel, reply: str, language: InterfaceLanguage) -> bool:
-        """Tells whether the flagged message really is what the label says.
+    def confirm_first(
+        self,
+        state: ConversationState,
+        labels: list[GuardLabel],
+        reply: str,
+        language: InterfaceLanguage,
+    ) -> GuardLabel | None:
+        """Tells which flag, if any, the flagged message really is.
 
         Args:
-            label: The flag.
+            state: The conversation, so the message is read in its context.
+            labels: The closing flags raised, in order.
             reply: The customer's message.
             language: The customer's language.
 
         Returns:
-            bool: True only on a clear "yes".
+            GuardLabel | None: the first flag confirmed by a clear "yes", or None.
         """
         ...
 
@@ -138,12 +145,14 @@ class GuardrailPolicy:
         """
         if self._confirmer is None or match.kind == MatchKind.MATCHED:
             return None
-        for label in match.guard_flags:
-            reason = CLOSING_FLAGS.get(label)
-            if reason and self._confirmer.confirm_guard(label, text, language):
-                logger.info("Confirmed %s in incident %s: closing", label, state.incident_id)
-                return Closed(reason=reason)
-        return None
+        labels = [label for label in match.guard_flags if label in CLOSING_FLAGS]
+        if not labels:
+            return None
+        confirmed = self._confirmer.confirm_first(state, labels, text, language)
+        if confirmed is None:
+            return None
+        logger.info("Confirmed %s in incident %s: closing", confirmed, state.incident_id)
+        return Closed(reason=CLOSING_FLAGS[confirmed])
 
 
 def request_signature(resolution: Resolved) -> str:

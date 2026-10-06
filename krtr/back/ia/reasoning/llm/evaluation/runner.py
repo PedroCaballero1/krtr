@@ -136,13 +136,17 @@ def _answer(tasks: LlmTasks, gates: dict[str, DeterministicAction], case: LlmCas
         str: an option, a value, `none`, or `true` / `false`.
     """
     if case.task == LlmTask.CONFIRM_GUARD:
-        confirmed = tasks.confirm_guard(GuardLabel(case.subject), case.reply, case.language)
+        confirmed = tasks.confirm_guard(
+            GuardLabel(case.subject), case.reply, case.history, case.language
+        )
         return CONFIRMED if confirmed else NOT_CONFIRMED
     gate = gates.get(case.subject)
     if gate is None:
-        answer = tasks.choose_option(case.subject, case.options, case.reply, case.language)
+        answer = tasks.choose_option(
+            case.subject, case.options, case.reply, case.history, case.language
+        )
         return answer or NO_ANSWER
-    answer = tasks.fill_slot(case.subject, case.options, case.reply, case.language)
+    answer = tasks.fill_slot(case.subject, case.options, case.reply, case.history, case.language)
     if answer:
         answer = gate.validate_slot(case.subject, answer)
     return answer or NO_ANSWER

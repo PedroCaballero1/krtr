@@ -9,12 +9,18 @@ from krtr.back.ia.reasoning.llm.prompts.catalog import PromptCatalog, PromptName
 VALUES = {
     PromptName.CHOOSE_OPTION: {
         "language": "Spanish",
+        "conversation": "c",
         "question": "q",
         "options": "o",
         "reply": "r",
     },
-    PromptName.EXTRACT_VALUE: {"language": "Spanish", "slot": "s", "reply": "r"},
-    PromptName.CONFIRM_GUARD: {"language": "Spanish", "reply": "r"},
+    PromptName.EXTRACT_VALUE: {
+        "language": "Spanish",
+        "conversation": "c",
+        "slot": "s",
+        "reply": "r",
+    },
+    PromptName.CONFIRM_GUARD: {"language": "Spanish", "conversation": "c", "reply": "r"},
 }
 
 

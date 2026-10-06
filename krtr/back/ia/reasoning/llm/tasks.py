@@ -5,9 +5,11 @@ Exists so every LLM use is a narrow, schema-constrained task:
 - finding a free slot that **appears literally** in the text;
 - confirming a guard flag with yes or no.
 
-The model can never return an intent or a value it wasn't offered. If it can't answer
-(`LlmUnavailable`), each task returns "no answer" and the caller keeps the deterministic
-behaviour. Consumed by `reasoning/llm/clarifier.py` and `guardrails/`.
+Every task reads the customer's latest message in the context of the case's earlier messages
+(`ConversationTranscript`), but decides on the latest message only. The model can never return
+an intent or a value it wasn't offered. If it can't answer (`LlmUnavailable`), each task
+returns "no answer" and the caller keeps the deterministic behaviour. Consumed by
+`reasoning/llm/clarifier.py` and `reasoning/llm/guard.py`.
 """
 
 import logging
@@ -17,6 +19,7 @@ from typing import Literal, Protocol
 from pydantic import BaseModel, ConfigDict, create_model
 
 from krtr.back.ia.matching.labels import GuardLabel
+from krtr.back.ia.reasoning.llm.artifacts import ConversationTranscript
 from krtr.back.ia.reasoning.llm.base import LlmClient, LlmUnavailable
 from krtr.back.ia.reasoning.llm.prompts.catalog import PromptCatalog, PromptName
 from krtr.back.ia.text import normalize_text
@@ -31,6 +34,12 @@ LANGUAGE_NAMES: dict[InterfaceLanguage, str] = {
     InterfaceLanguage.SPANISH: "Spanish",
     InterfaceLanguage.PORTUGUESE: "Brazilian Portuguese",
 }
+
+# Introduces the earlier messages; a turn without any gets the prompt with no such section.
+CONTEXT_HEADER = (
+    "Earlier messages of this chat, oldest first, as context for the customer's latest message"
+    " (the agent's messages never answer for the customer):"
+)
 
 # Forbidding extra keys makes the guided JSON stop at the answer: no free-text "reason" field
 # that runs out of tokens and leaves the JSON unfinished.
@@ -108,7 +117,12 @@ class LlmTasks:
         self._labels = labels
 
     def choose_option(
-        self, subject: str, options: list[str], reply: str, language: InterfaceLanguage
+        self,
+        subject: str,
+        options: list[str],
+        reply: str,
+        transcript: ConversationTranscript,
+        language: InterfaceLanguage,
     ) -> str | None:
         """Reads a free-form reply as one of the offered options.
 
@@ -116,6 +130,7 @@ class LlmTasks:
             subject: What was asked about, e.g. "product_type" or "request".
             options: The option codes offered, in order.
             reply: The customer's reply.
+            transcript: The case's earlier messages, the reply's context.
             language: The customer's language.
 
         Returns:
@@ -128,6 +143,7 @@ class LlmTasks:
         prompt = self._prompts.render(
             PromptName.CHOOSE_OPTION,
             language=LANGUAGE_NAMES[language],
+            conversation=_context_section(transcript),
             question=f"which {self._labels.label(subject, language)} they mean",
             options=lines,
             reply=reply,
@@ -136,12 +152,22 @@ class LlmTasks:
         choice = getattr(answer, "choice", NO_OPTION) if answer else NO_OPTION
         return None if choice == NO_OPTION else choice
 
-    def extract_value(self, slot: str, reply: str, language: InterfaceLanguage) -> str | None:
+    def extract_value(
+        self,
+        slot: str,
+        reply: str,
+        transcript: ConversationTranscript,
+        language: InterfaceLanguage,
+    ) -> str | None:
         """Finds a free slot's value, accepting it only if the customer actually wrote it.
+
+        The value may come from an earlier customer message ("the one I gave you"), never
+        from the agent's.
 
         Args:
             slot: The slot's name, e.g. "complaint_id".
             reply: The customer's text.
+            transcript: The case's earlier messages.
             language: The customer's language.
 
         Returns:
@@ -150,17 +176,24 @@ class LlmTasks:
         prompt = self._prompts.render(
             PromptName.EXTRACT_VALUE,
             language=LANGUAGE_NAMES[language],
+            conversation=_context_section(transcript),
             slot=self._labels.label(slot, language),
             reply=reply,
         )
         answer = self._ask(prompt, ExtractedValue)
         value = answer.value.strip() if answer and answer.value else ""
-        if not value or normalize_text(value) not in normalize_text(reply):
+        customer_texts = [reply, *transcript.customer_texts()]
+        if not value or not any(normalize_text(value) in normalize_text(t) for t in customer_texts):
             return None
         return value.upper()
 
     def fill_slot(
-        self, slot: str, options: list[str], text: str, language: InterfaceLanguage
+        self,
+        slot: str,
+        options: list[str],
+        text: str,
+        transcript: ConversationTranscript,
+        language: InterfaceLanguage,
     ) -> str | None:
         """Fills one slot: an offered option for a closed slot, a literal value for a free one.
 
@@ -171,24 +204,34 @@ class LlmTasks:
             slot: The slot's name.
             options: The slot's closed options, or empty for a free slot.
             text: The customer's text.
+            transcript: The case's earlier messages.
             language: The customer's language.
 
         Returns:
             str | None: the value, or None.
         """
         if not options:
-            return self.extract_value(slot, text, language)
-        choice = self.choose_option(slot, options, text, language)
-        if choice is None or not self._is_grounded(choice, options, text, language):
+            return self.extract_value(slot, text, transcript, language)
+        choice = self.choose_option(slot, options, text, transcript, language)
+        customer_texts = [text, *transcript.customer_texts()]
+        if choice is None or not self._is_grounded(choice, options, customer_texts, language):
             return None
         return choice
 
-    def confirm_guard(self, label: GuardLabel, reply: str, language: InterfaceLanguage) -> bool:
+    def confirm_guard(
+        self,
+        label: GuardLabel,
+        reply: str,
+        transcript: ConversationTranscript,
+        language: InterfaceLanguage,
+    ) -> bool:
         """Confirms a flag by classifying the message, never by asking "is it X?".
 
         Args:
             label: The guard label that flagged the message.
             reply: The customer's message.
+            transcript: The case's earlier messages: an angry reply to a banking problem
+                raised earlier is still banking.
             language: The customer's language.
 
         Returns:
@@ -196,38 +239,49 @@ class LlmTasks:
             for `banking`, the other category, or when the LLM can't answer.
         """
         prompt = self._prompts.render(
-            PromptName.CONFIRM_GUARD, language=LANGUAGE_NAMES[language], reply=reply
+            PromptName.CONFIRM_GUARD,
+            language=LANGUAGE_NAMES[language],
+            conversation=_context_section(transcript),
+            reply=reply,
         )
         answer = self._ask(prompt, CategoryAnswer)
         return getattr(answer, "category", None) == CONFIRMING_CATEGORY[label]
 
     def _is_grounded(
-        self, option: str, options: list[str], text: str, language: InterfaceLanguage
+        self,
+        option: str,
+        options: list[str],
+        customer_texts: list[str],
+        language: InterfaceLanguage,
     ) -> bool:
-        """Checks that the reply points at the chosen option more than at any other.
+        """Checks that the customer's words single out the chosen option.
 
         Exists because, with similar options, a small model picks one the reply doesn't
         single out: "la de la tarjeta" fits credit and debit cards alike, so choosing either
-        is a guess. The chosen option's label must share strictly more word stems with the
-        reply than every other offered option's label. The LLM proposes; this confirms.
+        is a guess. Each customer text, newest first, narrows the options to those whose label
+        shares the most word stems with it; a text that shares none narrows nothing. The
+        choice stands only when the narrowing leaves it alone. So the latest reply decides
+        whenever it singles out an option, and earlier messages only break its ties ("la de la
+        tarjeta" after "mi tarjeta de crédito"). The agent's words never count: its questions
+        list every option. The LLM proposes; this confirms.
 
         Args:
             option: The option the LLM chose.
             options: Every option offered.
-            text: The customer's reply.
+            customer_texts: The latest reply first, then the earlier customer messages,
+                newest first.
             language: The customer's language.
 
         Returns:
-            bool: True if the chosen option overlaps the reply strictly more than all others.
+            bool: True if the narrowing leaves only the chosen option.
         """
-        reply = _stems(text)
-        chosen = len(_stems(self._labels.label(option, language)) & reply)
-        rivals = [
-            len(_stems(self._labels.label(other, language)) & reply)
-            for other in options
-            if other != option
-        ]
-        return chosen > max(rivals, default=0)
+        labels = {code: _stems(self._labels.label(code, language)) for code in options}
+        remaining = list(options)
+        for text in customer_texts:
+            remaining = _narrow(remaining, labels, _stems(text))
+            if len(remaining) == 1:
+                break
+        return remaining == [option]
 
     def _ask(self, prompt: str, schema: type[BaseModel]) -> BaseModel | None:
         """Calls the LLM, turning unavailability into "no answer".
@@ -256,3 +310,38 @@ def _stems(text: str) -> set[str]:
         set[str]: the first `STEM_LENGTH` letters of each normalised word of 4+ letters.
     """
     return {word[:STEM_LENGTH] for word in normalize_text(text).split() if len(word) >= 4}
+
+
+def _narrow(options: list[str], labels: dict[str, set[str]], text: set[str]) -> list[str]:
+    """Keeps the options whose label shares the most stems with a text.
+
+    Args:
+        options: The options still in play.
+        labels: The stems of each option's label.
+        text: The stems of one customer text.
+
+    Returns:
+        list[str]: the options with the highest overlap, or all of them if none overlaps.
+    """
+    overlaps = {code: len(labels[code] & text) for code in options}
+    best = max(overlaps.values(), default=0)
+    if best == 0:
+        return options
+    return [code for code in options if overlaps[code] == best]
+
+
+def _context_section(transcript: ConversationTranscript) -> str:
+    """Builds the prompt's section with the earlier messages, or nothing without any.
+
+    Exists so a turn with no earlier messages gets exactly the prompt measured before the
+    history was added: an empty section changes nothing.
+
+    Args:
+        transcript: The case's earlier messages.
+
+    Returns:
+        str: the header and the messages, ending in a line break; empty without messages.
+    """
+    if not transcript.entries:
+        return ""
+    return f"{CONTEXT_HEADER}\n{transcript.render()}\n"

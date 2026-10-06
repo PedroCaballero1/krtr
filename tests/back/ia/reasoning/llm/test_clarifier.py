@@ -3,6 +3,8 @@
 from krtr.back.ia.deterministic.artifacts import ProductType, SlotName
 from krtr.back.ia.deterministic.intents import Intent
 from krtr.back.ia.matching.artifacts import MatchCandidate, MatchKind, MatchResult
+from krtr.back.ia.messages.artifacts import MessageSender
+from krtr.back.ia.messages.store import InMemoryMessageStore
 from krtr.back.ia.reasoning.artifacts import (
     ConversationState,
     NeedsClarification,
@@ -12,9 +14,17 @@ from krtr.back.ia.reasoning.artifacts import (
 )
 from krtr.back.ia.reasoning.clarifier import TemplateClarifier
 from krtr.back.ia.reasoning.llm.clarifier import LlmClarifier
+from krtr.back.ia.reasoning.llm.config import HistoryConfig
+from krtr.back.ia.reasoning.llm.history import ConversationHistory
 from krtr.back.security.oidc.artifacts import InterfaceLanguage
 from tests.back.ia.fakes import CUSTOMER_ID, sample_registry
-from tests.back.ia.reasoning.llm.fakes import UNAVAILABLE, ScriptedLlm, tasks_with
+from tests.back.ia.reasoning.llm.fakes import (
+    UNAVAILABLE,
+    CountingMessageStore,
+    ScriptedLlm,
+    stored_message,
+    tasks_with,
+)
 
 SPANISH = InterfaceLanguage.SPANISH
 NO_MATCH = MatchResult(
@@ -28,9 +38,10 @@ PRODUCT_QUESTION = PendingQuestion(
 )
 
 
-def _clarifier(llm: ScriptedLlm) -> LlmClarifier:
+def _clarifier(llm: ScriptedLlm, messages: InMemoryMessageStore | None = None) -> LlmClarifier:
     registry = sample_registry()
-    return LlmClarifier(TemplateClarifier(registry), tasks_with(llm), registry)
+    history = ConversationHistory(messages or InMemoryMessageStore(), HistoryConfig())
+    return LlmClarifier(TemplateClarifier(registry), tasks_with(llm), registry, history)
 
 
 def _state(question: PendingQuestion) -> ConversationState:
@@ -38,13 +49,17 @@ def _state(question: PendingQuestion) -> ConversationState:
 
 
 def test_a_reply_the_template_reads_never_reaches_the_llm() -> None:
-    """ "3" is the template clarifier's job: no LLM call, no latency."""
+    """ "3" is the template clarifier's job: no LLM call, no history read, no latency."""
     llm = ScriptedLlm()
+    messages = CountingMessageStore()
 
-    resolution = _clarifier(llm).interpret(_state(PRODUCT_QUESTION), "3", NO_MATCH, SPANISH)
+    resolution = _clarifier(llm, messages).interpret(
+        _state(PRODUCT_QUESTION), "3", NO_MATCH, SPANISH
+    )
 
     assert resolution.slots[SlotName.PRODUCT_TYPE] == ProductType.CREDIT_CARD.value
     assert llm.prompts == []
+    assert messages.reads == 0
 
 
 def test_a_free_form_reply_is_read_by_the_llm_against_the_offered_options() -> None:
@@ -131,3 +146,23 @@ def test_a_reply_matching_the_pending_intent_is_read_as_an_answer() -> None:
     )
 
     assert resolution.slots == {SlotName.PRODUCT_TYPE: ProductType.SAVINGS_ACCOUNT.value}
+
+
+def test_a_reply_that_points_back_is_read_with_the_conversation() -> None:
+    """ "La misma de antes" settles the product the customer named earlier in the case."""
+    messages = InMemoryMessageStore()
+    messages.append(stored_message(MessageSender.CUSTOMER, "ayer pagué con mi tarjeta de crédito"))
+    messages.append(
+        stored_message(MessageSender.AGENT, "¿Sobre qué producto? Responde con el número:")
+    )
+    llm = ScriptedLlm({"choice": "credit_card"})
+
+    resolution = _clarifier(llm, messages).interpret(
+        _state(PRODUCT_QUESTION), "la misma de antes", NO_MATCH, SPANISH
+    )
+
+    assert resolution == Resolved(
+        intent=Intent.ACCOUNT_BALANCE,
+        slots={SlotName.PRODUCT_TYPE: ProductType.CREDIT_CARD.value},
+    )
+    assert "Customer: ayer pagué con mi tarjeta de crédito" in llm.prompts[0]

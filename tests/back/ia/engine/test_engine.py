@@ -213,7 +213,7 @@ def test_with_an_llm_a_free_form_reply_is_answered_and_reported(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """The LLM reads "la de ahorrar"; the turn says the LLM ran and how long it took."""
-    llm = ScriptedLlm({"choice": "savings_account"})  # Only the reply reaches the LLM.
+    llm = ScriptedLlm({"choice": "savings_account"})
     monkeypatch.setattr(factory, "build_llm_client", lambda *args: llm)
     engine = sample_engine()
     _say(engine, "¿Cuál es mi saldo?")
@@ -234,3 +234,25 @@ def test_with_an_llm_a_confirmed_off_topic_message_closes(monkeypatch: pytest.Mo
 
     assert reply.outcome == TurnOutcome.CLOSED
     assert reply.reply.startswith("Cerramos esta conversación porque los mensajes no tienen")
+
+
+def test_with_an_llm_the_reply_is_read_with_the_whole_conversation_before_it(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The earlier turns reach the prompt in order; the reply being read is not among them."""
+    llm = ScriptedLlm({"choice": "savings_account"})
+    monkeypatch.setattr(factory, "build_llm_client", lambda *args: llm)
+    engine = sample_engine()
+    _say(engine, "Hola, buenos días")
+    _say(engine, "¿Cuál es mi saldo?")
+
+    _say(engine, "la de ahorrar, porfa")
+
+    prompt = llm.prompts[0]
+    conversation = prompt[prompt.index("Customer: Hola") : prompt.index("The customer was asked")]
+    assert conversation.index("Customer: Hola, buenos días") < conversation.index(
+        "Customer: ¿Cuál es mi saldo?"
+    )
+    assert "Agent: ¿Sobre qué producto?" in conversation
+    assert "\n  1. cuenta de ahorros" in conversation
+    assert "la de ahorrar" not in conversation

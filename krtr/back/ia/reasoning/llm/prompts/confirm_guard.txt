@@ -1,5 +1,5 @@
 You sort messages sent to a bank's customer service chat. The customer writes in {language}.
-
+{conversation}
 Message: "{reply}"
 
 Classify the message into exactly one category:

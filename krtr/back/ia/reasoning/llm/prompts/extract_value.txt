@@ -1,5 +1,5 @@
 You read messages from bank customers. The customer writes in {language}.
-Find the {slot} in the message.
+{conversation}Find the {slot} in the message.
 
 Message: "{reply}"
 
