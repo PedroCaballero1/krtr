@@ -7,7 +7,10 @@ from pathlib import Path
 import pytest
 from fastapi.testclient import TestClient
 
+from krtr.back.ia.config import IaEnvironmentVariable
+from krtr.back.ia.matching.models import EmbeddingModel
 from krtr.back.ia.messages import store as message_store_module
+from krtr.back.ia.reasoning.llm.models import LlmModel
 from krtr.back.security.audit import recorder as recorder_module
 from krtr.back.security.audit.event_names import EventName
 from krtr.back.security.audit.recorder import EventRecorder
@@ -57,6 +60,9 @@ def configure_chat(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv(CryptoEnvironmentVariable.MESSAGES_KEY, base64.b64encode(b"m" * 32).decode())
     monkeypatch.setattr(app_module, "NeonClient", StandInNeonClient)
     monkeypatch.setattr(message_store_module, "NeonClient", StandInNeonClient)
+    # Offline, deterministic models: the served app must not download weights in a test.
+    monkeypatch.setenv(IaEnvironmentVariable.EMBEDDING_MODEL, EmbeddingModel.HASHING.value)
+    monkeypatch.setenv(IaEnvironmentVariable.LLM_MODEL, LlmModel.NONE.value)
 
 
 def test_healthz_reports_ok() -> None:
