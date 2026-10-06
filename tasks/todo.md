@@ -749,3 +749,68 @@ flake8 are clean; no function is over 40 lines.
 - **Latency was measured on a laptop CPU only.** Modal's CPU may be slower; measure there
   before raising `HistoryConfig`.
 
+---
+
+# Per-turn LLM deadline
+
+_2026-10-06 · Status: **implemented, pending your review**_
+
+**Problem:**
+- The 4 s SLA is per turn, but the LLM timeout is per call. A turn can make up to 3 calls:
+  two guard confirmations, then the clarifier.
+- Latent bug: `OnnxGenAiClient` starts its deadline after reading the prompt
+  (`append_tokens`). The prompt read, which is what grows with history, never counted.
+
+**Design:**
+- [x] **T.1 Contract:** `LlmClient.complete(prompt, schema, timeout_seconds)`. The caller gives
+  each call its time; the runtime no longer owns a timeout.
+- [x] **T.2 ONNX client:**
+  - the deadline starts **before** the prompt is read;
+  - it is checked right after the read and at every token;
+  - reading the prompt can't be interrupted, so the check after it stops the call as soon as
+    possible.
+- [x] **T.3 `MeteredLlmClient` owns the turn's budget:**
+  - each call gets the LLM time left in the turn;
+  - with less than `min_call_seconds` left, the call is skipped. It is recorded as
+    unavailable, so the template answer is used.
+  - `reset()` (once per turn, in the engine) restores the budget;
+  - the clock is injected for tests.
+- [x] **T.4 Config:**
+  - `LlmConfig.timeout_seconds` becomes `turn_budget_seconds` (3.5 s);
+  - new `min_call_seconds` (2.75 s after measuring; see the review).
+- [x] **T.5 `LlmTasks`** takes the `MeteredLlmClient`.
+- [x] **T.6 Evaluation:** each case is one turn, so the budget restarts per case. The unavailable
+  count is summed per task.
+- [x] **T.7 Tests:**
+  - the budget is split across calls;
+  - a call is skipped below the floor without reaching the model;
+  - `reset` restores the budget;
+  - the ONNX client fails fast on a tiny budget (real model, skipped without it);
+  - the runner restarts per case.
+- [x] **T.8 Docs:** README (the timeout sentence) and the comments in `config.py`.
+
+## Review (2026-10-06)
+
+- **The floor changed from 1.5 s to 2.75 s, measured:**
+  - reading the prompt is nearly all of a call: 1.86 s to read a 3,000-character prompt,
+    0.07 s to generate the answer (7 tokens);
+  - a call started with 1.5 s left would still read its whole prompt, so a 2-call turn could
+    reach ~5 s;
+  - the longest single call at the history cap (1,000 characters) took 2.52 s, so a call now
+    starts only if that still fits.
+  - On this CPU a turn makes one LLM call. With two guard flags, only the first (aggressive)
+    is checked, and a guard call leaves no time for the clarifier. Both fallbacks are the
+    conservative ones: the case isn't closed, and the question is asked again.
+- **The ONNX deadline fix is proven by its test:** a ~3,000-character prompt with a 1.5 s
+  limit fails as soon as it is read. Under the old timing (generation only, 0.07 s) it would
+  have passed.
+- **Evaluation unchanged:**
+  - choose: ES 12/17 and PT 12/17;
+  - extract: ES 5/5 and PT 4/5;
+  - guard confirmations: ES 34/45 and PT 33/45;
+  - same false positives, 0 unavailable, p95 under 1.7 s.
+- **End-to-end:** the ES credit card conversation resolves through history in 1.98 s.
+- **Tests:** 900 passed, 3 skipped. `base.py` and `onnx/client.py` are at 100%; the runner's
+  guard and slot paths are now covered too. black, ruff and flake8 are clean.
+- **Still open:** the latency figures come from a laptop CPU. If Modal's CPU is slower, the
+  longest call grows, and `min_call_seconds` must be measured there and raised to match.

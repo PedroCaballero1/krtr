@@ -11,6 +11,7 @@ from krtr.back.ia.matching.artifacts import MatchKind
 from krtr.back.ia.matching.labels import GuardLabel
 from krtr.back.ia.messages.artifacts import MessageSender
 from krtr.back.ia.messages.store import InMemoryMessageStore
+from krtr.back.ia.reasoning.llm.config import LlmConfig
 from krtr.back.security.oidc.artifacts import InterfaceLanguage
 from tests.back.ia.fakes import CUSTOMER_ID, OTHER_CUSTOMER_ID, sample_engine
 from tests.back.ia.reasoning.llm.fakes import ScriptedLlm
@@ -256,3 +257,19 @@ def test_with_an_llm_the_reply_is_read_with_the_whole_conversation_before_it(
     assert "Agent: ¿Sobre qué producto?" in conversation
     assert "\n  1. cuenta de ahorros" in conversation
     assert "la de ahorrar" not in conversation
+
+
+def test_with_no_llm_time_left_in_the_turn_the_question_is_asked_again(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The engine applies the turn's budget: a call that can't fit never reaches the model."""
+    llm = ScriptedLlm()  # Any call would fail: there is no scripted answer.
+    monkeypatch.setattr(factory, "build_llm_client", lambda *args: llm)
+    engine = sample_engine(llm=LlmConfig(turn_budget_seconds=1.0, min_call_seconds=2.0))
+    _say(engine, "¿Cuál es mi saldo?")
+
+    reply = _say(engine, "la de ahorrar, porfa")
+
+    assert reply.outcome == TurnOutcome.NEEDS_CLARIFICATION
+    assert llm.prompts == []
+    assert not reply.details.llm_used

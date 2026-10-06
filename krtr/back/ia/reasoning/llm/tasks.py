@@ -20,7 +20,7 @@ from pydantic import BaseModel, ConfigDict, create_model
 
 from krtr.back.ia.matching.labels import GuardLabel
 from krtr.back.ia.reasoning.llm.artifacts import ConversationTranscript
-from krtr.back.ia.reasoning.llm.base import LlmClient, LlmUnavailable
+from krtr.back.ia.reasoning.llm.base import LlmUnavailable, MeteredLlmClient
 from krtr.back.ia.reasoning.llm.prompts.catalog import PromptCatalog, PromptName
 from krtr.back.ia.text import normalize_text
 from krtr.back.security.oidc.artifacts import InterfaceLanguage
@@ -104,11 +104,13 @@ class LlmTasks:
     `reasoning/llm/factory.py`.
     """
 
-    def __init__(self, client: LlmClient, prompts: PromptCatalog, labels: LabelLookup) -> None:
+    def __init__(
+        self, client: MeteredLlmClient, prompts: PromptCatalog, labels: LabelLookup
+    ) -> None:
         """Keeps the client, the prompt templates and the labels of the options.
 
         Args:
-            client: The LLM.
+            client: The LLM, with the turn's time budget.
             prompts: The task templates.
             labels: How options are shown to the customer, reused in the prompts.
         """

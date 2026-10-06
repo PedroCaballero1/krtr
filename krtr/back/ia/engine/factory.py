@@ -130,5 +130,7 @@ def _build_llm(
     client = build_llm_client(settings.models.llm, settings.models.model_cache, settings.llm)
     if client is None:
         return None, None
-    metered = MeteredLlmClient(client)
+    metered = MeteredLlmClient(
+        client, settings.llm.turn_budget_seconds, settings.llm.min_call_seconds
+    )
     return metered, LlmTasks(metered, PromptCatalog.load(), writer)
