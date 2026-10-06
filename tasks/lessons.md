@@ -24,13 +24,3 @@ committed. Tests passed locally, where the files existed, and failed in a clean 
 - After adding files that aren't Python (catalogs, JSON, SQL, text), run
   `git status --short --ignored <dir>` before proposing the commit, to catch files that git
   silently skips.
-
-## 2026-10-05 — An evaluation must offer what production offers
-
-**What happened:** the LLM evaluation offered 3 product options; the live flow offers 7,
-including two cards (credit and debit). "La de la tarjeta" looked like a clear answer in the
-evaluation and was a guess in production. Live conversations showed it; the evaluation didn't.
-
-**Rule:**
-- Build evaluation cases from the real option lists the code produces, not hand-trimmed ones.
-- Always follow an evaluation with a few real end-to-end conversations before reporting it.

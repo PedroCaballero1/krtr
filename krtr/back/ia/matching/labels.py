@@ -1,7 +1,9 @@
 """Defines the guard labels: example sets that flag a message instead of answering it.
 
-Exists so the catalog can hold, next to the intents, phrases that look aggressive or
-off-topic, and one embedding scores both. Consumed by `matching/` and `guardrails/`.
+Exists so the catalog can hold, next to the intents, phrases that look aggressive, off-topic,
+or like banking requests the agent can't answer, and one embedding scores them all. They are
+also the intents' rivals: a match needs a clear lead over them, not only over the second
+intent. Consumed by `matching/` and `guardrails/`.
 """
 
 from enum import StrEnum
@@ -16,3 +18,4 @@ class GuardLabel(StrEnum):
 
     AGGRESSIVE = "aggressive"
     OFF_TOPIC = "off_topic"
+    UNSUPPORTED = "unsupported"  # Banking requests the agent can't answer (a person must).

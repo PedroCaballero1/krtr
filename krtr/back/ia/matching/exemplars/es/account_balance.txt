@@ -3,3 +3,16 @@ Buenas tardes, necesito consultar el saldo de mi tarjeta de crédito.
 ¿Cuál es mi saldo?
 ¿Cuánto dinero tengo en mi cuenta?
 Quiero ver el saldo de mi cuenta
+¿Me puedes decir el saldo de mi cuenta corriente?
+¿Cuánto debo en mi tarjeta de crédito?
+¿Cuál es el cupo disponible de mi tarjeta?
+Necesito saber cuánta plata tengo en ahorros
+Consultar saldo
+¿Cuánto me queda en la cuenta?
+¿Cuál es el saldo de mi préstamo?
+¿Cuánto llevo invertido?
+Dime el saldo de mi tarjeta de débito
+¿Cuánto debo de mi crédito hipotecario?
+Saldo de mi tarjeta
+Saldo de ahorros
+Saldo de la cuenta corriente
