@@ -56,6 +56,8 @@ FRONTEND_DIST = "krtr/front/dist"
 FRONTEND_CONTAINER_DIR = "/app/frontend"
 REALM_FILE = "krtr/back/security/keycloak/realm-krtr.json"
 KEYCLOAK_IMPORT_DIR = KEYCLOAK_HOME / "data" / "import"
+LOGIN_THEME_DIR = "krtr/back/security/keycloak/themes/krtr"  # Task 3.3; the realm's loginTheme.
+KEYCLOAK_THEME_DIR = KEYCLOAK_HOME / "themes" / "krtr"
 IMPORT_VOLUME_MOUNT = PurePosixPath("/credentials")
 
 KEYCLOAK_INTERNAL_PORT = 8081  # The gateway (task 3.7) forwards here.

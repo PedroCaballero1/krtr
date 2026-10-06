@@ -18,6 +18,7 @@ services:
     command: ["start-dev", "--import-realm"]
     volumes:
       - ./realm-krtr.json:/opt/keycloak/data/import/realm-krtr.json:ro
+      - ./themes/krtr:/opt/keycloak/themes/krtr:ro  # Task 3.3; dev mode reloads edits.
     environment:
       # Read by realm-krtr.json's ${KRTR_WEB_OIDC_CLIENT_SECRET} placeholder at import time.
       KRTR_WEB_OIDC_CLIENT_SECRET: ${KRTR_WEB_OIDC_CLIENT_SECRET:?missing in .env, see .env.example}

@@ -6,8 +6,8 @@ Exists so each function's image is declared once (D21, D18):
   `krtr/compute/modal/app.py`, and adds the `krtr` sources and the built SPA;
 - the Keycloak image starts from the official one and runs `kc.sh build`, so
   `kc.sh start --optimized` skips the build when a container starts, and adds the realm (task
-  3.2) plus the few Python packages and sources the gateway (task 3.7) and the import (task
-  3.5) run with.
+  3.2), the login theme (task 3.3), plus the few Python packages and sources the gateway (task
+  3.7) and the import (task 3.5) run with.
 
 Importing this module requires `modal`: only `modal deploy` / `modal serve` and Modal
 containers load it (CLAUDE.md). Consumed by `krtr/back/deploy/app.py`.
@@ -21,6 +21,8 @@ from krtr.back.deploy.config import (
     KEYCLOAK_HOME,
     KEYCLOAK_IMAGE_PACKAGES,
     KEYCLOAK_IMPORT_DIR,
+    KEYCLOAK_THEME_DIR,
+    LOGIN_THEME_DIR,
     REALM_FILE,
     KeycloakImageConfig,
 )
@@ -75,6 +77,7 @@ def build_keycloak_image(config: KeycloakImageConfig | None = None) -> modal.Ima
         .add_local_file(
             REPOSITORY_ROOT / REALM_FILE, (KEYCLOAK_IMPORT_DIR / "realm-krtr.json").as_posix()
         )
+        .add_local_dir(REPOSITORY_ROOT / LOGIN_THEME_DIR, KEYCLOAK_THEME_DIR.as_posix())
         .add_local_python_source("krtr", ignore=list(IMAGE_SOURCE_IGNORE_PATTERNS))
     )
 
