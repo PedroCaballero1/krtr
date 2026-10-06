@@ -50,5 +50,13 @@
   "voice_recording_status": "Gravando",
   "voice_cancel": "Cancelar",
   "voice_send": "Enviar áudio",
-  "voice_permission_denied": "Não temos permissão para usar o microfone. Ative no navegador ou escreva sua mensagem."
+  "voice_permission_denied": "Não temos permissão para usar o microfone. Ative no navegador ou escreva sua mensagem.",
+  "unauthorized": "Sua sessão não é válida. Entre novamente.",
+  "login_failed": "Não foi possível concluir o login. Tente novamente.",
+  "auth_unavailable": "O login não está disponível no momento.",
+  "csrf_rejected": "Não foi possível verificar a solicitação. Recarregue a página e tente novamente.",
+  "rate_limited": "Você fez solicitações demais. Aguarde um momento.",
+  "request_too_large": "O conteúdo enviado é grande demais.",
+  "chat_error_voice_too_large": "A nota de voz é grande demais. Grave uma mais curta.",
+  "chat_error_voice_unsupported": "Não foi possível ler a nota de voz. Tente gravá-la novamente."
 }
