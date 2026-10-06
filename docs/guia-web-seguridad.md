@@ -3,8 +3,6 @@
 _Versión 1 · 29-sep-2026 · Fuente: [`docs/goals.md`](goals.md) + decisiones acordadas con el equipo_
 _Meta: terminar el 2-oct-2026 · Fecha límite de la hackathon: 5-oct-2026_
 
-> **⚠️ Guía reemplazada.** Desde el 1-oct-2026 se sigue [`guia-web-seguridad_modal.md`](guia-web-seguridad_modal.md) (v2): Google Cloud quedó descartado y todo se despliega en Modal. Esta versión se conserva solo como referencia, porque la v2 remite a ella en algunos puntos ("igual que la v1"). No la uses para planear ni ejecutar tareas.
-
 ---
 
 ## 0. Cómo usar esta guía
