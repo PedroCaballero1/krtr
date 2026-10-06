@@ -27,6 +27,8 @@ _Fecha límite de la hackathon: 5-oct-2026 · Rama de trabajo: `web-develop-secu
 >
 > **v3.0 (5-oct) — salida al aire.** Hechas 3.4–3.7, 4.5, 4.6, 4.8, 4.9 (el chat responde con el motor de IA de Pedro), la purga de 4.10 y 6.1–6.5; 6.6 en curso. **D20 cambió:** los usuarios se importan con `partialImport` de la API de administración, desde dentro del contenedor, no con `kc.sh import` (ver D20 y 3.5). Además: `customer_id` se pasa a mayúsculas al iniciar sesión (Keycloak guarda los usernames en minúsculas), y `krtr_app` puede leer `products` y `complaints`. El despliegue se hace con `modal deploy -m krtr.back.deploy.app` (como módulo, no por ruta). Pendientes: 3.3, 4.10 (sincronización de eventos de Keycloak), 6.7, 7.2–7.6, 8.x.
 >
+> **v3.1 (5-oct) — entrega.** 8.1 hecha: [`docs/runbook.md`](runbook.md), [`docs/api.md`](api.md) (la §3.4 tal como quedó en el código) y el README al día. 6.8: el registro de gasto empezó en [`docs/modal-platform.md`](modal-platform.md#registro-de-gasto-diario); el CLI de Modal muestra el gasto (`modal billing`), pero el saldo de créditos y un posible límite de gasto solo se ven en el dashboard. La 8.2 tiene su checklist.
+>
 > **v2.8.** 4.3 y 4.4 hechas: login OIDC, sesiones del servidor y sus endpoints, verificados contra Keycloak local y la rama `dev` de Neon (13 de 13). La 4.5 y el frontend heredan dos puntos abiertos (ver la 4.4).
 
 ---
@@ -248,9 +250,10 @@ Guarda el texto de la conversación, separado de `events`, por dos razones:
 | 1.1 Herramientas (Docker con Colima) · 1.3 Neon (roles, base `keycloak`, tablas, rama `dev`) | ✅ (el permiso de auditoría ya está en `dev`; en `production` va en 6.3) | — (configuración fuera del repo) |
 | 3.2 Realm `krtr` como código | ✅ | `d272e96` |
 | 3.4 Credenciales · 3.5 Importación · 3.6 Prueba en `dev` · 3.7 Gateway | ✅ | `8b327c6` · `7e2ac1f` · `b7c62a4` · `e82b168` |
-| 4.5 CSRF · 4.6 Límites · 4.8 Casos · 4.9 Chat (motor de IA) · mensajes de error en el front | ✅ | `827f4b5` · `9491fd7` · `bdaa661` · `a3e60a2` · `48b4641` |
+| 4.5 CSRF · 4.6 Límites · 4.8 Casos · 4.9 Chat (motor de IA) · mensajes de error en el front | ✅ | `827f4b5` · `9491fd7` · `ac6355d` · `a3e60a2` · `48b4641` |
 | `customer_id` en mayúsculas al iniciar sesión | ✅ | `01e6854` |
 | 4.10 Purga (eventos y mensajes) · 6.1–6.5 App de Modal | ✅ (falta la sincronización de eventos de Keycloak) | `fa1354c` |
+| 8.1 Runbook, contrato de la API y README · 6.8 Registro de gasto | ✅ · 🟡 (el registro sigue a diario) | `b4afaae` · `3e1c086` |
 | 4.3 Cliente OIDC (BFF) · 4.4 Sesiones del servidor | ✅ | `a7c601a` (clave) · `0af3a00` (OIDC) · `a26970f` (sesiones) · `0f89cd5` (endpoints) |
 | 0.5 Reglas de Modal en el `CLAUDE.md` · 3.1 Imagen de Keycloak (local y Modal) | ✅ | `2d8d921` · `a4c2a4e` (CI) · `983cebb` · `bd88576` |
 | Test inestable de `chat-page` (fuera de la guía; fallaba 2 de cada 3 veces) | ✅ | `a52ae22` |
@@ -513,7 +516,7 @@ Guarda el texto de la conversación, separado de `events`, por dos razones:
 - **Resultado:** ventanas deslizantes en memoria (un solo contenedor, D8): 20 mensajes por minuto por cliente en el chat, 240 por minuto por sesión en `/api/*` y 600 por minuto por IP. Los límites corren dentro del log, la auditoría y las cabeceras, así que un 429 también queda registrado y endurecido.
 - **Depende de:** 4.4, 0.4
 
-#### 4.8 🤖 Casos (datos de prueba, G18) ✅ `bdaa661`
+#### 4.8 🤖 Casos (datos de prueba, G18) ✅ `ac6355d`
 - Igual que la v1: interfaz `CaseRepository` + `StubCaseRepository`; coincidencia exacta `incident_id` + `customer_id`; un caso inexistente y uno ajeno dan **el mismo 404**.
 - **Commit:** `feat(back/web/cases): add case endpoints with stub repository`
 - **Resultado:** `StubCaseRepository` en memoria: 2 casos de prueba por cliente más los que abra; IDs `INC-` + 10 caracteres aleatorios. Abrir y retomar exigen CSRF.
@@ -671,6 +674,12 @@ Guarda el texto de la conversación, separado de `events`, por dos razones:
   - Configurar un límite de gasto en el workspace, si Modal lo ofrece.
 - **Aceptación:** existe un registro diario del gasto en `docs/modal-platform.md` y el gasto proyectado queda dentro de los créditos.
 - **Depende de:** 6.7
+- **Estado (5-oct):** 🟡 `3e1c086`.
+  - El registro empezó en [`docs/modal-platform.md`](modal-platform.md#registro-de-gasto-diario). Primera entrada: 0,35 USD medidos en octubre, cubiertos por créditos (0,00 USD cobrados). Proyección con el modo demo: ≈ 3,15 USD/día, ≈ 9 días.
+  - **Desde el CLI** se lee el gasto: `modal billing summary` (mes) y `modal billing report` (por día u hora y por recurso).
+  - **Solo en el dashboard** (Settings → Usage and Billing): el saldo de créditos que queda y, si existe, el límite de gasto. `modal workspace settings` no tiene ninguno de los dos.
+  - **Neon:** sin CLI ni API key; se lee en la consola (Billing y Monitoring).
+  - ⬜ 👤 Completar en la primera entrada los créditos restantes y el consumo de Neon, y anotar una fila por día. La variable `KRTR_WARM` del repositorio no hace falta mientras dure la evaluación: el workflow usa `true` si no existe.
 
 ### Fase 7 — Seguridad y pruebas
 
@@ -721,13 +730,18 @@ Guarda el texto de la conversación, separado de `events`, por dos razones:
 
 ### Fase 8 — Entrega
 
-#### 8.1 🤖 Documentación
+#### 8.1 🤖 Documentación ✅ `b4afaae`
 - **Objetivo:**
   - Actualizar el `README.md` (cómo levantar en local, comandos nuevos, `modal serve` / `modal deploy`, modo demo).
   - `docs/runbook.md`: desplegar, rotar secretos, volver a importar usuarios, desbloquear una cuenta con `kcadm.sh`, ejecutar los crons a mano, y encender o apagar el modo demo.
   - `docs/api.md` con el contrato de la §3.4.
 - **Commit:** `docs(repo): add web runbook and API contract`
 - **Depende de:** 7.x
+- **Resultado (5-oct):** se adelantó a 7.3–7.6 porque la entrega es hoy.
+  - [`docs/runbook.md`](runbook.md): desplegar (CI, workflow `Deploy`, comando de emergencia, `modal app rollback`), modo demo, rotar cada secreto con sus efectos, reimportar usuarios, desbloquear cuentas y correr la purga a mano.
+  - El desbloqueo con `kcadm.sh` vía `modal container exec` se verificó en producción hasta la lectura del estado; el `DELETE` y la rotación de los secretos de Keycloak no se probaron.
+  - Ojo: `modal container exec` no reenvía stdin, y hay que poner `--` antes del comando.
+  - [`docs/api.md`](api.md): la §3.4 tal como está en el código. Diferencias con la §3.4: `POST /api/cases` responde 201; el `request_id` va en la cabecera `X-Request-Id` y no en el cuerpo; los 422 de validación y el 413 de `/api/events` usan el cuerpo de FastAPI (`{"detail": …}`), no `{error, message_key}`.
 
 #### 8.2 👤 Congelar y entregar
 - **Objetivo:**
@@ -738,6 +752,47 @@ Guarda el texto de la conversación, separado de `events`, por dos razones:
   - **No hacer merges a `master` durante la evaluación**: cada deploy reinicia Keycloak.
 - **Aceptación:** checklist firmado por el revisor humano.
 - **Depende de:** 8.1
+- **Checklist (preparada el 5-oct).** Se marca en orden. Los procedimientos están en [`docs/runbook.md`](runbook.md).
+
+  **A. Código en `master` y desplegado**
+  - [ ] El PR de los docs de entrega (`delivery-docs`) está mergeado en `web-finish-guide`, para que todo entre con **un solo** despliegue.
+  - [ ] PR `web-finish-guide` → `master`: los jobs `lint-and-test` y `security` del CI están en verde.
+  - [ ] GitHub tiene los secretos `MODAL_TOKEN_ID` y `MODAL_TOKEN_SECRET`. La variable `KRTR_WARM` no existe o vale `true`.
+  - [ ] Después del merge: el CI de `master` y el workflow `Deploy` están en verde, con el smoke test incluido.
+  - [ ] `uv run --env-file .env modal app history krtr-web` muestra arriba el commit del merge **sin** asterisco (es decir, no se desplegó desde un árbol con cambios sin commit).
+  - [ ] El workflow `Release` creó la etiqueta de la versión (ver "Etiquetar" abajo).
+
+  **B. Producción verificada**
+  - [ ] El modo demo está encendido: `uv run --env-file .env modal container list` muestra 2 contenedores de `krtr-web`.
+  - [ ] `uv run pytest e2e/security` da 20 de 20 contra producción, después del último despliegue.
+  - [ ] Recorrido a mano con una cuenta del jurado, en ES y en PT: la página de login con el tema krtr → soporte → caso → chat → voz → cerrar sesión. La cuenta con MFA pide TOTP.
+  - [ ] 7.3 (pruebas de navegador): no existe todavía. El revisor decide si el recorrido a mano la reemplaza para esta entrega.
+  - [ ] Sesiones QA cerradas: no hay un comando para revocarlas, pero las sesiones de la app y las de Keycloak vencen a los 30 min como máximo. Basta con no usar las cuentas QA en los 30 min antes de avisar al jurado.
+
+  **C. Costos**
+  - [ ] Hay una fila del día en el [registro de gasto](modal-platform.md#registro-de-gasto-diario), con los créditos restantes leídos en el dashboard. La proyección (≈ 3,15 USD/día) alcanza hasta el final de la evaluación.
+
+  **D. Entrega al jurado**
+  - [ ] Se envía el documento `data/credentials/cuentas_jurado.md` (URL, instrucciones y cuentas) **solo por un canal privado**. Es confidencial: nunca se sube al repo (está ignorado por `data/`), ni se adjunta a un PR o un issue, ni se publica.
+  - [ ] Se confirma que lo recibieron y que una cuenta entra.
+
+  **E. Congelar**
+  - [ ] Se avisa a **todo el equipo**, incluido el vertical de IA (que también hace merges a `master`), que no hay merges a `master` hasta que termine la evaluación. Cada merge despliega y reinicia Keycloak. Un PR abierto no despliega; solo el merge.
+  - [ ] Si hay que corregir algo durante la evaluación: un merge y nada más, en un momento acordado con el jurado. El despliegue a mano solo se hace en emergencias (runbook §1.4).
+
+  **F. Al terminar la evaluación**
+  - [ ] `KRTR_WARM=false` en las variables del repositorio y correr `Deploy` (runbook §2).
+  - [ ] Última fila del registro de gasto.
+
+  **Etiquetar la versión.** No hace falta crear la etiqueta a mano. Al hacer merge a `master`, el workflow `Release` (semantic-release) crea `vX.Y.Z` y su release en GitHub: con los commits `feat` de `web-finish-guide`, pasará de `v1.8.0` a **`v1.9.0`**. Esa es la versión entregada. Si además se quiere un nombre fijo para la entrega, se agrega una etiqueta anotada sobre **el mismo commit que desplegó `Deploy`** (no sobre el `chore(release)`). Subir una etiqueta no dispara ni el CI ni el despliegue.
+
+  ```bash
+  git fetch origin --tags
+  git tag -a hackathon-entrega <sha-del-merge> -m "Entrega de la hackathon: krtr-web en Modal"
+  git push origin hackathon-entrega
+  ```
+
+  **Firma del revisor:** ______________________ · Fecha: __________
 
 ---
 
