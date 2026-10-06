@@ -694,6 +694,11 @@ Guarda el texto de la conversación, separado de `events`, por dos razones:
 - **Aceptación:** todo en verde. Se ejecuta después de cada despliegue y a mano antes de la demo.
 - **Commit:** `test(e2e/security): add production security suite` ✅ `e48606a`
 - **Resultado (5-oct):** `uv run pytest e2e/security`: **20 de 20** en producción. Cubre cabeceras, sin `/docs`, 401 sin sesión, `Origin` ajeno → 403, rutas ocultas de Keycloak → 404, cookies `__Host-` (sesión segura, la del OIDC `Lax`), login real con cuentas QA, contraseña incorrecta, sesión única, CSRF, IDOR, límite de 20 mensajes → 429 y voz falsa → 415. Quedan para después: el bloqueo de Keycloak tras 5 intentos, la inactividad de 5 min y el cifrado de `properties`.
+- **Resultado (5-oct, segunda parte):** **26 de 26** más 1 lento, todos en verde en producción.
+  - **Bloqueo:** 5 contraseñas malas y la buena ya no entra. Usa **solo la fila 50 de `qa_credentials.csv`** (`LOCKOUT_ACCOUNT_ROW` en `e2e/security/conftest.py`), que queda **bloqueada 15 min** después de cada corrida (la última, el 5-oct a las 22:44 COT). Primero entra bien, así prueba que la cuenta funciona y deja el contador en 0; si sigue bloqueada de una corrida anterior, el test falla y dice que hay que esperar.
+  - **Contraseña incorrecta:** ahora termina con un login correcto. Keycloak recuerda los fallos 12 h (`maxDeltaTimeSeconds`), así que antes cinco corridas de la suite en un día habrían bloqueado la fila 2.
+  - **Inactividad:** `@pytest.mark.slow`, corre solo con `--run-slow` (5 min 30 s). A los 4:30 sin actividad `/api/me` sigue en 200; a los 5:30 da 401 `session_expired_idle`. Usa la fila 9.
+  - **Cifrado en la base** (`e2e/security/test_encryption_at_rest.py`): lee las últimas 50 filas de `events.properties` y de `messages.content` con `NEON_DB_HOST` (solo lectura, SQL en `select_latest_*.sql`) y comprueba que cada valor tiene al menos nonce + tag (28 bytes), que ningún nonce se repite, que nada se lee como UTF-8/JSON, que todos abren con la llave de la app (`KRTR_EVENTS_KEY`, `KRTR_MESSAGES_KEY`) y ninguno con otra, y que `properties` descifrado es un objeto JSON. Los fallos solo muestran conteos, nunca los bytes ni el texto.
 - **Depende de:** 6.6
 
 #### 7.3 🤖 Pruebas E2E de navegador

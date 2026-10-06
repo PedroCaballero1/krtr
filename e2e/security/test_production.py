@@ -4,11 +4,17 @@ Each test states the control it proves. They change nothing for real customers: 
 accounts (D4) and cases those accounts open.
 """
 
+import time
+
 import httpx
 import pytest
 
 from e2e.security.conftest import csrf_headers, log_in, new_browser
 
+WRONG_PASSWORD = "WrongPw99"
+FAILURES_BEFORE_LOCKOUT = 5  # Keycloak's failureFactor in realm-krtr.json.
+IDLE_TIMEOUT_SECONDS = 5 * 60
+IDLE_MARGIN_SECONDS = 30  # Checked 30 s before and 30 s after the idle deadline.
 HIDDEN_AUTH_PATHS = [
     "/admin/",
     "/admin/master/console/",
@@ -87,12 +93,56 @@ def test_a_qa_account_logs_in_with_a_strict_session(
 def test_a_wrong_password_does_not_log_in(
     base_url: str, qa_accounts: list[tuple[str, str]]
 ) -> None:
-    """The form rejects it and no session is created."""
+    """The form rejects it and no session is created; the right one still works afterwards.
+
+    The final good login also resets Keycloak's failure count, which otherwise lasts 12 hours:
+    without it, five runs of this suite would lock this account.
+    """
+    customer_id, password = qa_accounts[1]
+    rejected, accepted = new_browser(), new_browser()
+
+    log_in(rejected, base_url, customer_id, WRONG_PASSWORD)
+
+    assert rejected.get(f"{base_url}/api/me").status_code == 401
+    assert log_in(accepted, base_url, customer_id, password).url.path == "/app"
+
+
+def test_five_wrong_passwords_lock_the_account(
+    base_url: str, lockout_account: tuple[str, str]
+) -> None:
+    """G3: after 5 failures even the right password is refused, for 15 minutes.
+
+    Uses its own QA account (LOCKOUT_ACCOUNT_ROW), which stays locked for 15 minutes.
+    """
+    customer_id, password = lockout_account
+    unlocked = log_in(new_browser(), base_url, customer_id, password).url.path == "/app"
+    assert unlocked, "The lockout account is still locked from an earlier run: wait 15 minutes."
+
+    for _ in range(FAILURES_BEFORE_LOCKOUT):
+        log_in(new_browser(), base_url, customer_id, WRONG_PASSWORD)
+    locked = new_browser()
+    final = log_in(locked, base_url, customer_id, password)
+
+    assert final.url.path != "/app"
+    assert locked.get(f"{base_url}/api/me").status_code == 401
+
+
+@pytest.mark.slow
+def test_an_idle_session_closes_after_5_minutes(
+    base_url: str, qa_accounts: list[tuple[str, str]]
+) -> None:
+    """G15: 5 minutes without activity close the session (GET /api/me is not activity)."""
     browser = new_browser()
+    log_in(browser, base_url, *qa_accounts[8])
 
-    log_in(browser, base_url, qa_accounts[1][0], "WrongPw99")
+    time.sleep(IDLE_TIMEOUT_SECONDS - IDLE_MARGIN_SECONDS)
+    still_open = browser.get(f"{base_url}/api/me").status_code
+    time.sleep(2 * IDLE_MARGIN_SECONDS)
+    expired = browser.get(f"{base_url}/api/me")
 
-    assert browser.get(f"{base_url}/api/me").status_code == 401
+    assert still_open == 200
+    assert expired.status_code == 401
+    assert expired.json()["error"] == "session_expired_idle"
 
 
 def test_a_second_login_closes_the_first(base_url: str, qa_accounts: list[tuple[str, str]]) -> None:
