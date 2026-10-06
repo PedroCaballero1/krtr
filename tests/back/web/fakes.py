@@ -4,10 +4,12 @@ from dataclasses import dataclass
 from datetime import timedelta
 from urllib.parse import urlencode
 
+import httpx
 from fastapi.testclient import TestClient
 
 from krtr.back.security.audit.event_names import EventName
 from krtr.back.security.crypto.cipher import AesGcmCipher
+from krtr.back.security.csrf.config import CSRF_COOKIE_NAME, CSRF_HEADER_NAME, CsrfConfig
 from krtr.back.security.oidc.artifacts import (
     InterfaceLanguage,
     LoginIdentity,
@@ -31,6 +33,7 @@ from tests.back.security.sessions.fakes import (
 
 CUSTOMER = "12345678"
 AUTHORIZE_URL = "http://keycloak.test/realms/krtr/protocol/openid-connect/auth"
+APP_ORIGIN = "https://testserver"  # The test client's base URL, configured as KRTR_PUBLIC_URL.
 
 
 class FakeOidcClient:
@@ -96,6 +99,13 @@ class WebHarness:
         """Returns the properties of the last recorded event with that name."""
         return [properties for name, properties in self.recorder.events if name == event_name][-1]
 
+    def post(self, path: str, **kwargs: object) -> httpx.Response:
+        """POSTs like the SPA does: from krtr-web's origin, echoing the CSRF cookie (task 4.5)."""
+        headers = {"Origin": APP_ORIGIN}
+        if csrf_token := self.client.cookies.get(CSRF_COOKIE_NAME):
+            headers[CSRF_HEADER_NAME] = csrf_token
+        return self.client.post(path, headers=headers, **kwargs)
+
     def log_in(self, customer_id: str = CUSTOMER) -> str:
         """Runs /auth/login and a successful /auth/callback; returns the session cookie value."""
         self.oidc.customer_id = customer_id
@@ -124,6 +134,11 @@ def build_harness(config: WebConfig | None = None) -> WebHarness:
         session_service=SessionService(store, refresher, clock=clock),
         clock=clock,
     )
-    app = create_app(config or WebConfig(), event_recorder=recorder, auth_services=services)
-    client = TestClient(app, base_url="https://testserver")
+    app = create_app(
+        config or WebConfig(),
+        event_recorder=recorder,
+        auth_services=services,
+        csrf_config=CsrfConfig(public_url=APP_ORIGIN),
+    )
+    client = TestClient(app, base_url=APP_ORIGIN)
     return WebHarness(client, clock, oidc, store, refresher, recorder)

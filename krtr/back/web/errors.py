@@ -21,6 +21,7 @@ class ApiErrorCode(StrEnum):
     SESSION_EXPIRED_ABSOLUTE = "session_expired_absolute"
     LOGIN_FAILED = "login_failed"  # The OIDC callback was rejected (task 4.3).
     AUTH_UNAVAILABLE = "auth_unavailable"  # Login is not configured (development only).
+    CSRF_REJECTED = "csrf_rejected"  # Foreign origin, or no matching X-KRTR-CSRF (task 4.5).
 
 
 class MessageKey(StrEnum):
@@ -34,6 +35,7 @@ class MessageKey(StrEnum):
     SESSION_EXPIRED_ABSOLUTE = "session_expired_absolute_message"
     LOGIN_FAILED = "login_failed"
     AUTH_UNAVAILABLE = "auth_unavailable"
+    CSRF_REJECTED = "csrf_rejected"
 
 
 def api_error(status_code: int, code: ApiErrorCode, message_key: MessageKey) -> JSONResponse:

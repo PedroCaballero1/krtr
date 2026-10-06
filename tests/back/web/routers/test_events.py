@@ -7,6 +7,7 @@ from fastapi.testclient import TestClient
 
 from krtr.back.security.audit.recorder import EventRecorder
 from krtr.back.security.crypto.cipher import AesGcmCipher
+from krtr.back.security.csrf.config import DEFAULT_PUBLIC_URL, CsrfConfig
 from krtr.back.web.app import create_app
 from krtr.back.web.config import WebConfig
 
@@ -23,12 +24,15 @@ class RecordingClient:
         self.calls.append((statement, params or {}))
 
 
+SAME_ORIGIN = {"Origin": DEFAULT_PUBLIC_URL}  # What the SPA sends when served locally.
+
+
 def make_client() -> tuple[TestClient, RecordingClient]:
     """Builds a TestClient wired to a recording EventRecorder."""
     client = RecordingClient()
     recorder = EventRecorder(client=client, cipher=AesGcmCipher(os.urandom(32)))
-    app = create_app(WebConfig(), event_recorder=recorder)
-    return TestClient(app), client
+    app = create_app(WebConfig(), event_recorder=recorder, csrf_config=CsrfConfig())
+    return TestClient(app, headers=SAME_ORIGIN), client
 
 
 def test_a_cataloged_event_is_accepted_and_recorded() -> None:
@@ -70,8 +74,8 @@ def test_properties_over_4kb_are_rejected() -> None:
 
 def test_missing_recorder_still_returns_202() -> None:
     """A not-yet-configured recorder must not break the frontend's fire-and-forget call."""
-    app = create_app(WebConfig())  # No event_recorder given.
-    test_client = TestClient(app)
+    app = create_app(WebConfig(), csrf_config=CsrfConfig())  # No event_recorder given.
+    test_client = TestClient(app, headers=SAME_ORIGIN)
 
     response = test_client.post("/api/events", json={"event_name": "page_view", "properties": {}})
 

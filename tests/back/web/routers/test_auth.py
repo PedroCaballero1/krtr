@@ -210,7 +210,7 @@ def test_logout_ends_the_session_here_and_in_keycloak(web: WebHarness) -> None:
     token = web.log_in()
     tokens = web.store.find(hash_session_token(token)).tokens
 
-    response = web.client.post("/auth/logout")
+    response = web.post("/auth/logout")
 
     assert response.status_code == 204
     assert "Max-Age=0" in set_cookie_header(
@@ -224,7 +224,7 @@ def test_logout_ends_the_session_here_and_in_keycloak(web: WebHarness) -> None:
 
 def test_logout_without_a_session_is_401(web: WebHarness) -> None:
     """Logout is a session route: no session, nothing to end, and Keycloak is not called."""
-    response = web.client.post("/auth/logout")
+    response = web.post("/auth/logout")
 
     assert response.status_code == 401
     assert web.oidc.ended_sessions == []

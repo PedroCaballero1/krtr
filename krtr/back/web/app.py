@@ -17,6 +17,7 @@ from krtr.back.security.audit.middleware import record_http_request
 from krtr.back.security.audit.recorder import EventRecorder
 from krtr.back.security.crypto.cipher import AesGcmCipher
 from krtr.back.security.crypto.config import CryptoConfig, CryptoEnvironmentVariable
+from krtr.back.security.csrf.config import CsrfConfig
 from krtr.back.security.headers.config import HeadersConfig
 from krtr.back.security.headers.middleware import add_security_headers
 from krtr.back.security.oidc.client import KeycloakOidcClient
@@ -25,6 +26,7 @@ from krtr.back.security.oidc.login_cookie import LoginCookieCodec
 from krtr.back.security.sessions.service import SessionService
 from krtr.back.security.sessions.store import SessionStore
 from krtr.back.web.config import WebConfig, WebEnvironment
+from krtr.back.web.csrf import register_csrf_error_handler
 from krtr.back.web.dependencies import AuthServices, register_auth_error_handlers
 from krtr.back.web.middleware import log_request
 from krtr.back.web.routers.auth import auth_router
@@ -44,6 +46,7 @@ def create_app(
     headers_config: HeadersConfig | None = None,
     event_recorder: EventRecorder | None = None,
     auth_services: AuthServices | None = None,
+    csrf_config: CsrfConfig | None = None,
 ) -> FastAPI:
     """Builds and configures the krtr-web FastAPI application.
 
@@ -63,6 +66,8 @@ def create_app(
         auth_services: The OIDC login and session services (tasks 4.3, 4.4).
             When None, the login and session routes answer 503;
             `create_served_app` always provides them in production.
+        csrf_config: The origin state-changing requests must come from (task 4.5). When
+            None, it is loaded from the environment via `CsrfConfig.from_environment`.
 
     Returns:
         FastAPI: the configured application, ready to serve.
@@ -79,10 +84,12 @@ def create_app(
     app.state.headers_config = resolved_headers_config
     app.state.event_recorder = event_recorder
     app.state.auth_services = auth_services
+    app.state.csrf_config = csrf_config or CsrfConfig.from_environment()
     app.middleware("http")(add_security_headers)
     app.middleware("http")(record_http_request)
     app.middleware("http")(log_request)
     register_auth_error_handlers(app)
+    register_csrf_error_handler(app)
     for router in (health_router, events_router, auth_router, session_router):
         app.include_router(router)
     _mount_frontend_assets(app, resolved_config)

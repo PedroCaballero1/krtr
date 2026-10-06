@@ -14,6 +14,7 @@ from fastapi import APIRouter, BackgroundTasks, Depends, Request, Response
 from fastapi.responses import RedirectResponse
 
 from krtr.back.security.audit.event_names import EventName
+from krtr.back.security.csrf.guard import new_csrf_token
 from krtr.back.security.oidc.artifacts import (
     InterfaceLanguage,
     LoginIdentity,
@@ -25,12 +26,15 @@ from krtr.back.security.oidc.errors import LoginError, LoginFailureReason
 from krtr.back.security.sessions.artifacts import SessionRecord
 from krtr.back.web.auditing import schedule_event
 from krtr.back.web.cookies import (
+    clear_csrf_cookie,
     clear_login_cookie,
     clear_session_cookie,
+    set_csrf_cookie,
     set_login_cookie,
     set_session_cookie,
 )
-from krtr.back.web.dependencies import AuthServices, get_auth_services, require_session
+from krtr.back.web.csrf import require_session_with_csrf
+from krtr.back.web.dependencies import AuthServices, get_auth_services
 from krtr.back.web.errors import ApiErrorCode, MessageKey, api_error
 
 logger = logging.getLogger(__name__)
@@ -102,10 +106,10 @@ def callback(
 def logout(
     request: Request,
     tasks: BackgroundTasks,
-    session: SessionRecord = Depends(require_session),
+    session: SessionRecord = Depends(require_session_with_csrf),
     services: AuthServices = Depends(get_auth_services),
 ) -> Response:
-    """Logs out of krtr and of Keycloak, and clears the session cookie.
+    """Logs out of krtr and of Keycloak, and clears the session and CSRF cookies.
 
     Args:
         request: The current request.
@@ -120,6 +124,7 @@ def logout(
     services.session_service.end(session)
     response = Response(status_code=204)
     clear_session_cookie(response)
+    clear_csrf_cookie(response)
     schedule_event(request, tasks, EventName.AUTH_LOGOUT, {"customer_id": session.customer_id})
     return response
 
@@ -188,11 +193,13 @@ def _open_session(
         tokens: The tokens Keycloak issued.
 
     Returns:
-        Response: 302 to /app with the session cookie set and the login cookie cleared.
+        Response: 302 to /app with the session and CSRF cookies set and the login cookie
+        cleared.
     """
     started = services.session_service.start(identity.customer_id, tokens)
     response = RedirectResponse(APP_HOME_PATH, status_code=302)
     set_session_cookie(response, started.token)
+    set_csrf_cookie(response, new_csrf_token())
     clear_login_cookie(response)
     customer = {"customer_id": identity.customer_id}
     schedule_event(request, tasks, EventName.AUTH_LOGIN_SUCCEEDED, customer)
