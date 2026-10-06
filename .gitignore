@@ -7,12 +7,5 @@ __pycache__/
 *.pyd
 *.cpython-*
 
-# Environments, tool caches and OS files
-.venv/
-.pytest_cache/
-.ruff_cache/
-*.egg-info/
-.DS_Store
-
 # Local CLI state (e.g. Modal run records)
 .krtr/
