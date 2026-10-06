@@ -19,6 +19,7 @@ from krtr.back.security.oidc.artifacts import (
 from krtr.back.security.oidc.config import LOGIN_COOKIE_LIFETIME
 from krtr.back.security.oidc.errors import LoginError, LoginFailureReason
 from krtr.back.security.oidc.login_cookie import LoginCookieCodec
+from krtr.back.security.rate_limit.config import RateLimitConfig
 from krtr.back.security.sessions.service import SessionService
 from krtr.back.web.app import create_app
 from krtr.back.web.config import WebConfig
@@ -118,7 +119,9 @@ class WebHarness:
         return response.cookies["__Host-krtr_session"]
 
 
-def build_harness(config: WebConfig | None = None) -> WebHarness:
+def build_harness(
+    config: WebConfig | None = None, rate_limit_config: RateLimitConfig | None = None
+) -> WebHarness:
     """Builds the app with fake Keycloak, in-memory sessions and events, and a fake clock.
 
     The client talks https, so the `__Host-` (Secure) cookies are sent back like a browser does.
@@ -139,6 +142,7 @@ def build_harness(config: WebConfig | None = None) -> WebHarness:
         event_recorder=recorder,
         auth_services=services,
         csrf_config=CsrfConfig(public_url=APP_ORIGIN),
+        rate_limit_config=rate_limit_config,
     )
     client = TestClient(app, base_url=APP_ORIGIN)
     return WebHarness(client, clock, oidc, store, refresher, recorder)

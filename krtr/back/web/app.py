@@ -24,6 +24,7 @@ from krtr.back.security.headers.middleware import add_security_headers
 from krtr.back.security.oidc.client import KeycloakOidcClient
 from krtr.back.security.oidc.config import OidcConfig
 from krtr.back.security.oidc.login_cookie import LoginCookieCodec
+from krtr.back.security.rate_limit.config import RateLimitConfig
 from krtr.back.security.sessions.service import SessionService
 from krtr.back.security.sessions.store import SessionStore
 from krtr.back.web.cases.repository import CaseRepository, StubCaseRepository
@@ -33,6 +34,11 @@ from krtr.back.web.config import WebConfig, WebEnvironment
 from krtr.back.web.csrf import register_csrf_error_handler
 from krtr.back.web.dependencies import AuthServices, register_auth_error_handlers
 from krtr.back.web.middleware import limit_request_size, log_request
+from krtr.back.web.rate_limit import (
+    RateLimiters,
+    enforce_rate_limits,
+    register_rate_limit_error_handler,
+)
 from krtr.back.web.routers.auth import auth_router
 from krtr.back.web.routers.cases import cases_router
 from krtr.back.web.routers.chat import chat_router
@@ -56,6 +62,7 @@ def create_app(
     csrf_config: CsrfConfig | None = None,
     case_repository: CaseRepository | None = None,
     chat_responder: ChatResponder | None = None,
+    rate_limit_config: RateLimitConfig | None = None,
 ) -> FastAPI:
     """Builds and configures the krtr-web FastAPI application.
 
@@ -81,6 +88,7 @@ def create_app(
             in-memory `StubCaseRepository` with sample cases.
         chat_responder: Who answers chat messages (task 4.9). When None, the D15
             placeholder (`StubChatResponder`); `create_served_app` passes the engine.
+        rate_limit_config: The request limits (task 4.6). When None, the defaults.
 
     Returns:
         FastAPI: the configured application, ready to serve.
@@ -100,12 +108,11 @@ def create_app(
     app.state.csrf_config = csrf_config or CsrfConfig.from_environment()
     app.state.case_repository = case_repository or StubCaseRepository()
     app.state.chat_responder = chat_responder or StubChatResponder()
-    app.middleware("http")(add_security_headers)
-    app.middleware("http")(record_http_request)
-    app.middleware("http")(limit_request_size)
-    app.middleware("http")(log_request)
+    app.state.rate_limiters = RateLimiters.from_config(rate_limit_config or RateLimitConfig())
+    _add_middleware(app)
     register_auth_error_handlers(app)
     register_csrf_error_handler(app)
+    register_rate_limit_error_handler(app)
     routers = (health_router, events_router, auth_router, session_router, cases_router)
     for router in (*routers, chat_router):
         app.include_router(router)
@@ -113,6 +120,29 @@ def create_app(
     app.include_router(spa_router)
     logger.info("krtr-web app created (environment=%s)", resolved_config.environment)
     return app
+
+
+def _add_middleware(app: FastAPI) -> None:
+    """Adds krtr-web's HTTP middleware, outermost last.
+
+    Order, from the outside in: the request_id log, the `http_request` event, the security
+    headers, the request limits (task 4.6), and the body size limit. Limits run inside the
+    first three, so a 429 or 413 is still logged, recorded and sent with the security headers.
+
+    Args:
+        app: The app to add them to.
+
+    Returns:
+        None.
+    """
+    for middleware in (
+        limit_request_size,
+        enforce_rate_limits,
+        add_security_headers,
+        record_http_request,
+        log_request,
+    ):
+        app.middleware("http")(middleware)
 
 
 def create_served_app() -> FastAPI:

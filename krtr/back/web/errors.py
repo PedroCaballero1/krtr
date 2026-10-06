@@ -26,6 +26,7 @@ class ApiErrorCode(StrEnum):
     AUDIO_TOO_LARGE = "audio_too_large"  # A voice note over 2 MB (task 4.9).
     UNSUPPORTED_AUDIO = "unsupported_audio"  # Not WebM/MP4 audio, by type or by its bytes.
     REQUEST_TOO_LARGE = "request_too_large"  # Any body over the app-wide limit.
+    RATE_LIMITED = "rate_limited"  # Over a per-IP, per-session or chat limit (task 4.6).
 
 
 class MessageKey(StrEnum):
@@ -44,6 +45,8 @@ class MessageKey(StrEnum):
     AUDIO_TOO_LARGE = "chat_error_voice_too_large"
     UNSUPPORTED_AUDIO = "chat_error_voice_unsupported"
     REQUEST_TOO_LARGE = "request_too_large"
+    RATE_LIMITED = "rate_limited"
+    CHAT_RATE_LIMITED = "chat_error_rate_limited"
 
 
 def api_error(status_code: int, code: ApiErrorCode, message_key: MessageKey) -> JSONResponse:

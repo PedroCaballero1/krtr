@@ -25,8 +25,8 @@ from krtr.back.web.cases.repository import CaseRepository
 from krtr.back.web.chat.artifacts import ChatAnswer, ChatMessageRequest, ChatReply
 from krtr.back.web.chat.audio import AudioRejection, InvalidAudio, read_voice_note
 from krtr.back.web.chat.responder import ChatResponder
-from krtr.back.web.csrf import require_session_with_csrf
 from krtr.back.web.errors import ApiErrorCode, MessageKey, api_error
+from krtr.back.web.rate_limit import require_chat_session
 from krtr.back.web.routers.cases import case_not_found, get_case_repository
 
 logger = logging.getLogger(__name__)
@@ -53,7 +53,7 @@ def send_message(
     payload: ChatMessageRequest,
     request: Request,
     tasks: BackgroundTasks,
-    session: SessionRecord = Depends(require_session_with_csrf),
+    session: SessionRecord = Depends(require_chat_session),
     cases: CaseRepository = Depends(get_case_repository),
     responder: ChatResponder = Depends(get_chat_responder),
 ) -> ChatReply | JSONResponse:
@@ -63,7 +63,7 @@ def send_message(
         payload: The case, the text (1–2,000 characters) and the interface's language.
         request: The current request.
         tasks: Where the event is queued.
-        session: The request's live session, past the CSRF checks.
+        session: The request's live session, past the CSRF checks and the chat's limit.
         cases: The case repository, to check the case is the customer's.
         responder: Who answers.
 
@@ -86,7 +86,7 @@ async def send_voice_note(
     incident_id: VoiceIncidentId,
     language: Annotated[InterfaceLanguage, Form()],
     audio: Annotated[UploadFile, File()],
-    session: SessionRecord = Depends(require_session_with_csrf),
+    session: SessionRecord = Depends(require_chat_session),
     cases: CaseRepository = Depends(get_case_repository),
     responder: ChatResponder = Depends(get_chat_responder),
 ) -> ChatReply | JSONResponse:
@@ -98,7 +98,7 @@ async def send_voice_note(
         incident_id: The case.
         language: The interface's language.
         audio: The recorded note; validated, then discarded.
-        session: The request's live session, past the CSRF checks.
+        session: The request's live session, past the CSRF checks and the chat's limit.
         cases: The case repository, to check the case is the customer's.
         responder: Who answers.
 
