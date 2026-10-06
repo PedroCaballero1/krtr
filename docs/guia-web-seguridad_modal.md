@@ -1,6 +1,6 @@
 # Guía de trabajo — Web y seguridad de krtr
 
-_Versión 3.0 · 5-oct-2026 · **Cambio de plataforma: de Google Cloud a Modal** · Fuente: [`docs/goals.md`](goals.md) + decisiones acordadas con el equipo_
+_Versión 3.1 · 6-oct-2026 · **Cambio de plataforma: de Google Cloud a Modal** · Fuente: [`docs/goals.md`](goals.md) + decisiones acordadas con el equipo_
 _Fecha límite de la hackathon: 5-oct-2026 · Rama de trabajo: `web-develop-security`_
 
 > **Qué cambió en la v2.** Google Cloud quedó descartado porque la prueba gratuita exige un pago. Todo se despliega en **Modal** (plan Starter, con 30 USD/mes de créditos y sin pagos adicionales). Por eso:
@@ -28,6 +28,8 @@ _Fecha límite de la hackathon: 5-oct-2026 · Rama de trabajo: `web-develop-secu
 > **v2.6.** 0.5 y 3.1 hechas, con Keycloak 26.8.0 en local y su imagen para Modal. El CI instala el extra `modal`. El permiso de auditoría quedó dado en `dev`. La 6.3 suma lo aprendido en la 3.1.
 >
 > **v2.7.** 3.2 hecha: el realm `krtr` como código, verificado al reimportarlo (22 de 22). La 6.3 suma lo que la 3.2 deja para producción.
+>
+> **v3.1 (6-oct) — integración.** Una sola rama, `release-integration`, junta `web-finish-guide`, `keycloak-theme` (3.3, 4.10 y su cron), `security-tests` (7.2–7.6, 4.4) y `delivery-docs` (8.1, 8.2, 6.8) con el `master` de Pedro (#14 MiniLM y #15 LLM Qwen). El chat de producción corre **MiniLM + Qwen 2.5 1.5B int4** (decidido el 6-oct): los modelos viven en el Volume `krtr-models`, preparados una vez con `modal run -m krtr.back.deploy.app::prepare_models`, y `web` sube a **2 CPU / 4 GiB** (cambia D8 y la §8: ≈ 7,8 USD/día con el modo demo).
 >
 > **v3.0 (5-oct) — salida al aire.** Hechas 3.4–3.7, 4.5, 4.6, 4.8, 4.9 (el chat responde con el motor de IA de Pedro), la purga de 4.10 y 6.1–6.5; 6.6 en curso. **D20 cambió:** los usuarios se importan con `partialImport` de la API de administración, desde dentro del contenedor, no con `kc.sh import` (ver D20 y 3.5). Además: `customer_id` se pasa a mayúsculas al iniciar sesión (Keycloak guarda los usernames en minúsculas), y `krtr_app` puede leer `products` y `complaints`. El despliegue se hace con `modal deploy -m krtr.back.deploy.app` (como módulo, no por ruta). Pendientes: 3.3, 4.10 (sincronización de eventos de Keycloak), 6.7, 7.2–7.6, 8.x.
 >
@@ -867,12 +869,13 @@ Guarda el texto de la conversación, separado de `events`, por dos razones:
 
 ## 8. Costos estimados en Modal
 
-Precios publicados por Modal: CPU 0,0000131 USD/núcleo/s; memoria 0,00000222 USD/GiB/s. La región fija `us-east` cuesta ×1,75. Recursos de D8: `web` 0,25 CPU / 0,5 GiB y `auth` 1 CPU / 1,5 GiB.
+Precios publicados por Modal: CPU 0,0000131 USD/núcleo/s; memoria 0,00000222 USD/GiB/s. La región fija `us-east` cuesta ×1,75. Recursos de D8: `web` 0,25 CPU / 0,5 GiB y `auth` 1 CPU / 1,5 GiB. **Desde el 6-oct, `web` usa 2 CPU / 4 GiB** para correr MiniLM y el LLM Qwen.
 
 | Escenario (ambos contenedores encendidos 24 h) | USD/día | Días que alcanzan 30 USD |
 |---|---:|---:|
 | Sin región fija | ≈ 1,80 | ≈ 16 |
 | Región `us-east` (D16) | ≈ 3,15 | ≈ 9 |
+| Región `us-east` con `web` a 2 CPU / 4 GiB (6-oct, MiniLM + Qwen) | ≈ 7,8 | ≈ 3,8 |
 
 - Los crons, las compilaciones y el modo apagado (`KRTR_WARM=false`) cuestan centavos al día.
-- **Del 3 al 5 de octubre con región fija: ≈ 9,5 USD.** Cada día extra de evaluación suma unos 3,15 USD.
+- **Del 3 al 5 de octubre con región fija: ≈ 9,5 USD.** Cada día extra de evaluación sumaba unos 3,15 USD; **con el LLM en `web`, unos 7,8 USD**. Revisar el saldo cada día (6.8) y, si no alcanza, volver a `KRTR_IA_LLM_MODEL=none` y a 0,25 CPU / 0,5 GiB, o apagar el modo demo.
