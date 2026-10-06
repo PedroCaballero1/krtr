@@ -6,13 +6,8 @@ import polars as pl
 import pytest
 
 from krtr.database.neon import loader
-from krtr.database.neon.artifacts import ColumnSpec, LoadSummary, ValidationFailure
-from krtr.database.neon.loader import (
-    DEFAULT_BATCH_SIZE,
-    load_table,
-    merge_load_summaries,
-    run_table_load,
-)
+from krtr.database.neon.artifacts import ColumnSpec, LoadSummary
+from krtr.database.neon.loader import DEFAULT_BATCH_SIZE, load_table, run_table_load
 from krtr.database.neon.validation import RowValidationError
 
 PRODUCTS_SPECS = [
@@ -167,50 +162,10 @@ def test_run_table_load_uses_the_default_batch_size(
     monkeypatch.setattr(
         loader,
         "load_table",
-        lambda table, path, client, batch_size, strict: (
-            batch_sizes.append(batch_size) or LoadSummary(rows_read=0, rows_loaded=0)
-        ),
+        lambda table, path, client, batch_size, strict: batch_sizes.append(batch_size)
+        or LoadSummary(rows_read=0, rows_loaded=0),
     )
 
     run_table_load("products", make_parquet(tmp_path, ["2024-01-01"]))
 
     assert batch_sizes == [DEFAULT_BATCH_SIZE]
-
-
-def test_merge_load_summaries_totals_rows_across_files() -> None:
-    """Verifies rows read and loaded are summed across every file's summary."""
-    summaries = [
-        LoadSummary(rows_read=3, rows_loaded=3),
-        LoadSummary(
-            rows_read=2, rows_loaded=1, failures=[ValidationFailure(row_number=2, reason="bad")]
-        ),
-    ]
-
-    total = merge_load_summaries(summaries)
-
-    assert total.rows_read == 5
-    assert total.rows_loaded == 4
-    assert total.rows_failed == 1
-
-
-def test_merge_load_summaries_keeps_each_failure_with_its_own_row_number() -> None:
-    """Verifies failures from different files are concatenated, not deduplicated or renumbered."""
-    summaries = [
-        LoadSummary(
-            rows_read=1, rows_loaded=0, failures=[ValidationFailure(row_number=1, reason="a")]
-        ),
-        LoadSummary(
-            rows_read=1, rows_loaded=0, failures=[ValidationFailure(row_number=1, reason="b")]
-        ),
-    ]
-
-    total = merge_load_summaries(summaries)
-
-    assert [failure.reason for failure in total.failures] == ["a", "b"]
-
-
-def test_merge_load_summaries_of_an_empty_list_is_an_empty_total() -> None:
-    """Verifies merging no summaries yields a zeroed-out total instead of an error."""
-    total = merge_load_summaries([])
-
-    assert total == LoadSummary(rows_read=0, rows_loaded=0)

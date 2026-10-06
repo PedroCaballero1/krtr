@@ -132,7 +132,7 @@ class FakeSecretSdk:
         self.events.append("create")
         self.created.append((name, values, allow_existing))
 
-    def list_objects(self, max_objects: int | None = None) -> list[Any]:
+    def list(self, max_objects: int | None = None) -> list[Any]:
         """Records the request, or raises the configured error (e.g. bad credentials)."""
         self.events.append("list")
         if self.list_error:
@@ -150,7 +150,7 @@ def install_fake_secret_sdk(monkeypatch: Any) -> FakeSecretSdk:
     sdk = FakeSecretSdk()
     modal_module = ModuleType("modal")
     modal_module.Secret = SimpleNamespace(
-        objects=SimpleNamespace(create=sdk.create, list=sdk.list_objects), from_name=sdk.from_name
+        objects=SimpleNamespace(create=sdk.create, list=sdk.list), from_name=sdk.from_name
     )
     monkeypatch.setitem(sys.modules, "modal", modal_module)
     return sdk
