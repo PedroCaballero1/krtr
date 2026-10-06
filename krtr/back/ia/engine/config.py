@@ -10,6 +10,7 @@ from krtr.back.ia.config import IaConfig, IaModelsConfig
 from krtr.back.ia.deterministic.config import DeterministicConfig
 from krtr.back.ia.language.config import LanguageConfig
 from krtr.back.ia.matching.config import CatalogConfig
+from krtr.back.ia.reasoning.llm.config import LlmConfig
 
 
 class EngineConfig(BaseModel):
@@ -22,4 +23,5 @@ class EngineConfig(BaseModel):
     deterministic: DeterministicConfig = Field(default_factory=DeterministicConfig)
     catalog: CatalogConfig = Field(default_factory=CatalogConfig)
     language: LanguageConfig = Field(default_factory=LanguageConfig)
+    llm: LlmConfig = Field(default_factory=LlmConfig)
     models: IaModelsConfig = Field(default_factory=IaModelsConfig)  # Thresholds follow the model.

@@ -1,6 +1,202 @@
+# Phase 3 — a local LLM for the doubtful turns, and handing over to a person
+
+_Source: `docs/ia-proposal.md` §7, phase 3 · 2026-10-05 · Status: **implemented, pending your review**_
+
+**Goal:** an LLM resolves only what the deterministic path can't:
+- free-form replies to a pending question;
+- details the rules can't extract;
+- the yes/no confirmation before closing on an aggressive or off-topic message.
+
+It never answers the customer's question; it returns options it was offered, or nothing.
+Requests the agent can't answer go straight to a person.
+
+**Decided (2026-10-05):**
+- **A local Hugging Face model,** not a hosted API: no per-token cost, and the conversation
+  stays in-house.
+- **Branch:** `implement-agents-phase3`, from `master` (`ecbcf64`).
+- **Escalating `unsupported` requests (item 4)** is part of this phase.
+
+**Runtime: `onnxruntime-genai`.**
+- It has Python 3.14 wheels for macOS arm64 and Linux x86_64. It runs Qwen models in ONNX
+  format on CPU, and constrains generation to a JSON schema (LLGuidance), so the output always
+  parses.
+- `llama-cpp-python` was ruled out: it ships no wheels, so it would have to be compiled
+  locally, in CI and in the Modal image.
+
+**Rule for every model (`tasks/lessons.md`):** an Enum listing the deterministic option too,
+chosen by environment variable or CLI option, validated, built by a factory.
+
+## Tasks
+
+- [x] **3.1 `LlmModel` Enum and selection** — `reasoning/llm/models.py`:
+  - members:
+    - `NONE`: no LLM, the current template clarifier (deterministic); used by the tests and
+      as the fallback;
+    - `QWEN2_5_1_5B_INSTRUCT`: Qwen2.5-1.5B-Instruct, int4, CPU, from Hugging Face.
+  - each member is mapped to its spec: deterministic or not, the Hugging Face repo, and the
+    folder inside it;
+  - selection: `KRTR_IA_LLM_MODEL` and `--llm-model`, added to `IaModelsConfig`, with the same
+    precedence and validation as phase 2.
+- [x] **3.2 Weights and runtime:**
+  - `uv add onnxruntime-genai`;
+  - the weights are downloaded once into `.krtr/models/` (`KRTR_IA_MODEL_CACHE`) with
+    `huggingface_hub`, which is already installed through fastembed;
+  - **first step of the phase:** confirm which Hugging Face repo publishes a CPU int4 ONNX
+    build of Qwen2.5-1.5B-Instruct that `onnxruntime-genai` loads. If none does, convert it
+    once with `onnxruntime_genai`'s model builder; that is an offline step, so the runtime
+    never needs torch.
+- [x] **3.3 `LlmClient` interface** — `reasoning/llm/base.py`:
+  `complete(prompt, schema: type[BaseModel], max_tokens, timeout) -> BaseModel`.
+  - The local client (`reasoning/llm/onnx/`) is imported only when that model is selected, so
+    `none` never loads it.
+  - A timeout or runtime error raises `LlmUnavailable`; callers then fall back to the
+    deterministic path. A provider failure never blocks a conversation.
+- [x] **3.4 `LlmClarifier`** (implements `Clarifier`; chain: rules first, then the LLM).
+  - `interpret`:
+    - when the template clarifier can't read a reply ("la de la tarjeta, no la otra"), the
+      LLM chooses among the **options that were offered**;
+    - the schema is a `Literal` of those options plus `"none"`, so it can't return anything
+      else;
+    - `"none"` repeats the question.
+  - `ask`: unchanged; questions are still written from templates.
+- [x] **3.5 Details the rules can't extract** — for a closed slot (product type), the LLM
+  picks one Enum value or `"none"`. For a free slot (complaint ID), its answer is accepted
+  only if it **appears literally in the customer's text**, so it can't invent an ID.
+- [x] **3.6 Confirming guard flags before closing (G13):**
+  - an `aggressive` or `off_topic` flag goes to the LLM with a yes/no schema;
+  - only a "yes" applies the closure protocol, with new templates `closed_aggressive` and
+    `closed_off_topic` in ES and PT;
+  - with `NONE`, flags still only flag, as today.
+- [x] **3.7 Handing over `unsupported` requests (G20, item 4 — deterministic, no LLM)** — a
+  message that doesn't match an intent and whose best label is `unsupported` is `ESCALATED`
+  with a new reason, `UNSUPPORTED_REQUEST`, and a template ("te comunico con un asesor…").
+  There is no "rephrase" first and no 3-question wait.
+- [x] **3.8 Engine:**
+  - a new `LLM` timing step;
+  - `TurnDetails.llm_used`, for the events log;
+  - the factory builds the selected `LlmClient` and the clarifier chain.
+- [x] **3.9 Clarifier evaluation** — `evaluation/messages/<language>/replies.tsv`, one line per
+  case: question kind, options offered, free-form reply, expected answer (an option or
+  `none`). Plus the existing guard and `none` messages, for the confirmation.
+  `krtr back ia evaluate-llm [--llm-model]` reports, per language:
+  - how many answers are right;
+  - **answers outside the offered options (must be 0)**;
+  - false closures;
+  - latency at p50 and p95.
+- [x] **3.10 Tests:**
+  - a fake `LlmClient` covers the clarifier, extraction, confirmation and fallback (timeout,
+    error, `none`);
+  - escalating `unsupported` is deterministic and tested on its own;
+  - the real-model tests are skipped when the weights aren't downloaded, as with MiniLM;
+  - coverage of 85% or more, and lint clean.
+- [x] **3.11 Docs:** README (`--llm-model`, `evaluate-llm`), `.env.example`, the proposal,
+  and the web guide (6.2: the Qwen weights in the image, plus its memory).
+
+## Open questions
+
+- **Q3-A — Model size:**
+  - 1.5B is the proposal: better Spanish and Portuguese.
+  - If its p95 latency on CPU goes over the budget (Q3-C), the fallback is
+    `QWEN2_5_0_5B_INSTRUCT` (cheaper and faster, but weaker), as a second Enum member.
+  - The 3.9 evaluation decides.
+- **Q3-B — Modal resources:**
+  - 1.5B in int4 is about 1 GB on disk and around 2 GB of memory;
+  - the `web` function (`max_containers=1`) would need more memory, which uses up the credits
+    faster (D17).
+- **Q3-C — Latency budget:** proposal 2.5 s per LLM call, after which the deterministic answer
+  is used. Only doubtful turns pay this; the fast path stays at a few ms.
+- **Q3-D — Out of scope:** the case summary (G17) waits for the cases table (web task 4.8).
+
+## Review (phase 3)
+
+**Result:**
+- `LlmModel` Enum: `none` (deterministic) and `qwen2_5_1_5b_instruct`, selected with
+  `KRTR_IA_LLM_MODEL` / `--llm-model`.
+- The runtime is `onnxruntime-genai`, pinned `>=0.15.2,<0.16`: 0.16 and later don't load on
+  macOS 14, because of a libc++ symbol. The Linux wheels for 0.15.2 exist.
+- The weights are the official `Qwen/Qwen2.5-1.5B-Instruct`, converted locally to int4 ONNX
+  (952 MB). No community build was trusted.
+- Tests: 656 passed, 3 skipped, 98% coverage on `krtr/back/ia/`. Lint is clean, and the
+  code rules hold.
+
+**Final measurements** (`evaluate-llm`; each call about 1.1–1.4 s, p95 under 1.4 s, so within
+the 2.5 s budget):
+
+| Task | ES | PT |
+|---|---|---|
+| Choose an option (free-form reply) | 8/11, 1 false answer | 9/11, 0 false |
+| Extract an ID | 3/3, 0 false | 3/3, 0 false |
+| Confirm a guard flag | 32/42, 1 false confirmation | 32/42, 0 false |
+
+**What measuring changed (beyond the plan):**
+- **Schemas forbid extra keys.** Without that, the model wrote a `"reason"` field, ran out of
+  tokens and left the JSON unfinished.
+- **Guard confirmation classifies instead of asking yes/no** (`banking` / `abusive` /
+  `off_topic`; when in doubt, `banking`). False confirmations went from 17 and 15 to 1 and 0.
+  It is conservative: about 9 of 12 off-topic messages are classified `banking`. They still get
+  no answer, and are escalated after 3 questions instead of closed.
+- **A closure needs two independent signals:** the matcher's flag and the LLM's category.
+- **Every LLM slot value passes a deterministic check:**
+  - an ID must match the action's own rule (`validate_slot`);
+  - a closed option must be singled out by the reply: its label shares strictly more word
+    stems with the reply than any other option's (`_is_grounded`).
+
+  "La de la tarjeta" fits credit and debit cards alike, so it is asked again; the LLM's pick
+  would have been a guess.
+- **The LLM no longer fills slots in the first message.** Measured, it picked a product for
+  "¿Cuál es mi saldo?", which names none. It only reads replies to a question.
+- **A reply matching the pending question's own intent is an answer, not a new request.**
+  Before, "la de la tarjeta…" restarted the balance intent and never reached the LLM.
+- **With a question pending, the reply is read before `unsupported` escalates it.** Before,
+  "a de crédito" was escalated as a loan request.
+
+**Q3-A — model size:** 1.5B stays. The errors left are on the safe side: "none", then the
+question again. The one false choice left in ES is "quiero un préstamo"; in the agent it is
+escalated as `unsupported` before the LLM runs. 0.5B was not needed.
+
+**Q3-C — latency budget:** 2.5 s holds, with no timeouts. A doubtful turn costs about 1.3–1.5 s;
+the fast path stays at a few ms.
+
+**Open:**
+- **Q3-B:** the Modal memory (the build is about 1 GB, plus the runtime).
+- **A one-off crash at process exit** (`libc++abi … recursive_mutex lock failed`), seen once and
+  not reproduced in 4 later runs. It is in onnxruntime-genai's teardown.
+- **The LLM evaluation set is small** (11 + 3 replies per language). Grow it before trusting the
+  rates.
+
+---
+
+# Phase 4 — voice to text (G8, G10)
+
+_Status: **outline, to be planned after phase 3**_
+
+**Goal:** a voice note is transcribed and goes through the same text pipeline. The reply is
+always text (G8).
+
+- [ ] **4.1 `SpeechToTextModel` Enum:**
+  - `NONE`: voice disabled; the agent asks the customer to type, which is deterministic;
+  - a local Whisper model from Hugging Face. Candidates: Whisper small or base through
+    `onnxruntime-genai` (it supports Whisper, so it reuses phase 3's runtime) or
+    `faster-whisper` (CTranslate2).
+
+  Selected by `KRTR_IA_STT_MODEL` and `--stt-model`, validated.
+- [ ] **4.2 Audio intake** — decode WebM/Opus and MP4/AAC (≤ 60 s, ≤ 2 MB, as the web
+  contract sets) into 16 kHz mono. Check the magic bytes, and never store the audio.
+- [ ] **4.3 `SpeechToText` interface** — returns the transcript, its language and a
+  confidence. Low confidence asks the customer to repeat or type; the detected language
+  feeds the language policy.
+- [ ] **4.4 Engine and CLI** — a `SPEECH` timing step; `krtr back ia ask --audio <file>`;
+  stored messages keep the transcript, never the audio.
+- [ ] **4.5 Evaluation** — word error rate and intent accuracy on ES and PT recordings. **Open:
+  there are no recordings in the data; they have to be recorded or sourced.**
+- [ ] **4.6 Wiring** — into `/api/chat/voice` (web task 4.9), and the model weights in the
+  Modal image.
+
+---
+
 # Phase 2 — the real embedder, the catalog and the thresholds
 
-_Source: `docs/ia-proposal.md` §7, phase 2 · 2026-10-05 · Status: **implemented, pending your review**_
+_Source: `docs/ia-proposal.md` §7, phase 2 · 2026-10-05 · Status: **merged into `master` (#14, v1.8.0)**_
 
 **Goal:** replace the lexical stand-in with a local multilingual model, fill the catalog with
 phrases from the data, and set the thresholds from measurements, for each model and language.

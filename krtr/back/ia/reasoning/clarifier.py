@@ -20,6 +20,7 @@ from krtr.back.ia.reasoning.artifacts import (
     Resolved,
 )
 from krtr.back.ia.text import first_number
+from krtr.back.security.oidc.artifacts import InterfaceLanguage
 
 
 class Clarifier(ABC):
@@ -37,13 +38,20 @@ class Clarifier(ABC):
         """
 
     @abstractmethod
-    def interpret(self, state: ConversationState, text: str, match: MatchResult) -> Resolution:
+    def interpret(
+        self,
+        state: ConversationState,
+        text: str,
+        match: MatchResult,
+        language: InterfaceLanguage,
+    ) -> Resolution:
         """Reads the customer's reply to the pending question.
 
         Args:
             state: The conversation, with its pending question.
             text: The reply.
             match: The matcher's verdict on the reply itself.
+            language: The turn's language.
 
         Returns:
             Resolution: the intent and slots the reply settles, or the question again.
@@ -79,13 +87,20 @@ class TemplateClarifier(Clarifier):
         question = PendingQuestion(kind=QuestionKind.CHOOSE_INTENT, options=options)
         return NeedsClarification(question=question)
 
-    def interpret(self, state: ConversationState, text: str, match: MatchResult) -> Resolution:
-        """Reads the reply against the pending question; a clear new request wins otherwise.
+    def interpret(
+        self,
+        state: ConversationState,
+        text: str,
+        match: MatchResult,
+        language: InterfaceLanguage,
+    ) -> Resolution:
+        """Reads the reply against the pending question; a clear request for another intent wins.
 
         Args:
             state: The conversation, with its pending question.
             text: The reply.
             match: The matcher's verdict on the reply itself.
+            language: The turn's language (unused: numbers and keywords work in both).
 
         Returns:
             Resolution: what the reply settles, a new request, or the question again.
@@ -94,7 +109,7 @@ class TemplateClarifier(Clarifier):
         answer = self._answer(question, text) if question else None
         if answer is not None:
             return answer
-        if match.best_intent is not None:
+        if _is_new_request(match, question):
             return Resolved(intent=match.best_intent)
         if question is None or question.kind == QuestionKind.REPHRASE:
             return self.ask(match)
@@ -134,6 +149,25 @@ class TemplateClarifier(Clarifier):
         if picked:
             return picked
         return self._actions.get(question.intent).extract_slots(text).get(question.slot)
+
+
+def _is_new_request(match: MatchResult, question: PendingQuestion | None) -> bool:
+    """Tells whether a clearly matched reply replaces the pending question.
+
+    A reply that matches the *same* intent the question is filling ("la de la tarjeta" to
+    "which product?" reads like a balance request) is an answer to the question, not a new
+    request: restarting the intent would just ask the same question again.
+
+    Args:
+        match: The matcher's verdict on the reply.
+        question: The pending question, if any.
+
+    Returns:
+        bool: True if the reply matched an intent other than the one being filled.
+    """
+    if match.best_intent is None:
+        return False
+    return question is None or match.best_intent != question.intent
 
 
 def _pick_option(text: str, options: list[str]) -> str | None:

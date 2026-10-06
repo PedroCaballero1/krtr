@@ -1,6 +1,7 @@
 """Tests `krtr back ia ask` and `chat`: replies, the clarification flow, and leaving."""
 
 import re
+from pathlib import Path
 
 import pytest
 from typer.testing import CliRunner
@@ -109,3 +110,17 @@ def test_evaluate_reports_both_languages_without_writing() -> None:
     assert "[es]" in result.output and "[pt-BR]" in result.output
     assert re.search(r"proposed: right \d+ · wrong 0", result.output)
     assert THRESHOLDS_FILE.read_text() == before
+
+
+def test_a_selected_llm_without_its_build_exits_with_a_hint(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """The default Qwen, not converted yet, fails before any message with a way out."""
+    monkeypatch.setenv(IaEnvironmentVariable.MODEL_CACHE, str(tmp_path))
+
+    result = runner.invoke(
+        app, ["back", "ia", "ask", "hola", "--llm-model", "qwen2_5_1_5b_instruct"]
+    )
+
+    assert result.exit_code == 1
+    assert "--llm-model none" in result.output

@@ -21,6 +21,10 @@ from krtr.back.ia.language.models import LanguageDetectorModel
 from krtr.back.ia.matching.evaluation.artifacts import LanguageReport, OutcomeCounts
 from krtr.back.ia.matching.evaluation.runner import apply_proposed_thresholds, run_evaluation
 from krtr.back.ia.matching.models import EmbeddingModel
+from krtr.back.ia.reasoning.llm.config import LlmConfig
+from krtr.back.ia.reasoning.llm.evaluation.artifacts import TaskOutcome
+from krtr.back.ia.reasoning.llm.evaluation.runner import run_llm_evaluation
+from krtr.back.ia.reasoning.llm.models import LlmModel
 from krtr.back.security.oidc.artifacts import InterfaceLanguage
 
 logger = logging.getLogger(__name__)
@@ -31,6 +35,10 @@ LANGUAGE_HELP = "Starting language; a clear message in the other one switches th
 EmbeddingModelOption = Annotated[
     EmbeddingModel | None,
     typer.Option("--embedding-model", help="Embedding model; overrides KRTR_IA_EMBEDDING_MODEL."),
+]
+LlmModelOption = Annotated[
+    LlmModel | None,
+    typer.Option("--llm-model", help="LLM for doubtful turns; overrides KRTR_IA_LLM_MODEL."),
 ]
 LanguageModelOption = Annotated[
     LanguageDetectorModel | None,
@@ -56,6 +64,7 @@ def ask(
     ),
     embedding_model: EmbeddingModelOption = None,
     language_model: LanguageModelOption = None,
+    llm_model: LlmModelOption = None,
 ) -> None:
     """Sends one message to the demo engine and shows the reply.
 
@@ -64,11 +73,12 @@ def ask(
         language: The language to reply in until a message shows another one.
         embedding_model: The embedding model, if chosen on the command line.
         language_model: The language detector, if chosen on the command line.
+        llm_model: The LLM, if chosen on the command line.
 
     Returns:
         None.
     """
-    engine = build_demo_engine(_models(embedding_model, language_model))
+    engine = _engine(_models(embedding_model, language_model, llm_model))
     reply = _send(engine, text, language)
     _show(reply)
 
@@ -80,6 +90,7 @@ def chat(
     ),
     embedding_model: EmbeddingModelOption = None,
     language_model: LanguageModelOption = None,
+    llm_model: LlmModelOption = None,
 ) -> None:
     """Holds a conversation with the demo engine until it ends or `/exit` is typed.
 
@@ -87,11 +98,12 @@ def chat(
         language: The language to reply in until a message shows another one.
         embedding_model: The embedding model, if chosen on the command line.
         language_model: The language detector, if chosen on the command line.
+        llm_model: The LLM, if chosen on the command line.
 
     Returns:
         None.
     """
-    engine = build_demo_engine(_models(embedding_model, language_model))
+    engine = _engine(_models(embedding_model, language_model, llm_model))
     logger.info("Chatting as %s; type %s to leave", DEMO_CUSTOMER_ID, ChatCommand.EXIT.value)
     while True:
         text = typer.prompt(">", prompt_suffix=" ")
@@ -117,13 +129,54 @@ def evaluate(
     Returns:
         None.
     """
-    report = run_evaluation(_models(embedding_model, None))
+    report = run_evaluation(_models(embedding_model, None, None))
     typer.echo(f"Embedding model: {report.model.value}")
     for language_report in report.languages:
         _show_language_report(language_report)
     if write:
         apply_proposed_thresholds(report)
         typer.echo("Proposed thresholds written to thresholds.json")
+
+
+@ia_app.command(name="evaluate-llm")
+def evaluate_llm(llm_model: LlmModelOption = None) -> None:
+    """Measures the LLM on free-form replies and guard confirmations, per language.
+
+    Args:
+        llm_model: The LLM, if chosen on the command line.
+
+    Returns:
+        None.
+
+    Raises:
+        typer.Exit: with code 1, if the LLM is `none` or not converted yet.
+    """
+    try:
+        report = run_llm_evaluation(_models(None, None, llm_model), LlmConfig())
+    except (ValueError, FileNotFoundError) as error:
+        logger.error("%s", error)
+        raise typer.Exit(code=1) from error
+    typer.echo(f"LLM: {report.model.value}")
+    for language_report in report.languages:
+        typer.echo(f"\n[{language_report.language.value}]")
+        for outcome in language_report.tasks:
+            typer.echo(f"  {_task_line(outcome)}")
+
+
+def _task_line(outcome: TaskOutcome) -> str:
+    """Formats one task's outcome on one line.
+
+    Args:
+        outcome: The task's counts and latency.
+
+    Returns:
+        str: e.g. "choose_option: right 9/11 · false positives 0 · unavailable 0 · p95 812 ms".
+    """
+    return (
+        f"{outcome.task.value}: right {outcome.right}/{outcome.cases} · "
+        f"false positives {outcome.false_positives} · unavailable {outcome.unavailable} · "
+        f"p50 {outcome.latency_ms_p50:.0f} ms · p95 {outcome.latency_ms_p95:.0f} ms"
+    )
 
 
 def _show_language_report(report: LanguageReport) -> None:
@@ -161,14 +214,36 @@ def _counts_line(counts: OutcomeCounts) -> str:
     )
 
 
+def _engine(models: IaModelsConfig) -> ConversationEngine:
+    """Builds the demo engine, exiting cleanly if a selected model isn't available.
+
+    Args:
+        models: The selected models.
+
+    Returns:
+        ConversationEngine: the demo engine.
+
+    Raises:
+        typer.Exit: with code 1, if the selected LLM hasn't been converted yet.
+    """
+    try:
+        return build_demo_engine(models)
+    except FileNotFoundError as error:
+        logger.error("%s (or pass --llm-model none)", error)
+        raise typer.Exit(code=1) from error
+
+
 def _models(
-    embedding_model: EmbeddingModel | None, language_model: LanguageDetectorModel | None
+    embedding_model: EmbeddingModel | None,
+    language_model: LanguageDetectorModel | None,
+    llm_model: LlmModel | None,
 ) -> IaModelsConfig:
     """Resolves the models: the command line first, then the environment, then the defaults.
 
     Args:
         embedding_model: The `--embedding-model` option, if given.
         language_model: The `--language-model` option, if given.
+        llm_model: The `--llm-model` option, if given.
 
     Returns:
         IaModelsConfig: the validated selection.
@@ -177,7 +252,7 @@ def _models(
         typer.Exit: with code 1, if an environment variable names an unknown model.
     """
     try:
-        return IaModelsConfig.resolve(embedding_model, language_model)
+        return IaModelsConfig.resolve(embedding_model, language_model, llm_model)
     except ValueError as error:
         logger.error("%s", error)
         raise typer.Exit(code=1) from error

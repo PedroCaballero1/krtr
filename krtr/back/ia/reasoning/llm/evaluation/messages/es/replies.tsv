@@ -1,0 +1,14 @@
+choose_option	product_type	savings_account,checking_account,credit_card,debit_card,personal_loan,mortgage,investment	la de la tarjeta, no la otra	none
+choose_option	product_type	savings_account,checking_account,credit_card,debit_card,personal_loan,mortgage,investment	la cuenta donde ahorro	savings_account
+choose_option	product_type	savings_account,checking_account,credit_card,debit_card,personal_loan,mortgage,investment	la que uso para pagar la nómina, la corriente	checking_account
+choose_option	product_type	savings_account,checking_account,credit_card,debit_card,personal_loan,mortgage,investment	mi plástico de crédito	credit_card
+choose_option	product_type	savings_account,checking_account,credit_card,debit_card,personal_loan,mortgage,investment	¿Cuál es mi saldo?	none
+choose_option	product_type	savings_account,checking_account,credit_card,debit_card,personal_loan,mortgage,investment	no sé, la que sea	none
+choose_option	product_type	savings_account,checking_account,credit_card,debit_card,personal_loan,mortgage,investment	quiero hablar con alguien	none
+choose_option	request	account_balance,complaint_status	lo de la queja que puse	complaint_status
+choose_option	request	account_balance,complaint_status	saber cuánta plata tengo	account_balance
+choose_option	request	account_balance,complaint_status	ninguna de esas	none
+choose_option	request	account_balance,complaint_status	quiero un préstamo	none
+extract_value	complaint_id		el número es pqr-104233, gracias	PQR-104233
+extract_value	complaint_id		no lo tengo a mano	none
+extract_value	complaint_id		es la queja de la semana pasada	none

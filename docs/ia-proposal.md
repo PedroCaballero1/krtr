@@ -339,9 +339,12 @@ injects it, the same way `auth_services` is wired today.
    the thresholds per language. The catalog content comes from the intent discovery
    track in `tasks/todo.md` (deduplicated call history + complaints, labelled and
    paraphrased in ES / PT by an LLM, reviewed by us).
-3. **`LlmClient` + `LlmClarifier`:** clarification questions, interpreting replies,
-   extracting free-text inputs, confirming guardrail closures.
-4. **`SpeechToText`** (G10 phase 2).
+3. **`LlmClient` + `LlmClarifier`** with a local Hugging Face model (Qwen2.5-1.5B-Instruct
+   through `onnxruntime-genai`, decided 2026-10-05): interpreting free-form replies,
+   extracting free-text inputs, confirming guardrail closures, and handing `unsupported`
+   requests to a person. Plan: `tasks/todo.md`.
+4. **`SpeechToText`** (G10 phase 2): a local Whisper model chosen from a `SpeechToTextModel`
+   Enum. Outline: `tasks/todo.md`.
 5. **Optional `LlmResponseWriter`**, with the check that it adds no facts.
 
 ## 8. Open questions

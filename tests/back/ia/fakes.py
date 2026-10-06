@@ -20,6 +20,7 @@ from krtr.back.ia.matching.base import Embedder
 from krtr.back.ia.matching.catalog import CatalogLabel, ExemplarCatalog
 from krtr.back.ia.matching.models import EmbeddingModel
 from krtr.back.ia.messages.store import InMemoryMessageStore
+from krtr.back.ia.reasoning.llm.models import LlmModel
 
 CUSTOMER_ID = "CUST-1"
 OTHER_CUSTOMER_ID = "CUST-2"
@@ -68,7 +69,7 @@ def sample_registry() -> ActionRegistry:
     )
 
 
-HASHING_MODELS = IaModelsConfig(embedding=EmbeddingModel.HASHING)  # Offline and deterministic.
+HASHING_MODELS = IaModelsConfig(embedding=EmbeddingModel.HASHING, llm=LlmModel.NONE)  # Offline.
 
 
 def sample_engine(messages: InMemoryMessageStore | None = None) -> ConversationEngine:

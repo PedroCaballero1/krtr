@@ -53,8 +53,11 @@ class IntentMatcher:
         candidates = rank_intents(scores)[: thresholds.top_k]
         guard_flags = [label for label in GuardLabel if scores.get(label, 0.0) >= thresholds.guard]
         kind = classify(candidates, thresholds, rival_score(scores))
+        top_label = max(scores, key=scores.__getitem__) if scores else None
         logger.debug("Matched %s: %s, flags %s", kind, candidates, guard_flags)
-        return MatchResult(kind=kind, candidates=candidates, guard_flags=guard_flags)
+        return MatchResult(
+            kind=kind, candidates=candidates, guard_flags=guard_flags, top_label=top_label
+        )
 
 
 def classify(
