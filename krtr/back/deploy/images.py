@@ -23,7 +23,10 @@ from krtr.back.deploy.config import (
     KEYCLOAK_IMPORT_DIR,
     KEYCLOAK_THEME_DIR,
     LOGIN_THEME_DIR,
+    MODEL_BUILD_PACKAGES,
     REALM_FILE,
+    TORCH_CPU_INDEX,
+    WEB_IA_ENVIRONMENT,
     KeycloakImageConfig,
 )
 from krtr.compute.modal.config import (
@@ -39,6 +42,30 @@ def build_web_image() -> modal.Image:
     Returns:
         modal.Image: the image definition.
     """
+    return _with_krtr_sources(_locked_base()).add_local_dir(
+        REPOSITORY_ROOT / FRONTEND_DIST, FRONTEND_CONTAINER_DIR
+    )
+
+
+def build_model_builder_image() -> modal.Image:
+    """Builds the image of `prepare_models`: the locked app plus the Qwen conversion tools.
+
+    Returns:
+        modal.Image: the image definition.
+    """
+    builder = _locked_base().uv_pip_install("torch", index_url=TORCH_CPU_INDEX)
+    return _with_krtr_sources(builder.uv_pip_install(*MODEL_BUILD_PACKAGES))
+
+
+def _locked_base() -> modal.Image:
+    """Builds the shared base: Python, the locked dependencies without `dev`, and the env.
+
+    Build steps (pip, uv) must come before local files, so callers add theirs to this base
+    and the sources last.
+
+    Returns:
+        modal.Image: the base image definition.
+    """
     return (
         modal.Image.debian_slim(python_version=CONTAINER_PYTHON_VERSION)
         .uv_sync(str(REPOSITORY_ROOT), frozen=True, extra_options="--no-dev")
@@ -46,11 +73,22 @@ def build_web_image() -> modal.Image:
             {
                 "KRTR_WEB_ENVIRONMENT": "production",
                 "KRTR_WEB_FRONTEND_DIST_DIR": FRONTEND_CONTAINER_DIR,
+                **WEB_IA_ENVIRONMENT,
             }
         )
-        .add_local_python_source("krtr", ignore=list(IMAGE_SOURCE_IGNORE_PATTERNS))
-        .add_local_dir(REPOSITORY_ROOT / FRONTEND_DIST, FRONTEND_CONTAINER_DIR)
     )
+
+
+def _with_krtr_sources(image: modal.Image) -> modal.Image:
+    """Adds the `krtr` package sources, the last step of an image (they are mounted, not built).
+
+    Args:
+        image: The image to add them to.
+
+    Returns:
+        modal.Image: the image with the sources.
+    """
+    return image.add_local_python_source("krtr", ignore=list(IMAGE_SOURCE_IGNORE_PATTERNS))
 
 
 def build_keycloak_image(config: KeycloakImageConfig | None = None) -> modal.Image:
