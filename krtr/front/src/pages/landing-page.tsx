@@ -11,7 +11,7 @@ import { Button } from "@/components/ui/button";
 import { Kicker } from "@/components/ui/kicker";
 import { Notice } from "@/components/ui/notice";
 import { resolveLanguage, type Language } from "@/i18n/languages";
-import { getLoginUrl } from "@/lib/auth";
+import { getLoginUrl, LOGIN_NOTICE_PARAM, LoginNotice, parseLoginNotice } from "@/lib/auth";
 import { AppPath } from "@/lib/routes";
 
 /** The message each logout reason shows on the landing page. */
@@ -19,6 +19,11 @@ const LOGOUT_MESSAGE_KEYS: Record<LogoutReason, string> = {
   [LogoutReason.UserRequested]: "logout_message_user",
   [LogoutReason.IdleTimeout]: "session_expired_idle_message",
   [LogoutReason.AbsoluteTimeout]: "session_expired_absolute_message",
+};
+
+/** The message each login notice shows on the landing page. */
+const LOGIN_NOTICE_MESSAGE_KEYS: Record<LoginNotice, string> = {
+  [LoginNotice.Failed]: "login_failed",
 };
 
 /**
@@ -48,7 +53,20 @@ function LogoutReasonNotice(): JSX.Element | null {
   );
 }
 
-/** The left column: kicker, headline, tagline, the login button and any logout notice. */
+/** The "your login did not complete" alert, when a rejected callback sent the user back. */
+function LoginNoticeAlert(): JSX.Element | null {
+  const { t } = useTranslation();
+  const params = new URLSearchParams(window.location.search);
+  const notice = parseLoginNotice(params.get(LOGIN_NOTICE_PARAM));
+  if (!notice) return null;
+  return (
+    <Notice role="alert" className="max-w-[440px]">
+      {t(LOGIN_NOTICE_MESSAGE_KEYS[notice])}
+    </Notice>
+  );
+}
+
+/** The left column: kicker, headline, tagline, the login button and any login or logout notice. */
 function LandingHero(): JSX.Element {
   const { t, i18n } = useTranslation();
   return (
@@ -68,6 +86,7 @@ function LandingHero(): JSX.Element {
         {t("login_button")}
         <ArrowRight aria-hidden className="size-[18px]" />
       </Button>
+      <LoginNoticeAlert />
       <LogoutReasonNotice />
     </section>
   );

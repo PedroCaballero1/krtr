@@ -9,6 +9,8 @@ Consumed by `krtr/back/web/app.py`.
 
 import logging
 import secrets
+from enum import StrEnum
+from urllib.parse import urlencode
 
 from fastapi import APIRouter, BackgroundTasks, Depends, Request, Response
 from fastapi.responses import RedirectResponse
@@ -35,11 +37,24 @@ from krtr.back.web.cookies import (
 )
 from krtr.back.web.csrf import require_session_with_csrf
 from krtr.back.web.dependencies import AuthServices, get_auth_services
-from krtr.back.web.errors import ApiErrorCode, MessageKey, api_error
 
 logger = logging.getLogger(__name__)
 
 APP_HOME_PATH = "/app"  # The SPA's authenticated home (AppPath.Home in the frontend).
+LANDING_PATH = "/"  # The SPA's landing page (AppPath.Landing in the frontend).
+LOGIN_NOTICE_PARAM = "login"  # LOGIN_NOTICE_PARAM in krtr/front/src/lib/auth.ts.
+
+
+class LoginNotice(StrEnum):
+    """What the landing page tells the customer about their login, in its `login` parameter.
+
+    Exists so a rejected callback sends the browser back to the landing page with a translated
+    notice instead of a raw JSON body (task 4.4). Never carries the failure reason, which only
+    goes to the `auth_login_failed` event. Mirrors `LoginNotice` in krtr/front/src/lib/auth.ts.
+    """
+
+    FAILED = "failed"
+
 
 auth_router = APIRouter(prefix="/auth")
 
@@ -89,7 +104,8 @@ def callback(
         services: The app's login and session services.
 
     Returns:
-        Response: 302 to /app with the session cookie, or 400 if the login is rejected.
+        Response: 302 to /app with the session cookie, or to the landing page with a notice if
+        the login is rejected.
     """
     try:
         login_state = services.login_codec.decode(
@@ -159,7 +175,10 @@ def _checked_code(
 
 
 def _reject_login(request: Request, tasks: BackgroundTasks, failure: LoginError) -> Response:
-    """Answers a rejected callback with 400, clearing the login cookie and recording why.
+    """Sends a rejected callback back to the landing page, clearing the login cookie.
+
+    The browser arrives here by a top-level navigation, so a JSON error would be shown raw; the
+    landing page shows a translated notice instead. Why it failed is only recorded in the event.
 
     Args:
         request: The callback.
@@ -167,10 +186,11 @@ def _reject_login(request: Request, tasks: BackgroundTasks, failure: LoginError)
         failure: Why the login was rejected.
 
     Returns:
-        Response: 400 with the §3.4 body.
+        Response: 302 to `/?login=failed`.
     """
     logger.warning("Rejected a login callback: %s", failure.reason.value)
-    response = api_error(400, ApiErrorCode.LOGIN_FAILED, MessageKey.LOGIN_FAILED)
+    notice = urlencode({LOGIN_NOTICE_PARAM: LoginNotice.FAILED.value})
+    response = RedirectResponse(f"{LANDING_PATH}?{notice}", status_code=302)
     clear_login_cookie(response)
     schedule_event(request, tasks, EventName.AUTH_LOGIN_FAILED, {"reason": failure.reason.value})
     return response

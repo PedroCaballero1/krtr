@@ -464,7 +464,7 @@ Guarda el texto de la conversación, separado de `events`, por dos razones:
   - Logout RP-initiated y revocación del refresh token.
   - Las URLs de Keycloak salen de la configuración (`KRTR_AUTH_ORIGIN`).
 - **Aceptación:**
-  - Los tests con Keycloak simulado cubren el callback correcto, el `state` inválido y el `nonce` inválido (→ 400 + evento), y que el logout limpia la sesión.
+  - Los tests con Keycloak simulado cubren el callback correcto, el `state` inválido y el `nonce` inválido (→ 400 + evento; desde la 4.4, → 302 a `/?login=failed` + evento), y que el logout limpia la sesión.
   - La cookie temporal es `Lax` y se borra después del callback.
   - Se registran `auth_login_started`, `auth_login_succeeded`, `auth_login_failed` y `auth_logout`.
 - **Commit:** `feat(back/security/oidc): add OIDC login flow` (quedó en `0af3a00`, el núcleo, y `0f89cd5`, los endpoints junto con los de la 4.4)
@@ -489,6 +489,7 @@ Guarda el texto de la conversación, separado de `events`, por dos razones:
 - **Puntos abiertos:**
   - **CSRF:** `POST /auth/logout` y `POST /api/session/activity` todavía no exigen el token CSRF. La 4.5 debe cubrirlos.
   - **Frontend:** los locales tienen `session_expired_idle_message` y `session_expired_absolute_message`, pero faltan `unauthorized`, `login_failed` y `auth_unavailable`. Además, un callback rechazado responde 400 con JSON (como pide la aceptación), y el navegador lo muestra tal cual. Hay que decidir si conviene redirigir a la página de inicio con un aviso.
+  - ✅ **Resuelto (5-oct):** las tres claves ya estaban en los locales. Un callback rechazado ahora responde **302 a `/?login=failed`** y la landing muestra un aviso (`role="alert"`) con `login_failed`, en ES o PT según el idioma guardado. El motivo no viaja en la URL: sigue solo en el evento `auth_login_failed`, que no cambió. Se quitó el código de error `login_failed` de la API, que ya nadie usaba. ⬜ Requiere desplegar.
 - **Depende de:** 2.2, 2.3, 4.3
 
 #### 4.5 🤖 Protección CSRF ✅ `827f4b5`
