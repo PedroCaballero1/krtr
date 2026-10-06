@@ -66,13 +66,13 @@ _Fecha límite de la hackathon: 5-oct-2026 · Rama de trabajo: `web-develop-secu
 | Backend / Frontend | FastAPI · React + Vite + TS + Tailwind + shadcn/ui, compilado y servido por FastAPI en el mismo origen. | — |
 | Autenticación | Cuentas propias para los **150.000 `customer_id`**, con contraseñas aleatorias de **8 caracteres**. **Keycloak** (ahora corriendo en Modal), flujo OIDC Authorization Code + PKCE, con FastAPI como BFF. | G5, G6 |
 | Registro | **No** se pueden crear cuentas nuevas. La única excepción es 1 cuenta con **MFA TOTP**, que crea el equipo. | G5 |
-| Credenciales para el jurado | Archivo con una muestra de **50** clientes **Active** elegidos al azar. No se sube al repo. | G6 |
+| Credenciales para el jurado | Archivo con una muestra de **50** clientes **Active** elegidos al azar. Se publica en `JURY_ACCESS.md`, en la raíz del repo: son cuentas de prueba (E9 de `docs/security-checklist.md`). | G6 |
 | Bloqueo por intentos / límite de chat | 5 fallos → bloqueo de 15 min · 20 mensajes por minuto por usuario. | G3 |
 | Sesión | Se cierra tras **5 min** sin interacción y a los **30 min** como máximo aunque haya actividad. Aviso **30 s antes**. **1 sesión por usuario**. Los casos abiertos se conservan. | G15 |
 | Idiomas | Interfaz y login en **ES y PT** con selector. Por defecto **ES**. | G14 |
 | Pantallas | Landing = login. Después del login: botón de **soporte**, **número de usuario** y **cerrar sesión**. | G5 |
 | Casos | La web solo muestra los casos abiertos (ID, fecha, resumen) y permite escribir un ID. Lo demás lo decide el backend. Por ahora, datos de prueba. | G18 |
-| Chat | Un endpoint del backend, que se encarga de la IA. Por ahora responde un **mensaje genérico**, **completo** (sin streaming). "Escribiendo…" si tarda más de 2 s. Meta: menos de 1 s. | G7, G9, G16 |
+| Chat | Un endpoint del backend, que se encarga de la IA. Por ahora responde un **mensaje genérico**, **completo** (sin streaming). "Escribiendo…" si tarda más de 2 s. Meta: menos de 4 s (revisada el 2026-10-06; antes, 1 s). | G7, G9, G16 |
 | Voz | Graba y envía el audio al backend. Se aceptan WebM/Opus y MP4/AAC, con un máximo de 60 s. Lo que el backend haga con el audio queda fuera de alcance. | G8, G10 |
 | Eventos | Una sola tabla `events(id UUID, event_name, properties cifrado, occurred_at)`. Se registra **todo**. Retención de **3 meses**. | G21 |
 | **Mensajes del chat** 🆕 | Tabla `messages` (§3.6) con el texto de cada mensaje y respuesta, **cifrado** (AES-256-GCM, llave propia `KRTR_MESSAGES_KEY`). Retención de **3 meses**. Índice en `(incident_id, customer_id)`, pedido explícitamente (excepción a la regla del `CLAUDE.md`). En `events` solo van los metadatos del turno, nunca el texto. | G17, G21 |
@@ -797,7 +797,7 @@ Guarda el texto de la conversación, separado de `events`, por dos razones:
 - **Objetivo:**
   - Correr 7.2 y 7.3 en verde y revocar las sesiones QA.
   - Confirmar que el **modo demo** está encendido.
-  - Entregar `jury_credentials.csv` por un canal privado, con la URL `https://<ws>--krtr.modal.run` y las instrucciones.
+  - Publicar las cuentas del jurado en `JURY_ACCESS.md` (raíz del repo), con la URL `https://<ws>--krtr.modal.run` y las instrucciones.
   - Etiquetar la versión.
   - **No hacer merges a `master` durante la evaluación**: cada deploy reinicia Keycloak.
 - **Aceptación:** checklist firmado por el revisor humano.
@@ -823,7 +823,7 @@ Guarda el texto de la conversación, separado de `events`, por dos razones:
   - [ ] Hay una fila del día en el [registro de gasto](modal-platform.md#registro-de-gasto-diario), con los créditos restantes leídos en el dashboard. La proyección (≈ 3,15 USD/día) alcanza hasta el final de la evaluación.
 
   **D. Entrega al jurado**
-  - [ ] Se envía el documento `data/credentials/cuentas_jurado.md` (URL, instrucciones y cuentas) **solo por un canal privado**. Es confidencial: nunca se sube al repo (está ignorado por `data/`), ni se adjunta a un PR o un issue, ni se publica.
+  - [ ] Se publica `JURY_ACCESS.md` en la raíz del repo (URL, instrucciones y cuentas). Son cuentas de prueba: el riesgo está aceptado en la excepción E9 de `docs/security-checklist.md`. Las cuentas QA y la de MFA siguen fuera del repo.
   - [ ] Se confirma que lo recibieron y que una cuenta entra.
 
   **E. Congelar**

@@ -1,6 +1,6 @@
 """Times a turn, in total and per step, so every response carries its own latency (G16).
 
-Exists so the slow step of a turn is visible, not only its total: the < 1 s target depends on
+Exists so the slow step of a turn is visible, not only its total: the 4 s target (G16) depends on
 steps that will change (the real embedder, Neon reads, the LLM clarifier). Consumed by
 `engine/engine.py`; the result travels in `AgentReply.timings`.
 """
