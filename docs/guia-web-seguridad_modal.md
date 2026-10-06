@@ -17,6 +17,8 @@ _Fecha límite de la hackathon: 5-oct-2026 · Rama de trabajo: `web-develop-secu
 >
 > **v2.4.** 4.11, 5.11 y 5.12 hechas, y arreglado el test inestable de `chat-page`. La 6.2 sirve `create_served_app()`.
 >
+> **v2.5 (5-oct).** Nueva tabla `messages` para el texto del chat, decidida con el vertical de IA ([`docs/ia-proposal.md`](ia-proposal.md)): cifrada, retención de 3 meses e índice en `(incident_id, customer_id)` (§3.6). En `events` solo van los metadatos de cada turno, nunca el texto. Se actualizaron 6.1 (nueva llave en `krtr-web`) y 6.5 (la purga diaria también limpia `messages`).
+>
 > **v2.5.** 1.1 hecha (Docker con Colima) y 1.3 hecha salvo el permiso de auditoría, que va en 3.1. Neon está en us-east-2 (Ohio) y su rama principal se llama `production`.
 >
 > **v2.6.** 0.5 y 3.1 hechas, con Keycloak 26.8.0 en local y su imagen para Modal. El CI instala el extra `modal`. El permiso de auditoría quedó dado en `dev`. La 6.3 suma lo aprendido en la 3.1.
@@ -63,6 +65,7 @@ _Fecha límite de la hackathon: 5-oct-2026 · Rama de trabajo: `web-develop-secu
 | Chat | Un endpoint del backend, que se encarga de la IA. Por ahora responde un **mensaje genérico**, **completo** (sin streaming). "Escribiendo…" si tarda más de 2 s. Meta: menos de 1 s. | G7, G9, G16 |
 | Voz | Graba y envía el audio al backend. Se aceptan WebM/Opus y MP4/AAC, con un máximo de 60 s. Lo que el backend haga con el audio queda fuera de alcance. | G8, G10 |
 | Eventos | Una sola tabla `events(id UUID, event_name, properties cifrado, occurred_at)`. Se registra **todo**. Retención de **3 meses**. | G21 |
+| **Mensajes del chat** 🆕 | Tabla `messages` (§3.6) con el texto de cada mensaje y respuesta, **cifrado** (AES-256-GCM, llave propia `KRTR_MESSAGES_KEY`). Retención de **3 meses**. Índice en `(incident_id, customer_id)`, pedido explícitamente (excepción a la regla del `CLAUDE.md`). En `events` solo van los metadatos del turno, nunca el texto. | G17, G21 |
 | Base de datos | Todo en **Neon** (AWS us-east-2, Ohio; la v1 decía us-east-1, pero el host del proyecto es us-east-2). Scale-to-zero **desactivado**. Base aparte `keycloak`. | — |
 | **Despliegue** 🆕 | **Modal**, un solo entorno (producción). **GitHub Actions** ejecuta `modal deploy` con cada merge a `master` si pasan pytest, los linters y los escáneres. | — |
 | **Dominio** 🆕 | **Ninguno.** Modal solo permite dominio propio desde el plan Team (250 USD/mes). Las URLs son `https://juan-alvarezo-2002--krtr.modal.run` (app) y `https://juan-alvarezo-2002--krtr-auth.modal.run` (Keycloak). | — |
@@ -156,6 +159,7 @@ krtr/
   compute/modal/  # ✅ existente: se REUTILIZA (imagen, secretos, volúmenes)
   cli/back/{web,security,deploy}/      # comandos typer, espejo de krtr/back
   database/queries/{events,app_sessions}/   # ✅
+  database/queries/messages/                # 🟡 texto del chat (§3.6): SQL listo, falta crearla en Neon
 tests/...  (espejo 1:1)     e2e/{security,browser,load}/  (contra producción)
 deploy/gcp/, Dockerfile, .dockerignore  ❌ eliminados en 0.2 (D18, 24d7dba)
 ```
@@ -189,11 +193,42 @@ Todas las respuestas llevan un `request_id`. Los errores tienen la forma `{error
 - **HTTP:** `http_request` (método, ruta, estado, latencia, IP, user-agent, request_id).
 - **Login:** `auth_login_started`, `auth_login_succeeded`, `auth_login_failed`, `auth_logout`, `auth_*` (importados de Keycloak), `session_created`, `session_revoked_by_new_login`, `session_idle_warning_shown`, `session_absolute_warning_shown`, `session_extended`, `session_expired_idle`, `session_expired_absolute`.
 - **Interfaz:** `page_view`, `language_changed`, `support_clicked`, `case_mode_selected`, `case_list_viewed`, `case_created`, `case_resume_succeeded`, `case_resume_failed`.
-- **Chat:** `chat_message_sent`, `chat_response_received` (con latencia), `typing_indicator_shown`.
+- **Chat:** `chat_message_sent`, `chat_response_received` (metadatos del turno que devuelve el agente: resultado, intención, tipo de coincidencia, alertas, idioma y latencia total y por paso; **nunca el texto**, que va a `messages`), `typing_indicator_shown`.
 - **Voz:** `voice_recording_started`, `voice_recording_cancelled`, `voice_recording_sent`, `voice_permission_denied`.
 - **Seguridad:** `rate_limit_exceeded`, `csrf_rejected`, `unauthorized_request`, `client_error`, `server_error`.
 
 Nunca se guardan contraseñas, tokens ni cookies en `properties`.
+
+### 3.6 Tabla `messages` (G17, G21) 🆕
+
+🟡 **Código listo (5-oct):** los SQL de `krtr/database/queries/messages/`, `NeonMessageStore` en `krtr/back/ia/messages/store.py` y `KRTR_MESSAGES_KEY`.
+
+Falta:
+- crear la tabla en Neon (`uv run krtr database neon create-schema messages`, en la rama principal y en `dev`) y dar los permisos de abajo;
+- conectarla a la app servida (4.9) y a la purga diaria (4.10 / 6.5).
+
+Guarda el texto de la conversación, separado de `events`, por dos razones:
+
+- **Datos financieros:** las respuestas traen saldos y números de tarjeta enmascarados, que no deben quedar en el log de auditoría.
+- **Lectura por caso:** `events` solo se puede consultar por `event_name` y `occurred_at`, así que no permite leer la conversación de un caso para retomarlo.
+
+| Columna | Tipo | Significado |
+|---|---|---|
+| `message_id` | `UUID` PK | Identificador único del mensaje, generado por la app. |
+| `incident_id` | `VARCHAR(30)` | El caso al que pertenece el mensaje (G17). |
+| `customer_id` | `VARCHAR(20)` | El cliente dueño del caso. Toda lectura filtra por `incident_id` + `customer_id`. |
+| `sender` | `VARCHAR(10)` | Quién lo escribió: `customer` o `agent`. |
+| `content` | `BYTEA` | El texto, cifrado con AES-256-GCM (nonce + texto cifrado), como `events.properties`. Nunca se puede leer desde SQL. |
+| `language` | `VARCHAR(5)` | `es` o `pt-BR`. |
+| `outcome` | `VARCHAR(30)` | Solo en los mensajes del agente: cómo terminó el turno (`resolved`, `needs_clarification`, `escalated`, `closed`). |
+| `sent_at` | `TIMESTAMPTZ` | Momento en que se envió, en UTC. |
+
+- **Cifrado:** con una llave propia, `KRTR_MESSAGES_KEY`, separada de `KRTR_EVENTS_KEY` y `KRTR_TOKENS_KEY`, como ya se hace con las otras dos. Va en el secreto `krtr-web` (6.1).
+- **Retención:** 3 meses, igual que `events`. La purga (`messages/purge.sql`) corre en la misma función diaria `purge_events` (6.5), así que no hace falta un cron nuevo.
+- **Índice:** en `(incident_id, customer_id)`, porque retomar un caso lee por esas dos columnas. Es una excepción **pedida explícitamente** (5-oct) a la regla del `CLAUDE.md` de no crear índices.
+- **Permisos:** `GRANT SELECT, INSERT, DELETE ON messages TO krtr_app`, en la rama principal y en `dev`, al crear la tabla (como en 1.3).
+- **Quién la implementa:** el vertical de IA (`krtr/back/ia/`, ver [`docs/ia-proposal.md`](ia-proposal.md) y `tasks/todo.md`). Esta guía solo fija el contrato.
+- **Pendiente:** dónde vive el resumen del caso (G17). La propuesta es la tabla de casos (4.8), no `messages`.
 
 ---
 
@@ -522,7 +557,7 @@ Nunca se guardan contraseñas, tokens ni cookies en `properties`.
 
   | Secreto | Contenido | Lo usa |
   |---|---|---|
-  | `krtr-web` | URL de Neon (app, pooled), `KRTR_EVENTS_KEY`, `KRTR_TOKENS_KEY`, secreto del cliente OIDC, `KRTR_PUBLIC_URL`, `KRTR_AUTH_ORIGIN` | `web` |
+  | `krtr-web` | URL de Neon (app, pooled), `KRTR_EVENTS_KEY`, `KRTR_TOKENS_KEY`, `KRTR_MESSAGES_KEY` (🆕 v2.5, §3.6), secreto del cliente OIDC, `KRTR_PUBLIC_URL`, `KRTR_AUTH_ORIGIN` | `web` |
   | `krtr-auth` | `KC_DB_URL`/usuario/contraseña (base `keycloak`, directa), contraseña del admin bootstrap, secreto del cliente OIDC (para el realm) | `auth`, `auth_import` |
   | `krtr-jobs` | URL de Neon (app), URL de auditoría (rol de solo lectura), `KRTR_EVENTS_KEY` | `purge_events`, `sync_auth_events` |
 
@@ -576,6 +611,7 @@ Nunca se guardan contraseñas, tokens ni cookies en `properties`.
 
 #### 6.5 🤖 Crons
 - **Objetivo:** funciones `purge_events` con `schedule=modal.Cron("0 8 * * *")` (03:00 COT) y `sync_auth_events` con `schedule=modal.Period(minutes=15)`. Ambas con `cpu=0.125`, `secrets=[krtr-jobs]`, y llaman a las funciones de 4.10.
+  - 🆕 v2.5: `purge_events` también ejecuta `messages/purge.sql` (retención de 3 meses, §3.6). Siguen siendo 2 crons.
 - **Aceptación:** al ejecutarlas a mano (`uv run --env-file .env modal run …`), terminan bien y dejan logs.
 - **Commit:** `feat(back/deploy): schedule event purge and Keycloak sync`
 - **Depende de:** 4.10, 6.2
@@ -682,6 +718,7 @@ Nunca se guardan contraseñas, tokens ni cookies en `properties`.
 
 - Lógica de IA, enrutamiento por dificultad, escalamiento a humanos, reglas duras y ambigüedad (G11–G13, G19, G20).
 - La tabla de casos, sus estados y los resúmenes (G17). La web usa `CaseRepository` y `ChatResponder` para conectarlos después.
+  - 🆕 v2.5: la tabla `messages` sí tiene contrato en esta guía (§3.6), pero la implementa el vertical de IA.
 - El procesamiento del audio (voz a texto).
 - Dominio propio y WAF: requieren pagar (plan Team de Modal u otro proveedor).
 

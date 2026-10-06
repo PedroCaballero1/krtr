@@ -84,6 +84,125 @@ Ten en cuenta:
   funcionan.
 - La versión en Modal todavía no está desplegada (fase 6 de la guía).
 
+## Conversation agent (`krtr back ia`)
+
+`krtr/back/ia/` is the agent that answers customer messages. It tries to land every message
+on a deterministic answer: it matches the message against example phrases per intent, fills
+the details the answer needs with rules, and asks the customer when something is unclear. It
+always answers from ES / PT templates, never with free text. See `docs/ia-proposal.md` for
+the design.
+
+Phase 1 runs on sample data for one demo customer (`CUST-DEMO`), held in memory, so it needs
+no `.env`, no Neon and no model. It understands two intents for now: a product's balance and
+a complaint's status.
+
+### Asking one message
+
+```bash
+uv run krtr back ia ask "Necesito consultar el saldo de mi tarjeta de crédito"
+# [resolved · 0.6 ms] Saldo de tarjeta de crédito:
+# - ****9921: saldo 812,300.00 COP, cupo 5,000,000.00 COP
+
+# Start in Portuguese (the interface's language, before any clear message)
+uv run krtr back ia ask "saldo da minha conta poupança" --language pt-BR
+# [resolved · 0.6 ms] Saldo de conta poupança:
+# - ****7781: 2,350,400.50 COP
+
+uv run krtr back ia ask "estado de mi queja PQR-104233"
+# [resolved · 0.6 ms] Tu caso PQR-104233 (comisiones), abierto el 2026-09-14, está en estado: en proceso.
+
+# No --language needed: the reply follows the language the message is written in
+uv run krtr back ia ask "Preciso consultar o saldo do meu cartão de crédito"
+# [resolved · 0.6 ms] Saldo de cartão de crédito:
+# - ****9921: saldo 812,300.00 COP, limite 5,000,000.00 COP
+```
+
+Each reply starts with how the turn ended — `resolved`, `needs_clarification`, `escalated`
+(handed to a human) or `closed` (a hard rule ended it) — and how long the turn took.
+
+### Holding a conversation
+
+`chat` keeps the conversation going, so a question and its answer are two turns of the same
+case. Type `/exit` to leave; the chat also stops by itself when the case is escalated or closed.
+
+```bash
+uv run krtr back ia chat
+> ¿Cuál es mi saldo?
+[needs_clarification · 0.6 ms] ¿Sobre qué producto? Responde con el número:
+1. cuenta de ahorros
+2. cuenta corriente
+3. tarjeta de crédito
+...
+> 1
+[resolved · 0.6 ms] Saldo de cuenta de ahorros:
+- ****7781: 2,350,400.50 COP
+> ¿Cómo va mi reclamo?
+[needs_clarification · 0.6 ms] Por favor, indícame el número de caso.
+> pqr-104233
+[resolved · 0.6 ms] Tu caso PQR-104233 (comisiones), abierto el 2026-09-14, está en estado: en proceso.
+> /exit
+```
+
+Other flows worth trying in `chat`:
+
+- **A message that matches no intent** (e.g. `xyz`): the agent asks you to rephrase. After 3
+  questions in a row, the 4th turn escalates the case to a human.
+- **The same message 3 times** (e.g. `hola banco`): the conversation is closed.
+- **A message after an escalation or a closure:** the agent says the conversation has ended.
+
+### Language
+
+The agent detects the language each conversation is written in (ES or PT) and replies in it.
+`--language es` (the default) or `--language pt-BR` is only the starting language, the way the
+web interface's selector will be.
+
+- **What sets the language.** A message of at least 3 words, detected with at least 80%
+  confidence (py3langid, offline), sets it for the conversation.
+- **What never changes it.** Short replies such as `1`, `saldo` or `PQR-104233`. A Portuguese
+  conversation stays in Portuguese while the customer picks options.
+- **Switching.** A later clear sentence in the other language switches the replies.
+
+```bash
+uv run krtr back ia chat
+> Quero saber o status da minha reclamação
+[needs_clarification · 0.6 ms] Por favor, informe o número do caso.
+> pqr-104233
+[resolved · 0.6 ms] Seu caso PQR-104233 (tarifas), aberto em 2026-09-14, está com status: em andamento.
+> Ahora quiero saber el saldo de mi cuenta de ahorros
+[resolved · 0.6 ms] Saldo de cuenta de ahorros:
+- ****7781: 2,350,400.50 COP
+```
+
+### Latency
+
+Every reply carries its latency (`AgentReply.timings`): the total and each step of the turn —
+language, guardrails, embedding, matching, resolution, action, writing — in milliseconds. The
+CLI shows the total next to the outcome; `--verbose` logs the steps:
+
+```bash
+uv run krtr --verbose back ia ask "¿Cuál es mi saldo?"
+# ... INFO  ... Incident INC-DEMO turn ended as needs_clarification in 0.53 ms
+# ... DEBUG ... Incident INC-DEMO step durations (ms): language 0.18, guardrails 0.01,
+#     embedding 0.04, matching 0.10, resolution 0.04, action 0.02, writing 0.01
+```
+
+Today's sub-millisecond turns come from the hashing embedder and in-memory data. The real
+multilingual model (phase 2), Neon reads and the LLM clarifier (phase 3) are what the < 1 s
+target (G16) will be measured against.
+
+Add `--verbose` before
+`back` (`uv run krtr --verbose back ia chat`) to see each step of the turn in the log.
+
+### Current limits
+
+- **Spelling, not meaning.** The matcher compares spelling (character trigrams), not meaning,
+  until the local multilingual model arrives in phase 2. A message worded far from the example
+  phrases may therefore be asked about instead of answered.
+- **Seed phrases.** The example phrases (`krtr/back/ia/matching/exemplars/<language>/<intent>.txt`,
+  one per line) are a small seed set.
+- **Provisional complaint ID format.** The format is provisional
+  (`krtr/back/ia/deterministic/config.py`).
+
 ## S3 downloads
 
 `krtr` can download a single file or a whole "directory" (key prefix) from S3.
