@@ -26,7 +26,8 @@ answers from that customer's own data, or hands the case to a person.
 ### For the jury
 
 Log in to the krtr page with the test accounts in
-`krtr-security/data/credentials/jury_credentials.csv`.
+`https://juan-alvarezo-2002--krtr.modal.run/`
+using: `krtr-security/data/credentials/jury_credentials.csv`.
 
 ## The solution: deterministic first
 
