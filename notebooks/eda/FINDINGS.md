@@ -1,6 +1,6 @@
 # Business opportunities across everything analysed so far
 
-_Last updated: 2026-09-26 · Sections 1-5 cover the first two hypotheses under `notebooks/eda/`: [delinquency](delinquency_hypothesis/FINDINGS.md) and [compensations / complaints](compensations_hypothesis/FINDINGS.md). A third hypothesis, [physical places / branches](physical_places_hypothesis/FINDINGS.md), has its own graded opportunities in its findings file and is summarised in section 7._
+_Last updated: 2026-09-26 · Covers the two hypotheses under `notebooks/eda/`: [delinquency](delinquency_hypothesis/FINDINGS.md) and [compensations / complaints](compensations_hypothesis/FINDINGS.md)_
 
 **How to read this.** Every number below comes from an executed notebook; the *Source* column says which. Nothing is
 extrapolated beyond what the notebooks show. Where the data cannot answer something, it says so. Opportunities are graded:
@@ -165,7 +165,7 @@ Each missing link blocks a hypothesis. All are measured facts:
 | A **time-to-payment model** | There is no payment target and no signal: delinquency is ~15% in every segment of every product and customer attribute, unrelated to June behaviour, and unrelated to payment recency or payments after the implied delinquency start | `products.ipynb`; `cutomers.ipynb` 5; `transactions.ipynb` 5; `transactions_history.ipynb` 4-5 |
 | Using **days since last payment** to derive delinquency | Median 222-253 days at every `days_past_due` level; payments arrive at random (5.5% of gaps within 25-35 days vs 5.3% expected at random) | `transactions_history.ipynb` 3-4 |
 | Ranking **customers by credit score or income** to find who is delinquent | Delinquent share is 20-22% in every score band and income quintile (overall 20.8%) | `cutomers.ipynb` 5 |
-| **Speed or compensation as levers for satisfaction** | No relationship at complaint, customer or agent level (rho about -0.03 to -0.01, with 212,759 surveys), but only inside 1-30 days among resolved complaints: none was resolved in under a day, so the effect of fast resolution is unobserved | `complaints.ipynb` 6; `satisfaction_surveys.ipynb` 6 |
+| **Speed or compensation as levers for satisfaction** | No relationship at complaint, customer or agent level (rho about -0.03 to -0.01, with 212,759 surveys) | `complaints.ipynb` 6; `satisfaction_surveys.ipynb` 6 |
 | **Ranking agents** | Spread of agents' average results equals chance (resolution days 2.44 vs 2.42; CSAT 0.06 vs 0.06) | `complaints.ipynb` 7; `satisfaction_surveys.ipynb` 4 |
 | Quoting **NPS** | Scale is 2-7; no Promoter exists | `satisfaction_surveys.ipynb` 2 |
 | Treating **`Premium` / `Plus` as a value tier** (more products, larger limits or balances) | Products per user, credit limit and balance are the same in every segment; only the credit score differs (section 6) | `segment_profile.ipynb` 5-6 |
@@ -222,27 +222,3 @@ and deposit accounts (assets), totals per customer, breakdowns by product type a
   in the "all customers" row.
 - Means sit far above medians for limits and balances (for example a balance mean of 5.6 k against a median of 2.4 k) because
   mortgages are much larger than cards; medians describe a typical product better.
-
----
-
-## 7. Physical places (branches): summary
-
-Full evidence in [physical_places_hypothesis/FINDINGS.md](physical_places_hypothesis/FINDINGS.md), from
-[branches.ipynb](physical_places_hypothesis/branches.ipynb). No branch stands out: transactions, products opened, complaints and
-delinquency per branch vary as much as chance predicts and do not follow branch type, capacity, city, status or age.
-
-| # | Opportunity | Grade | Evidence |
-|---|---|:---:|---|
-| **P1** | Repair location and link data | Prerequisite | 167 of 350 coordinates are placeholders; all 175 Mexican branches carry the wrong phone prefix; 5 of 150,000 customers link to a branch |
-| **B1** | Validate and, if real, rebalance branch density | B | Customers per branch range 290 (Córdoba) to 869 (Rosario), 3.0x; customers do not use their city's branch in this data |
-| **B2** | Reallocate or standardise ATM and teller capacity | B | 2-8 ATMs per branch with flat demand: 0.39-1.71 transactions per ATM per day (relative only) |
-| **B3** | Clarify the 14 `Temporarily Closed` branches | A (verify status) | Same activity as open branches; 15,967 products opened there, 13,574 `Active` |
-| **B4** | Reassess the branch as an acquisition channel | B | Teller channel is 3.0% of transactions; the Branch opens 50.0% of products |
-
-Not supported: ranking branches, branch-type strategy, opening-hours optimisation, underwriting or collections by branch, geospatial analysis.
-
-**AI-agent lens (preliminary).** There is no sign of an ATM availability or teller capacity problem: failure rates are the same in every
-channel and load per ATM and per teller window is far below capacity at every hour and day. Human-handled jobs visible in the last
-12 months total 92,098 (teller transactions 41,999, products opened at a branch 25,122, call-center complaints 11,321, others
-19,656), about 1,535 staff hours per minute of average handling time. Handling time and labour cost are not in any file, so no
-saving can be ranked in money yet. See sections 7-8 of the physical places findings.

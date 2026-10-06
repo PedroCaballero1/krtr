@@ -18,8 +18,6 @@ analysed (interactions, customer outcomes...), add a row to the status table and
 | How satisfied are customers? | Mean **3.02 / 5**, but only **3.7% of complaints are rated** (only `Closed` cases), and scores are uniform (~20% each). |
 | Are compensation and satisfaction related to time-to-resolution? | **No.** Satisfaction, compensation rate and compensation amount are all flat across resolution-time bands; compensation does not raise satisfaction. |
 | Do the 212,759 satisfaction surveys change that? | **No.** With ~85x more ratings (212,759 vs 2,484) the result holds at customer and agent level (rho -0.02 and -0.01), so sample size was not the reason. Surveys cannot be linked to complaints at the interaction level. |
-| Why do customers give ratings of 1, 2 or 3? | **Only 47.5% state a reason**, all from five negative sentences: waiting time 40.2%, problem not resolved 40.0%, unclear explanation 19.8%. No other variable explains low ratings (channel, agent, customer, response time...). The comments are a weak signal. |
-| What do low ratings citing waiting time or an unresolved problem cost? | **Value at stake is large, observed cost is zero within noise.** 15,715 customers tie ~15.6 M USD-eq a year of interest income proxy (10.5% of the base) and 223.8 M of balances, but they are no more likely to leave, transact less, complain or contact again than customers who gave the top score. Churn itself cannot be identified. |
 | Next step? | Confirm with the system owners whether the ~75% active backlog is real; instrument time-in-state, effort and CSAT; then pilot on new complaints against a control. |
 
 **Business idea being tested:** an agentic workflow (triage, routing, first response, resolution support) could solve
@@ -100,7 +98,7 @@ less likely to be inactive today (14.2% not `Active` in both groups; a cross-sec
 | Compensation rate by resolution-time band | 27-30% in every band; mean amount 247-260 |
 
 The sample resolves differences of about 0.13 rating points, so a quarter-point effect would have shown. This is
-evidence of **no relationship inside the observed range**, not lack of data (resolved complaints only, 1-30 days: no complaint was resolved in under a day, and the 77% without a resolution time have no rating): faster resolution does not raise satisfaction, compensation does not
+evidence of **no relationship**, not lack of data: faster resolution does not raise satisfaction, compensation does not
 raise satisfaction, and slower cases are not compensated more. We cannot claim that speeding up resolution would improve
 satisfaction, or that compensation buys goodwill.
 
@@ -167,107 +165,6 @@ difference a pilot could detect (80% power, 95% confidence, CSAT sd 0.69): **0.1
 
 ---
 
-### 5f. Reasons behind ratings 1, 2 or 3
-
-**Definition and scale warning.** "1, 2 or 3" is applied literally to `main_score`, but the scales differ: for CSAT and CES (1-4) it is almost
-every survey, for NPS (2-7) it is the bottom two scores.
-
-| Survey type | Surveys | Rated 1-3 | Share |
-|---|---:|---:|---:|
-| CSAT (1-4) | 127,856 | 113,381 | 88.7% |
-| CES (1-4) | 21,235 | 18,781 | 88.4% |
-| NPS (2-7) | 63,668 | 9,758 | 15.3% |
-| **Total** | 212,759 | **141,920** | 66.7% |
-
-Ratings 1-3 are also exactly the band the file labels `Negative` in `comment_sentiment`.
-
-**Stated reasons (the open comment).** Of the 141,920 low ratings, **67,477 (47.5%) carry a comment and 74,443 (52.5%) record no reason**.
-Every comment on a low rating is one of five negative sentences:
-
-| Theme | Sentences | Comments | % of comments | % of all low ratings |
-|---|---|---:|---:|---:|
-| Waiting time | "Tardaron mucho en atenderme" (13,620), "Tuve que esperar demasiado tiempo" (13,501) | 27,121 | 40.2% | 19.1% |
-| Problem not resolved | "No resolvieron mi problema completamente" (13,546), "No estoy satisfecho con la solución" (13,472) | 27,018 | 40.0% | 19.0% |
-| Unclear explanation | "El agente no fue muy claro en sus explicaciones" | 13,338 | 19.8% | 9.4% |
-
-The split is the same at each score (waiting 40.1 / 40.4 / 40.1% for scores 1 / 2 / 3), survey type and send channel: no group is more
-than 1.4 points from the overall split. A rating of 1 is explained the same way as a rating of 3.
-
-**Volume in the last 12 months (2025-06-01 to 2026-05-31):** 70,834 surveys, of which **47,086 (66.5%) rated 1-3**. Only 22,395 state a reason:
-waiting time 8,977, problem not resolved 8,914, unclear explanation 4,504. For 24,691 no reason is recorded.
-
-**Do other variables explain low ratings? No.**
-
-| Check | Result |
-|---|---|
-| Follow-up answers, ratings 1-3 vs higher (quality of attention / wait acceptable / would return), by survey type | Differences of at most 0.08 on a 1-5 scale (means 2.9-3.0 everywhere) |
-| Wait-time answer of customers whose comment complains about waiting | 3.00, the same as "not resolved" (3.00) and "unclear" (3.04) |
-| Share rated 1-3 by send channel, quarter, segment, country, customer status, complaint history, response-time quartile, campaign-response quartile, open comment | Spread of at most 1.45 points for CSAT and 2.07 for NPS (widest interval 1.4 / 2.4), i.e. within noise |
-| Agents (CSAT / NPS): spread of each agent's share rated 1-3 | 2.83 / 4.66 points against 2.94 / 4.75 expected from chance |
-
-**Reading.** The only recorded reasons split about evenly between **speed** (waiting time, 40%) and **resolution quality** (not resolved 40% plus
-unclear explanation 20%). But they should be treated as a weak signal: they exist for half of the low ratings, they reproduce the score band (every comment
-on a rating of 1-3 is negative and none on higher ratings), and they do not agree with the follow-up answers.
-
----
-
-### 5g. What the low ratings cost, and what a user is worth
-
-**Approach.** Three tiers, kept apart: (1) **exposure**, the value tied to the customers behind each reason; (2) **observed consequences**, whether those
-customers behave differently afterwards from customers who gave the top score; (3) **cost**, the observed difference times money per unit. Scope: CSAT
-and CES surveys (both 1-4, so "above 3" is the top score 4), last 12 months (2025-06-01 to 2026-05-31). Amounts are USD-equivalent at the rates implied by
-the transactions file (350 ARS/USD, 4,000 COP/USD), an assumption read off the data.
-
-**What a user is worth: a floor, not a lifetime value.** The files hold no revenue, fees or margin, so value is built from `customers.csv`, `products.csv` and the
-transactions: annual interest income proxy = credit balance x `interest_rate` (assumed annual %), plus the balances that leave with the customer.
-
-| Per customer (150,000 customers) | Basic | Plus | Premium | Student | All |
-|---|---:|---:|---:|---:|---:|
-| Annual interest income proxy, mean (USD-eq) | 997 | 984 | 1,001 | 978 | **993** |
-| Annual interest income proxy, median | 213 | 216 | 216 | 190 | 213 |
-| Credit balance, mean | 8,464 | 8,359 | 8,505 | 8,307 | 8,434 |
-| Deposit balance, mean | 5,700 | 5,706 | 5,584 | 5,769 | 5,693 |
-| Transactions in the last 12 months, mean | 9.9 | 9.9 | 9.8 | 9.8 | 9.9 |
-| Tenure (years) / credit score, mean | 4.0 / 600 | 4.0 / 699 | 4.0 / 797 | 4.0 / 649 | 4.0 / 647 |
-
-Among the 86,561 customers with a credit product (57.7%), the annual interest income proxy is **1,721 on average (median 714)**. The whole base is
-about **149.0 M USD-eq of annual interest income and 2,119 M of balances**. Value is the same in every segment: `Premium` customers are not worth more than
-`Basic` here.
-
-**Tier 1: exposure. Customers behind the low ratings of the last 12 months (each customer once per reason).**
-
-| Reason | Customers | Interest income tied, per year | Credit balance | Deposits | Per customer |
-|---|---:|---:|---:|---:|---:|
-| Waiting time | 8,086 | 7.9 M | 67.7 M | 45.8 M | 980 |
-| Problem not resolved | 8,079 | 8.2 M | 71.6 M | 45.3 M | 1,011 |
-| **Either reason (each customer once)** | **15,715** | **15.6 M (10.5% of the base)** | **135.2 M** | **88.6 M** | 995 |
-
-**If all of them churned** (a full-churn scenario, not what the data shows): **15.6 M USD-eq of interest income a year, 46.9 M over 3 years and 78.2 M over 5 years**
-(undiscounted), plus 223.8 M of balances leaving. Each 1% that leaves costs about **156,000 USD-eq a year**.
-
-**Tiers 2-3: observed consequences versus customers who gave the top score. None is distinguishable from zero.**
-
-| Outcome | Waiting time | Problem not resolved | Top score (4) |
-|---|---:|---:|---:|
-| Status other than `Active` (today) | 15.00% | 14.83% | 15.05% |
-| Change in transactions, 3 months after vs before (difference vs top score) | +0.02 | -0.02 | 0 |
-| Filed a complaint in the next 90 days | 3.50% | 3.78% | 3.33% |
-| Compensation in the next 90 days, per survey (raw units) | 0.66 | 0.75 | 0.78 |
-| Another survey (repeat contact) within 30 days | 3.88% | 3.78% | 3.68% |
-
-Extra compensation over 12 months: **-967 (+/-2,687)** raw units for waiting time and **-252 (+/-2,719)** for not resolved, i.e. zero within noise, upper bound about 1,720
-and 2,467. Upper bound of interest income at stake from extra churn: about **51,000** (waiting time) and **39,000** (not resolved) USD-eq a year, under 1% of the exposure.
-So the attributable cost is **zero, with those upper bounds**.
-
-**Why a churn cost cannot be measured.** Customers with status `Closed` (2,979) or `Inactive` (14,914) hold the same value as `Active` ones (mean interest income 1,001 and 966 vs 999;
-deposits 5,702 and 5,692 vs 5,695) and still transact 9.8 times a year, so status does not identify who left. The implied churn rates (0.50% a year counting `Closed`, 2.98% counting
-`Closed` or `Inactive`, over 600,153 customer-years) are weak; at 2.98% the expected yearly loss on these customers would be about 466,000 USD-eq, not attributable to the ratings.
-
-**Limits.** No fees, interchange, deposit margins, defaults, cost of funds or acquisition cost are in any file, and the interest proxy includes delinquent balances, so it can overstate
-income. The dates of `customer_status` are unknown.
-
----
-
 ## 6. Data quality register
 
 | Issue | Evidence | Impact |
@@ -291,7 +188,6 @@ income. The dates of `customer_status` are unknown.
 | surveys | Only 13 distinct comments; sentiment set by score band | 5,079 rows with sentiment but no comment; 5,018 comments without sentiment | Text is not real feedback |
 | surveys | Comment themes inconsistent with structured answers | "waited too long" rates wait question 3.0 = same as "excellent attention" | Comments unreliable as evidence |
 | surveys | `survey_date` is 0-2 days after `process_date` | `survey_date` = send time + `response_time_hours` for 86% of rows | `process_date` is the send day; responses run past the last partition |
-| customers | `Closed` and `Inactive` customers keep the same balances and activity as `Active` ones | Closed: mean interest income 1,001 vs 999 Active; 9.8 vs 9.9 transactions a year | Churn cannot be identified from `customer_status` |
 | surveys | No link to complaints | `origin_interaction_id` empty; same-agent match within 30 days 0.12% (chance 0.08%) | Interaction-level analysis impossible |
 
 ---
