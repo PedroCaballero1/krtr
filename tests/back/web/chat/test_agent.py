@@ -17,12 +17,12 @@ from krtr.back.ia.deterministic.readers import InMemoryComplaintsReader, InMemor
 from krtr.back.ia.engine.config import EngineConfig
 from krtr.back.ia.engine.factory import build_engine
 from krtr.back.ia.engine.store import InMemoryConversationStateStore
+from krtr.back.ia.matching.hashing import HashingEmbedder
 from krtr.back.ia.messages.artifacts import MessageSender
 from krtr.back.ia.messages.store import InMemoryMessageStore
 from krtr.back.security.oidc.artifacts import InterfaceLanguage
 from krtr.back.web.chat.agent import COMPLAINT_ID_PATTERN, AgentChatResponder
 from krtr.back.web.chat.responder import PLACEHOLDER_REPLIES
-from tests.back.ia.fakes import HASHING_MODELS
 
 COMPLAINT_ID = "CMP-J7LT0TPC5YC33ULTQJZD"  # The format of the `complaints` table.
 
@@ -55,10 +55,10 @@ def responder(messages: InMemoryMessageStore) -> AgentChatResponder:
         status=ComplaintStatus.OPEN,
     )
     config = EngineConfig(
-        deterministic=DeterministicConfig(complaint_id_pattern=COMPLAINT_ID_PATTERN),
-        models=HASHING_MODELS,  # Offline and deterministic, like the vertical's own tests.
+        deterministic=DeterministicConfig(complaint_id_pattern=COMPLAINT_ID_PATTERN)
     )
     engine = build_engine(
+        HashingEmbedder(),
         products,
         InMemoryComplaintsReader({"C1": [complaint]}),
         InMemoryConversationStateStore(),
@@ -71,10 +71,7 @@ def responder(messages: InMemoryMessageStore) -> AgentChatResponder:
 def test_a_balance_question_gets_the_customers_balance(responder: AgentChatResponder) -> None:
     """The engine answers with the session customer's data, masked."""
     answer = responder.answer_text(
-        "C1",
-        "INC-1",
-        "Necesito consultar el saldo de mi cuenta de ahorros",
-        InterfaceLanguage.SPANISH,
+        "C1", "INC-1", "¿Cuál es el saldo de mi cuenta de ahorros?", InterfaceLanguage.SPANISH
     )
 
     assert "1,500.25 COP" in answer.reply
@@ -86,10 +83,7 @@ def test_a_balance_question_gets_the_customers_balance(responder: AgentChatRespo
 def test_the_audit_never_carries_the_text(responder: AgentChatResponder) -> None:
     """Balances belong in `messages`, never in `events` (§3.6)."""
     answer = responder.answer_text(
-        "C1",
-        "INC-1",
-        "Necesito consultar el saldo de mi cuenta de ahorros",
-        InterfaceLanguage.SPANISH,
+        "C1", "INC-1", "¿Cuál es el saldo de mi cuenta de ahorros?", InterfaceLanguage.SPANISH
     )
 
     assert "1,500.25" not in str(answer.audit)

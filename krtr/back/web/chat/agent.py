@@ -11,13 +11,13 @@ import logging
 from typing import Any
 
 from krtr.back.ia.artifacts import AgentReply, UserTurn
-from krtr.back.ia.config import IaModelsConfig
 from krtr.back.ia.deterministic.config import DeterministicConfig
 from krtr.back.ia.deterministic.neon_readers import NeonComplaintsReader, NeonProductsReader
 from krtr.back.ia.engine.config import EngineConfig
 from krtr.back.ia.engine.engine import ConversationEngine
 from krtr.back.ia.engine.factory import build_engine
 from krtr.back.ia.engine.store import InMemoryConversationStateStore
+from krtr.back.ia.matching.hashing import HashingEmbedder
 from krtr.back.ia.messages.store import MessageStore
 from krtr.back.security.oidc.artifacts import InterfaceLanguage
 from krtr.back.web.chat.artifacts import ChatAnswer
@@ -112,10 +112,9 @@ def turn_audit(reply: AgentReply) -> dict[str, Any]:
 def build_agent_responder(client: NeonClient, messages: MessageStore) -> AgentChatResponder:
     """Builds the engine over Neon's products and complaints and wraps it as a responder.
 
-    The models (embedding, language detector, LLM) come from `IaModelsConfig.resolve()`: the
-    KRTR_IA_* variables of the container, else the vertical's defaults. The conversation state
-    lives in memory (krtr-web runs one container, D8), while each message and reply goes to
-    `messages`.
+    The embedder is the lexical `HashingEmbedder` until phase 2 of `docs/ia-proposal.md` picks
+    the real model; the conversation state lives in memory (krtr-web runs one container, D8),
+    while each message and reply goes to `messages`.
 
     Args:
         client: The pooled Neon client the readers query.
@@ -125,20 +124,13 @@ def build_agent_responder(client: NeonClient, messages: MessageStore) -> AgentCh
         AgentChatResponder: the ready responder.
 
     Raises:
-        ValueError: if a model name is unknown, or the engine's catalog, templates or
-            thresholds are incomplete.
+        ValueError: if the engine's catalog or templates are incomplete.
     """
     config = EngineConfig(
-        deterministic=DeterministicConfig(complaint_id_pattern=COMPLAINT_ID_PATTERN),
-        models=IaModelsConfig.resolve(),
-    )
-    logger.info(
-        "Chat models: embedding %s, language %s, LLM %s",
-        config.models.embedding.value,
-        config.models.language.value,
-        config.models.llm.value,
+        deterministic=DeterministicConfig(complaint_id_pattern=COMPLAINT_ID_PATTERN)
     )
     engine = build_engine(
+        embedder=HashingEmbedder(),
         products=NeonProductsReader(client),
         complaints=NeonComplaintsReader(client),
         store=InMemoryConversationStateStore(),

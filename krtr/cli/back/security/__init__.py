@@ -6,11 +6,9 @@ Typer app here as it grows commands. Consumed by `krtr/cli/back/__init__.py`.
 
 import typer
 
-from krtr.cli.back.security.audit.handler import audit_app
 from krtr.cli.back.security.credentials.handler import credentials_app
 from krtr.cli.back.security.keycloak.handler import keycloak_app
 
 security_app = typer.Typer(name="security", help="Security commands.", no_args_is_help=True)
-security_app.add_typer(audit_app, name="audit")
 security_app.add_typer(credentials_app, name="credentials")
 security_app.add_typer(keycloak_app, name="keycloak")

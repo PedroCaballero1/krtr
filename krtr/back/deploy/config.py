@@ -60,31 +60,6 @@ LOGIN_THEME_DIR = "krtr/back/security/keycloak/themes/krtr"  # Task 3.3; the rea
 KEYCLOAK_THEME_DIR = KEYCLOAK_HOME / "themes" / "krtr"
 IMPORT_VOLUME_MOUNT = PurePosixPath("/credentials")
 
-# The IA models (MiniLM embeddings and the int4 Qwen LLM) live on a Volume, prepared once by
-# the `prepare_models` function, so the web image stays small and starts without downloads.
-MODELS_VOLUME = "krtr-models"
-MODELS_MOUNT = PurePosixPath("/models")
-QWEN_SOURCE = "Qwen/Qwen2.5-1.5B-Instruct"
-
-# The models the chat runs in production (KRTR_IA_* of krtr/back/ia/config.py).
-WEB_IA_ENVIRONMENT = {
-    "KRTR_IA_EMBEDDING_MODEL": "multilingual_minilm",
-    "KRTR_IA_LANGUAGE_MODEL": "py3langid",
-    "KRTR_IA_LLM_MODEL": "qwen2_5_1_5b_instruct",
-    "KRTR_IA_MODEL_CACHE": MODELS_MOUNT.as_posix(),
-}
-
-# Only for the one-off conversion of Qwen to int4 ONNX (README > Conversation agent > LLM);
-# torch is a build tool here, never a dependency of the app.
-MODEL_BUILD_PACKAGES = (
-    "onnxruntime-genai==0.15.2",
-    "onnx",
-    "onnx-ir",
-    "transformers",
-    "huggingface_hub",
-)
-TORCH_CPU_INDEX = "https://download.pytorch.org/whl/cpu"
-
 KEYCLOAK_INTERNAL_PORT = 8081  # The gateway (task 3.7) forwards here.
 KEYCLOAK_MANAGEMENT_READY_URL = "http://127.0.0.1:9000/health/ready"
 KEYCLOAK_READY_TIMEOUT_SECONDS = 900  # The first start against production runs 237 migrations.
@@ -104,7 +79,7 @@ class DeploySecret(StrEnum):
 
     WEB = "krtr-web"  # The FastAPI app.
     AUTH = "krtr-auth"  # Keycloak and the user import.
-    JOBS = "krtr-jobs"  # The daily purge and the Keycloak event sync.
+    JOBS = "krtr-jobs"  # The daily purge.
 
 
 class WarmEnvironmentVariable(StrEnum):
