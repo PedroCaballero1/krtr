@@ -26,6 +26,7 @@ logger = logging.getLogger(__name__)
 ENV_FILE = Path(".env")
 APP_ROLE = "krtr_app"
 KEYCLOAK_ROLE = "krtr_keycloak"
+AUDIT_ROLE = "krtr_audit_reader"  # Can only read keycloak.event_entity (task 1.3).
 APP_DATABASE = "neondb"
 KEYCLOAK_DATABASE = "keycloak"
 KEYCLOAK_ADMIN = "admin"
@@ -38,6 +39,7 @@ class SourceVariable(StrEnum):
     NEON_ADMIN_URL = "NEON_DB_HOST"  # Production, pooled; only its host is used.
     APP_PASSWORD = "KRTR_APP_DB_PASSWORD"
     KEYCLOAK_PASSWORD = "KRTR_KEYCLOAK_DB_PASSWORD"
+    AUDIT_PASSWORD = "KRTR_AUDIT_DB_PASSWORD"
     TOKENS_KEY = "KRTR_TOKENS_KEY"
     EVENTS_KEY = "KRTR_EVENTS_KEY"
     MESSAGES_KEY = "KRTR_MESSAGES_KEY"
@@ -64,7 +66,15 @@ def build_secret_values(environment: dict[str, str]) -> dict[DeploySecret, dict[
     if missing:
         raise ValueError(f"Missing required environment variable(s): {', '.join(missing)}")
     pooler_host = urlsplit(environment[SourceVariable.NEON_ADMIN_URL]).hostname or ""
-    app_url = _postgres_url(APP_ROLE, environment[SourceVariable.APP_PASSWORD], pooler_host)
+    app_url = _postgres_url(
+        APP_ROLE, environment[SourceVariable.APP_PASSWORD], pooler_host, APP_DATABASE
+    )
+    audit_url = _postgres_url(
+        AUDIT_ROLE,
+        environment[SourceVariable.AUDIT_PASSWORD],
+        _direct_host(pooler_host),
+        KEYCLOAK_DATABASE,
+    )
     client_secret = environment[SourceVariable.PROD_CLIENT_SECRET]
     return {
         DeploySecret.WEB: {
@@ -87,6 +97,7 @@ def build_secret_values(environment: dict[str, str]) -> dict[DeploySecret, dict[
         },
         DeploySecret.JOBS: {
             "NEON_DB_HOST": app_url,
+            "KRTR_AUDIT_DB_URL": audit_url,
             "KRTR_EVENTS_KEY": environment[SourceVariable.EVENTS_KEY],
             "KRTR_MESSAGES_KEY": environment[SourceVariable.MESSAGES_KEY],
         },
@@ -132,21 +143,20 @@ def _generate_missing(env_file: Path) -> None:
         logger.info("Generated %s into %s", variable.value, env_file)
 
 
-def _postgres_url(role: str, password: str, host: str) -> str:
-    """Builds the pooled connection string of the app database for a role.
+def _postgres_url(role: str, password: str, host: str, database: str) -> str:
+    """Builds the connection string of a Neon database for a role.
 
     Args:
         role: The database role.
         password: Its password (URL-encoded here).
-        host: The pooled host.
+        host: The pooled or direct host.
+        database: The database name.
 
     Returns:
         str: the `postgresql://` URL with TLS and channel binding required.
     """
     credentials = f"{role}:{quote(password, safe='')}"
-    return (
-        f"postgresql://{credentials}@{host}/{APP_DATABASE}?sslmode=require&channel_binding=require"
-    )
+    return f"postgresql://{credentials}@{host}/{database}?sslmode=require&channel_binding=require"
 
 
 def _direct_host(pooler_host: str) -> str:

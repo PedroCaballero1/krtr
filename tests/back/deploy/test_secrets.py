@@ -12,6 +12,7 @@ SOURCE = {
     ),
     SourceVariable.APP_PASSWORD.value: "app p@ss/word",
     SourceVariable.KEYCLOAK_PASSWORD.value: "kc-pw",
+    SourceVariable.AUDIT_PASSWORD.value: "audit-pw",
     SourceVariable.TOKENS_KEY.value: "tokens-key",
     SourceVariable.EVENTS_KEY.value: "events-key",
     SourceVariable.MESSAGES_KEY.value: "messages-key",
@@ -42,12 +43,24 @@ def test_keycloak_uses_the_direct_host_and_its_own_database() -> None:
     assert auth["KC_DB_USERNAME"] == "krtr_keycloak"
 
 
+def test_the_event_sync_reads_keycloak_only_as_the_audit_reader() -> None:
+    """D3: the jobs read event_entity with the read-only role, never as Keycloak's owner."""
+    jobs = build_secret_values(SOURCE)[DeploySecret.JOBS]
+
+    assert jobs["KRTR_AUDIT_DB_URL"] == (
+        "postgresql://krtr_audit_reader:audit-pw@ep-dawn-forest-b53h756c.c-7.us-east-2.aws.neon"
+        ".tech/keycloak?sslmode=require&channel_binding=require"
+    )
+    assert "kc-pw" not in "".join(jobs.values())
+
+
 def test_each_secret_gets_only_its_variables() -> None:
     """Nothing reaches a function that does not need it; the jobs never see login secrets."""
     values = build_secret_values(SOURCE)
 
     assert set(values[DeploySecret.JOBS]) == {
         "NEON_DB_HOST",
+        "KRTR_AUDIT_DB_URL",
         "KRTR_EVENTS_KEY",
         "KRTR_MESSAGES_KEY",
     }

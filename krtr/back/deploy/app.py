@@ -1,6 +1,7 @@
-"""Defines the krtr-web Modal app: the web, Keycloak, the user import and the daily purge (D21).
+"""Defines the krtr-web Modal app: the web, Keycloak, the user import and two crons (D21).
 
-Exists so one `uv run --env-file .env modal deploy krtr/back/deploy/app.py` publishes everything:
+Exists so one `uv run --env-file .env modal deploy -m krtr.back.deploy.app` (as a module, never by
+file path) publishes everything:
 
 - `web` (task 6.2): the FastAPI app and the SPA, from `create_served_app`, at
   `https://<ws>--krtr.modal.run`;
@@ -9,7 +10,9 @@ Exists so one `uv run --env-file .env modal deploy krtr/back/deploy/app.py` publ
 - `auth_import` (task 6.4): imports the users files staged on the `krtr-credentials-import`
   Volume through Keycloak's admin API, never exposed to the internet;
 - `purge_events` (task 6.5): deletes events and chat messages past their 3-month retention, daily
-  at 03:00 COT. (The sync of Keycloak's own events, D3, is not scheduled yet.)
+  at 03:00 COT;
+- `sync_auth_events` (task 6.5): copies Keycloak's login events into `events` (D3), every 15
+  minutes.
 
 Each service runs in at most one container (D8) in `us-east` (D16); KRTR_WARM=true at deploy
 time keeps one container of each always on (D17). Every function configures logging once when
@@ -181,3 +184,23 @@ def purge_events() -> dict[str, int]:
         events = purge_expired_events(client)
     messages = NeonMessageStore.from_environment().purge_expired()
     return {"events": events, "messages": messages}
+
+
+@app.function(
+    image=WEB_IMAGE,
+    secrets=[modal.Secret.from_name(DeploySecret.JOBS)],
+    schedule=modal.Period(minutes=15),
+    cpu=0.125,
+    region=REGION,
+    include_source=False,
+)
+def sync_auth_events() -> dict[str, Any]:
+    """Copies the Keycloak login events not yet in `events`, encrypted (D3, task 4.10).
+
+    Returns:
+        dict[str, Any]: where the run resumed from, and how many events it read and added.
+    """
+    configure_container_logging()
+    from krtr.back.security.audit.keycloak_sync import sync_auth_events_from_environment
+
+    return sync_auth_events_from_environment().model_dump(mode="json")
