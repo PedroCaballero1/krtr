@@ -6,11 +6,11 @@ must be a member of this Enum. Mirrors the catalog documented in §3.5 of
 docs/guia-web-seguridad_modal.md. Consumed by `krtr/back/security/audit/recorder.py`
 and `krtr/back/web/routers/events.py`.
 
-Not covered here: the `auth_*` events Keycloak itself emits (login,
-logout, ...), synced from `keycloak.event_entity` by the
-`sync-auth-events` job (task 4.10, D3). That set is defined by Keycloak,
-not by this codebase, so it is written directly rather than validated
-against this Enum.
+Not covered here: the `auth_keycloak_*` events Keycloak itself emits
+(login, logout, ...), synced from `keycloak.event_entity` by
+`krtr/back/security/audit/keycloak_sync.py` (task 4.10, D3). That set is
+defined by Keycloak, not by this codebase, so it is written directly
+rather than validated against this Enum.
 """
 
 from enum import StrEnum
