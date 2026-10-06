@@ -79,7 +79,7 @@ class DeploySecret(StrEnum):
 
     WEB = "krtr-web"  # The FastAPI app.
     AUTH = "krtr-auth"  # Keycloak and the user import.
-    JOBS = "krtr-jobs"  # The daily purge.
+    JOBS = "krtr-jobs"  # The daily purge and the Keycloak event sync.
 
 
 class WarmEnvironmentVariable(StrEnum):
