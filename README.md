@@ -227,6 +227,213 @@ Ten en cuenta:
   funcionan.
 - La versión en Modal todavía no está desplegada (fase 6 de la guía).
 
+## Conversation agent (`krtr back ia`)
+
+`krtr/back/ia/` is the agent that answers customer messages. It tries to land every message
+on a deterministic answer: it matches the message against example phrases per intent, fills
+the details the answer needs with rules, and asks the customer when something is unclear. It
+always answers from ES / PT templates, never with free text. See `docs/ia-proposal.md` for
+the design.
+
+The commands run on sample data for one demo customer (`CUST-DEMO`), held in memory, so they
+need no `.env` and no Neon. It understands two intents for now: a product's balance and a
+complaint's status. Messages it can't answer (an unrecognised charge, a lost card, off-topic
+questions) are never answered with the wrong thing: the agent asks to rephrase and, after 3
+questions, hands the case to a person.
+
+### Models
+
+Every model the agent runs is chosen from a fixed list, by CLI option or environment variable.
+An unknown name fails at startup and lists the accepted values. The option wins over the
+variable, which wins over the default.
+
+| What | Option | Variable | Values |
+|---|---|---|---|
+| Embedding model | `--embedding-model` | `KRTR_IA_EMBEDDING_MODEL` | `multilingual_minilm` (default: `paraphrase-multilingual-MiniLM-L12-v2` through ONNX), `hashing` (deterministic, offline) |
+| Language detector | `--language-model` | `KRTR_IA_LANGUAGE_MODEL` | `py3langid` (default, deterministic, offline) |
+| LLM for doubtful turns | `--llm-model` | `KRTR_IA_LLM_MODEL` | `qwen2_5_1_5b_instruct` (default: local, CPU, int4 ONNX), `none` (template clarifier only, deterministic) |
+| Where model weights are kept | — | `KRTR_IA_MODEL_CACHE` | default `.krtr/models` (git-ignored) |
+
+The first run with `multilingual_minilm` downloads about 220 MB into the cache. Use
+`--embedding-model hashing` to run without downloading anything.
+
+### Asking one message
+
+```bash
+uv run krtr back ia ask "Necesito consultar el saldo de mi tarjeta de crédito"
+# [resolved · 0.6 ms] Saldo de tarjeta de crédito:
+# - ****9921: saldo 812,300.00 COP, cupo 5,000,000.00 COP
+
+# Start in Portuguese (the interface's language, before any clear message)
+uv run krtr back ia ask "saldo da minha conta poupança" --language pt-BR
+# [resolved · 0.6 ms] Saldo de conta poupança:
+# - ****7781: 2,350,400.50 COP
+
+uv run krtr back ia ask "estado de mi queja PQR-104233"
+# [resolved · 0.6 ms] Tu caso PQR-104233 (comisiones), abierto el 2026-09-14, está en estado: en proceso.
+
+# No --language needed: the reply follows the language the message is written in
+uv run krtr back ia ask "Preciso consultar o saldo do meu cartão de crédito"
+# [resolved · 0.6 ms] Saldo de cartão de crédito:
+# - ****9921: saldo 812,300.00 COP, limite 5,000,000.00 COP
+```
+
+Each reply starts with how the turn ended — `resolved`, `needs_clarification`, `escalated`
+(handed to a human) or `closed` (a hard rule ended it) — and how long the turn took.
+
+### Holding a conversation
+
+`chat` keeps the conversation going, so a question and its answer are two turns of the same
+case. Type `/exit` to leave; the chat also stops by itself when the case is escalated or closed.
+
+```bash
+uv run krtr back ia chat
+> ¿Cuál es mi saldo?
+[needs_clarification · 0.6 ms] ¿Sobre qué producto? Responde con el número:
+1. cuenta de ahorros
+2. cuenta corriente
+3. tarjeta de crédito
+...
+> 1
+[resolved · 0.6 ms] Saldo de cuenta de ahorros:
+- ****7781: 2,350,400.50 COP
+> ¿Cómo va mi reclamo?
+[needs_clarification · 0.6 ms] Por favor, indícame el número de caso.
+> pqr-104233
+[resolved · 0.6 ms] Tu caso PQR-104233 (comisiones), abierto el 2026-09-14, está en estado: en proceso.
+> /exit
+```
+
+Other flows worth trying in `chat`:
+
+- **A message that matches no intent** (e.g. `xyz`): the agent asks you to rephrase. After 3
+  questions in a row, the 4th turn escalates the case to a human.
+- **The same message 3 times** (e.g. `hola banco`): the conversation is closed.
+- **A message after an escalation or a closure:** the agent says the conversation has ended.
+
+### Language
+
+The agent detects the language each conversation is written in (ES or PT) and replies in it.
+`--language es` (the default) or `--language pt-BR` is only the starting language, the way the
+web interface's selector will be.
+
+- **What sets the language.** A message of at least 3 words, detected with at least 80%
+  confidence (py3langid, offline), sets it for the conversation.
+- **What never changes it.** Short replies such as `1`, `saldo` or `PQR-104233`. A Portuguese
+  conversation stays in Portuguese while the customer picks options.
+- **Switching.** A later clear sentence in the other language switches the replies.
+
+```bash
+uv run krtr back ia chat
+> Quero saber o status da minha reclamação
+[needs_clarification · 0.6 ms] Por favor, informe o número do caso.
+> pqr-104233
+[resolved · 0.6 ms] Seu caso PQR-104233 (tarifas), aberto em 2026-09-14, está com status: em andamento.
+> Ahora quiero saber el saldo de mi cuenta de ahorros
+[resolved · 0.6 ms] Saldo de cuenta de ahorros:
+- ****7781: 2,350,400.50 COP
+```
+
+### Latency
+
+Every reply carries its latency (`AgentReply.timings`): the total and each step of the turn —
+language, guardrails, embedding, matching, resolution, action, writing — in milliseconds. The
+CLI shows the total next to the outcome; `--verbose` logs the steps:
+
+```bash
+uv run krtr --verbose back ia ask "¿Cuál es mi saldo?"
+# ... INFO  ... Incident INC-DEMO turn ended as needs_clarification in 0.53 ms
+# ... DEBUG ... Incident INC-DEMO step durations (ms): language 0.18, guardrails 0.01,
+#     embedding 0.04, matching 0.10, resolution 0.04, action 0.02, writing 0.01
+```
+
+With `multilingual_minilm` a turn takes about 3–5 ms on a laptop, almost all of it the
+embedding; with `hashing`, under 1 ms. Neon reads and the LLM clarifier (phase 3) will add to
+that, against the < 1 s target (G16).
+
+### LLM (local Qwen)
+
+The LLM only handles what the deterministic path can't:
+- a free-form reply to a question ("la de la tarjeta, no la otra");
+- a detail the rules don't find;
+- the yes/no confirmation before closing on an aggressive or off-topic message.
+
+Its answers are restricted to the options offered (constrained JSON). If it's slow
+(> 2.5 s) or fails, the deterministic answer is used. A banking request the agent can't
+answer (a lost card, an unrecognised charge) goes straight to a person, with no LLM involved.
+
+The model is the official [`Qwen/Qwen2.5-1.5B-Instruct`](https://huggingface.co/Qwen/Qwen2.5-1.5B-Instruct),
+converted once to int4 ONNX. It's public, so no Hugging Face token is needed. Convert it
+once, with torch only as a temporary tool (it is not a project dependency):
+
+```bash
+uvx --from huggingface_hub hf download Qwen/Qwen2.5-1.5B-Instruct \
+  --local-dir .krtr/models/build/qwen2_5_1_5b_instruct
+uvx --with "onnxruntime-genai==0.15.2" --with onnx --with onnx-ir --with torch --with transformers \
+  python -m onnxruntime_genai.models.builder -m Qwen/Qwen2.5-1.5B-Instruct \
+  -i .krtr/models/build/qwen2_5_1_5b_instruct -o .krtr/models/qwen2_5_1_5b_instruct_int4_cpu \
+  -p int4 -e cpu -c .krtr/models/build/cache
+```
+
+**Notes on the download and the runtime:**
+- If the download stalls, prefix it with `HF_HUB_DISABLE_XET=1`. An optional `HF_TOKEN` in
+  `.env` raises the rate limit.
+- Without the build, the agent refuses to start and says so. Use `--llm-model none` to run
+  without it.
+- `onnxruntime-genai` is pinned below 0.16: 0.16 and later don't load on macOS 14.
+
+Every value the LLM proposes is checked by a deterministic rule before it's used:
+- an ID must match the action's format;
+- a product must be the one the reply singles out ("la de la tarjeta" fits credit and debit
+  cards alike, so the agent asks again).
+
+A conversation is closed only if the matcher flags it **and** the LLM classifies it as abusive
+or off-topic. An angry complaint about the service is "banking" and is never closed. An LLM
+turn takes about 1.3 s.
+
+```bash
+uv run krtr back ia evaluate-llm      # accuracy, false positives and latency, per language
+```
+
+### Measuring the thresholds (`evaluate`)
+
+Whether a message is answered, offered options or asked to rephrase depends on thresholds
+measured per model and language. They live in `krtr/back/ia/matching/thresholds.json`.
+
+```bash
+uv run krtr back ia evaluate                 # report, for the selected model
+uv run krtr back ia evaluate --write         # also save the proposed thresholds
+uv run krtr back ia evaluate --embedding-model hashing
+# [es] 51 messages, 10 repetition pairs, embedding p50 2.6 ms, p95 4.0 ms
+#   current : right 17 · wrong 0 · ambiguous 5 · no match 29 · guards 11/0 false · repeats 2/0 false
+#   proposed: ...
+```
+
+The report is based on the evaluation set (`krtr/back/ia/matching/evaluation/messages/<language>/`),
+which is kept separate from the catalog's example phrases
+(`krtr/back/ia/matching/exemplars/<language>/`). Both use one file per label, one phrase per
+line. The proposal follows four rules:
+
+- **No wrong matches:** a message is never answered with the wrong intent.
+- **No false flags or repeats:** no message is flagged off-topic, and no pair counted as a
+  repeat, by mistake.
+- **A safety gap of 0.03:** every threshold keeps that distance from the measured messages.
+- **Then coverage:** as many messages as possible are answered directly.
+
+Add `--verbose` before
+`back` (`uv run krtr --verbose back ia chat`) to see each step of the turn in the log.
+
+### Current limits
+
+- **Small catalog and evaluation set.** The phrases come from the call history and the
+  complaint categories (`docs/ia-intents.md`), and the history has little variety. More
+  phrases make the thresholds more reliable.
+- **Off-topic and aggressive messages.** About 70% of them are flagged on the evaluation set.
+  They never get an answer, and a flag closes the conversation only once the LLM confirms it
+  (never with `--llm-model none`).
+- **Provisional complaint ID format.** The format is provisional
+  (`krtr/back/ia/deterministic/config.py`).
+
 ## S3 downloads
 
 `krtr` can download a single file or a whole "directory" (key prefix) from S3.

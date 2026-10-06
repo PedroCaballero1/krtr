@@ -17,6 +17,12 @@ _Fecha límite de la hackathon: 5-oct-2026 · Rama de trabajo: `web-develop-secu
 >
 > **v2.4.** 4.11, 5.11 y 5.12 hechas, y arreglado el test inestable de `chat-page`. La 6.2 sirve `create_served_app()`.
 >
+> **v2.7 (5-oct).** En la 6.2, la imagen de `web` incluye también el LLM local del agente (Qwen2.5-1.5B, int4 ONNX), que necesita más memoria.
+>
+> **v2.6 (5-oct).** En la 6.2, la imagen de `web` incluye los pesos del modelo de embeddings del agente y se aclara de dónde salen sus textos: de la página en producción, de Neon solo fuera de línea.
+>
+> **v2.5 (5-oct).** Nueva tabla `messages` para el texto del chat, decidida con el vertical de IA ([`docs/ia-proposal.md`](ia-proposal.md)): cifrada, retención de 3 meses e índice en `(incident_id, customer_id)` (§3.6). En `events` solo van los metadatos de cada turno, nunca el texto. Se actualizaron 6.1 (nueva llave en `krtr-web`) y 6.5 (la purga diaria también limpia `messages`).
+>
 > **v2.5.** 1.1 hecha (Docker con Colima) y 1.3 hecha salvo el permiso de auditoría, que va en 3.1. Neon está en us-east-2 (Ohio) y su rama principal se llama `production`.
 >
 > **v2.6.** 0.5 y 3.1 hechas, con Keycloak 26.8.0 en local y su imagen para Modal. El CI instala el extra `modal`. El permiso de auditoría quedó dado en `dev`. La 6.3 suma lo aprendido en la 3.1.
@@ -538,6 +544,9 @@ Nunca se guardan contraseñas, tokens ni cookies en `properties`.
 #### 6.2 🤖 Función `web`
 - **Objetivo:** `krtr/back/deploy/app.py` define `app = modal.App("krtr-web")` y la función `web`:
   - Imagen: **extraer** la construcción de imagen de `krtr/compute/modal/app.py` a una función compartida (DRY) y agregarle `add_local_dir("krtr/front/dist", "/app/frontend")`.
+  - 🆕 v2.6: la imagen también **incluye los pesos del modelo de embeddings** del agente (`multilingual_minilm`, unos 220 MB, ver `tasks/todo.md`, fase 2 de IA). Se descargan al construir la imagen, no en el arranque en frío, y `KRTR_IA_EMBEDDING_MODEL` elige el modelo.
+  - 🆕 v2.7: la imagen también incluye el **build ONNX int4 de Qwen2.5-1.5B-Instruct** (el LLM local del agente, unos 1 GB en disco y cerca de 2 GB de memoria; ver `tasks/todo.md`, fase 3 de IA). Se convierte una vez a partir del repo oficial y se copia a la imagen; nunca se descarga en el arranque. La función `web` necesita más memoria (Q3-B), lo que consume más rápido los créditos (D17). `KRTR_IA_LLM_MODEL=none` la desactiva.
+  - 🆕 v2.6: **origen de los textos del agente.** En producción, el texto del cliente llega directo desde la página (`/api/chat/messages`), y el agente no lee textos de los datos. Los textos de Neon (quejas, categorías) solo se usan **fuera de línea**, para armar el catálogo y el conjunto de evaluación.
   - Conservar lo que hacía el `Dockerfile` retirado en 0.2:
     - Las variables `KRTR_WEB_FRONTEND_DIST_DIR=/app/frontend` y `KRTR_WEB_ENVIRONMENT=production`. Sin la primera, la app busca el front en la ruta relativa `krtr/front/dist`.
     - Instalar sin el grupo `dev` (`uv_sync(..., extra_options="--no-dev")`). El `uv_sync` de Modal no lo excluye por defecto, así que bandit, locust, playwright y las demás herramientas de desarrollo llegarían a producción.

@@ -29,6 +29,10 @@ dependencies = [
     "python-multipart>=0.0.32",
     "slowapi>=0.1.10",
     "joserfc>=1.7.5",
+    "numpy>=2.5.3",
+    "py3langid>=0.4.0",
+    "fastembed>=0.8.1",
+    "onnxruntime-genai>=0.15.2,<0.16",
 ]
 
 [tool.black]
