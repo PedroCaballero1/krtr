@@ -84,6 +84,39 @@ Ten en cuenta:
   funcionan.
 - La versión en Modal todavía no está desplegada (fase 6 de la guía).
 
+## Producción en Modal (krtr-web)
+
+La página vive en Modal, en el workspace `juan-alvarezo-2002` (ver `docs/guia-web-seguridad_modal.md`, fase 6):
+
+- App: https://juan-alvarezo-2002--krtr.modal.run
+- Keycloak: https://juan-alvarezo-2002--krtr-auth.modal.run (con `/admin`, `/realms/master`, `/metrics` y `/health*` bloqueados)
+
+Todos los comandos se corren desde la raíz del repo, con el extra `modal` instalado (`uv sync --extra modal`):
+
+```bash
+# 1. Secretos (krtr-web, krtr-auth, krtr-jobs) desde .env; genera la primera vez la
+#    contraseña del admin de Keycloak y el secreto del cliente OIDC de producción
+uv run --env-file .env krtr back deploy push-secrets
+
+# 2. Front compilado + despliegue. Siempre como módulo (-m), no por ruta.
+#    KRTR_WARM=true deja un contenedor de cada servicio siempre encendido (modo demo, D17)
+npm --prefix krtr/front run build
+KRTR_WARM=true uv run --env-file .env modal deploy -m krtr.back.deploy.app
+
+# 3. Credenciales (una sola vez): 150.000 cuentas, más las muestras del jurado y de QA
+uv run krtr back security credentials generate
+#    Importarlas a producción: primero desplegar con KRTR_WARM=false para que `auth` se
+#    apague, y no abrir krtr-auth mientras corre (tarda unos 20-50 minutos)
+uv run --env-file .env krtr back security credentials import --remote
+
+# 4. Pruebas de seguridad contra producción (usa las cuentas QA)
+uv run pytest e2e/security
+```
+
+- Las credenciales quedan en `data/credentials/` (fuera de git, permisos `600`). `jury_credentials.csv` se entrega al jurado por un canal privado.
+- La purga diaria (`purge_events`, 03:00 COT) borra eventos y mensajes de más de 3 meses. Para correrla a mano: `uv run --env-file .env modal run -m krtr.back.deploy.app::purge_events`.
+- Cada despliegue reinicia Keycloak (unos 30 s sin login): no desplegar durante la evaluación.
+
 ## Conversation agent (`krtr back ia`)
 
 `krtr/back/ia/` is the agent that answers customer messages. It tries to land every message
