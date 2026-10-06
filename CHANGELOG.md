@@ -2,6 +2,15 @@
 
 <!-- version list -->
 
+## v1.9.0 (2026-10-06)
+
+### Features
+
+- **back/ia**: Add a local Qwen LLM for doubtful turns and escalate unsupported requests
+  ([#15](https://github.com/PedroCaballero1/krtr/pull/15),
+  [`8a3e69c`](https://github.com/PedroCaballero1/krtr/commit/8a3e69c70d5d8a1c6f952212c399258cba659b20))
+
+
 ## v1.8.0 (2026-10-06)
 
 ### Bug Fixes
