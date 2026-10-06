@@ -11,8 +11,6 @@ from pydantic import BaseModel
 from krtr.back.ia.deterministic.intents import Intent
 from krtr.back.ia.matching.labels import GuardLabel
 
-CatalogLabel = Intent | GuardLabel
-
 
 class MatchKind(StrEnum):
     """How sure the matcher is about the message's intent (docs/ia-proposal.md §3.1)."""
@@ -39,7 +37,6 @@ class MatchResult(BaseModel):
     kind: MatchKind
     candidates: list[MatchCandidate]
     guard_flags: list[GuardLabel] = []
-    top_label: CatalogLabel | None = None  # The best label of all, intents and guards alike.
 
     @property
     def best_intent(self) -> Intent | None:

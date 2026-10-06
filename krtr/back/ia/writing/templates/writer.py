@@ -68,20 +68,6 @@ class TemplateResponseWriter(ResponseWriter):
         catalogs = {language: _load_catalog(directory, language) for language in InterfaceLanguage}
         return cls(catalogs)
 
-    def label(self, value: str, language: InterfaceLanguage) -> str:
-        """Returns how a value is shown in a language, or the value itself if it has no label.
-
-        Exists so the LLM prompts describe options with the same words the customer sees.
-
-        Args:
-            value: An enum value, e.g. "credit_card".
-            language: The customer's language.
-
-        Returns:
-            str: e.g. "tarjeta de crédito".
-        """
-        return self._catalogs[language].labels.get(value, value)
-
     def write(self, content: ReplyContent, language: InterfaceLanguage) -> str:
         """Fills the message's text and one item line per item.
 

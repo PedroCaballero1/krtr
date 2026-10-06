@@ -31,6 +31,7 @@ class CryptoEnvironmentVariable(StrEnum):
 
     EVENTS_KEY = "KRTR_EVENTS_KEY"  # Base64-encoded 32-byte AES-256 key for events.
     TOKENS_KEY = "KRTR_TOKENS_KEY"  # Same format; OIDC tokens and the login cookie.
+    MESSAGES_KEY = "KRTR_MESSAGES_KEY"  # Same format; the chat text in `messages`.
 
 
 class CryptoConfig(BaseModel):

@@ -48,18 +48,6 @@ class StepTimer:
             elapsed_ms = (self._clock() - started_at) * MILLISECONDS_PER_SECOND
             self._steps_ms[step] = self._steps_ms.get(step, 0.0) + elapsed_ms
 
-    def record(self, step: TurnStep, elapsed_ms: float) -> None:
-        """Adds a duration measured elsewhere, such as the time inside LLM calls.
-
-        Args:
-            step: The step it belongs to.
-            elapsed_ms: The duration, in milliseconds.
-
-        Returns:
-            None.
-        """
-        self._steps_ms[step] = self._steps_ms.get(step, 0.0) + elapsed_ms
-
     def finish(self) -> TurnTimings:
         """Stops the turn's clock.
 

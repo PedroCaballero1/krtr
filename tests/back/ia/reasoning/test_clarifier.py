@@ -11,10 +11,8 @@ from krtr.back.ia.reasoning.artifacts import (
     Resolved,
 )
 from krtr.back.ia.reasoning.clarifier import TemplateClarifier
-from krtr.back.security.oidc.artifacts import InterfaceLanguage
 from tests.back.ia.fakes import CUSTOMER_ID, sample_registry
 
-SPANISH = InterfaceLanguage.SPANISH
 CLARIFIER = TemplateClarifier(sample_registry())
 CANDIDATES = [
     MatchCandidate(intent=Intent.COMPLAINT_STATUS, score=0.5),
@@ -57,7 +55,7 @@ def test_no_match_asks_to_rephrase() -> None:
 
 def test_an_option_number_picks_the_intent() -> None:
     """ "2" is the second option offered."""
-    resolution = CLARIFIER.interpret(_waiting_for(_intent_question()), "la 2", NO_MATCH, SPANISH)
+    resolution = CLARIFIER.interpret(_waiting_for(_intent_question()), "la 2", NO_MATCH)
 
     assert resolution == Resolved(intent=Intent.ACCOUNT_BALANCE)
 
@@ -67,7 +65,7 @@ def test_a_slot_option_keeps_what_was_collected() -> None:
     question = _product_question()
     question.collected = {"earlier": "value"}
 
-    resolution = CLARIFIER.interpret(_waiting_for(question), "3", NO_MATCH, SPANISH)
+    resolution = CLARIFIER.interpret(_waiting_for(question), "3", NO_MATCH)
 
     assert resolution == Resolved(
         intent=Intent.ACCOUNT_BALANCE,
@@ -77,9 +75,7 @@ def test_a_slot_option_keeps_what_was_collected() -> None:
 
 def test_a_slot_can_be_named_instead_of_numbered() -> None:
     """ "La de ahorros" answers the product question as well as "1"."""
-    resolution = CLARIFIER.interpret(
-        _waiting_for(_product_question()), "la de ahorros", NO_MATCH, SPANISH
-    )
+    resolution = CLARIFIER.interpret(_waiting_for(_product_question()), "la de ahorros", NO_MATCH)
 
     assert resolution.slots == {SlotName.PRODUCT_TYPE: ProductType.SAVINGS_ACCOUNT.value}
 
@@ -90,7 +86,7 @@ def test_a_free_slot_is_read_with_the_actions_rule() -> None:
         kind=QuestionKind.PROVIDE_SLOT, intent=Intent.COMPLAINT_STATUS, slot=SlotName.COMPLAINT_ID
     )
 
-    resolution = CLARIFIER.interpret(_waiting_for(question), "pqr-104233", NO_MATCH, SPANISH)
+    resolution = CLARIFIER.interpret(_waiting_for(question), "pqr-104233", NO_MATCH)
 
     assert resolution == Resolved(
         intent=Intent.COMPLAINT_STATUS, slots={SlotName.COMPLAINT_ID: "PQR-104233"}
@@ -99,9 +95,7 @@ def test_a_free_slot_is_read_with_the_actions_rule() -> None:
 
 def test_a_clear_new_request_replaces_the_pending_question() -> None:
     """The customer changed their mind: a clearly matched message wins."""
-    resolution = CLARIFIER.interpret(
-        _waiting_for(_intent_question()), "mi saldo", BALANCE_MATCH, SPANISH
-    )
+    resolution = CLARIFIER.interpret(_waiting_for(_intent_question()), "mi saldo", BALANCE_MATCH)
 
     assert resolution == Resolved(intent=Intent.ACCOUNT_BALANCE)
 
@@ -110,7 +104,7 @@ def test_an_unreadable_reply_repeats_the_question() -> None:
     """An answer that fits nothing gets the same question, not a new guess."""
     question = _intent_question()
 
-    resolution = CLARIFIER.interpret(_waiting_for(question), "9", NO_MATCH, SPANISH)
+    resolution = CLARIFIER.interpret(_waiting_for(question), "9", NO_MATCH)
 
     assert resolution == NeedsClarification(question=question)
 
@@ -119,8 +113,6 @@ def test_after_a_rephrase_request_the_reply_is_read_as_a_new_message() -> None:
     """A rephrased but still ambiguous message gets the candidates this time."""
     question = PendingQuestion(kind=QuestionKind.REPHRASE)
 
-    resolution = CLARIFIER.interpret(
-        _waiting_for(question), "algo de mi cuenta", AMBIGUOUS, SPANISH
-    )
+    resolution = CLARIFIER.interpret(_waiting_for(question), "algo de mi cuenta", AMBIGUOUS)
 
     assert resolution.question.kind == QuestionKind.CHOOSE_INTENT

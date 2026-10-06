@@ -6,11 +6,10 @@ sub-vertical. Consumed by `engine/factory.py`.
 
 from pydantic import BaseModel, Field
 
-from krtr.back.ia.config import IaConfig, IaModelsConfig
+from krtr.back.ia.config import IaConfig
 from krtr.back.ia.deterministic.config import DeterministicConfig
 from krtr.back.ia.language.config import LanguageConfig
-from krtr.back.ia.matching.config import CatalogConfig
-from krtr.back.ia.reasoning.llm.config import LlmConfig
+from krtr.back.ia.matching.config import CatalogConfig, MatchThresholds
 
 
 class EngineConfig(BaseModel):
@@ -21,7 +20,6 @@ class EngineConfig(BaseModel):
 
     conversation: IaConfig = Field(default_factory=IaConfig)
     deterministic: DeterministicConfig = Field(default_factory=DeterministicConfig)
+    thresholds: MatchThresholds = Field(default_factory=MatchThresholds)
     catalog: CatalogConfig = Field(default_factory=CatalogConfig)
     language: LanguageConfig = Field(default_factory=LanguageConfig)
-    llm: LlmConfig = Field(default_factory=LlmConfig)
-    models: IaModelsConfig = Field(default_factory=IaModelsConfig)  # Thresholds follow the model.

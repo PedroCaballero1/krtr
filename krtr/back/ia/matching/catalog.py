@@ -12,7 +12,6 @@ from pathlib import Path
 import numpy as np
 
 from krtr.back.ia.deterministic.intents import Intent
-from krtr.back.ia.matching.artifacts import CatalogLabel
 from krtr.back.ia.matching.base import Embedder
 from krtr.back.ia.matching.config import CatalogConfig
 from krtr.back.ia.matching.labels import GuardLabel
@@ -23,6 +22,7 @@ logger = logging.getLogger(__name__)
 EXEMPLARS_DIRECTORY = Path(__file__).parent / "exemplars"
 EXEMPLAR_SUFFIX = ".txt"
 
+CatalogLabel = Intent | GuardLabel
 ExemplarSet = dict[tuple[InterfaceLanguage, CatalogLabel], list[str]]
 
 

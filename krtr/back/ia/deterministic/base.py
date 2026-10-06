@@ -82,25 +82,6 @@ class DeterministicAction(ABC, Generic[SlotsT]):
             return [member.value for member in annotation]
         return []
 
-    def validate_slot(self, slot: str, value: str) -> str | None:
-        """Accepts a slot value proposed from outside the rules (the LLM) only if the rules agree.
-
-        Exists so the LLM proposes and the deterministic rules decide: a closed slot must get
-        one of its options, and a free slot must be something its own extractor recognises
-        (e.g. a complaint ID with the right format), never a whole sentence.
-
-        Args:
-            slot: The slot's name.
-            value: The proposed value.
-
-        Returns:
-            str | None: the value as the rules normalise it, or None if they reject it.
-        """
-        options = self.slot_options(slot)
-        if options:
-            return value if value in options else None
-        return self.extract_slots(value).get(slot)
-
     def run(self, context: CustomerContext, collected: dict[str, str]) -> ReplyContent:
         """Validates the collected inputs and executes the action.
 

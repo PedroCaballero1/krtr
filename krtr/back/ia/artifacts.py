@@ -49,9 +49,6 @@ class MessageKey(StrEnum):
     ASK_REPHRASE = "ask_rephrase"
     ESCALATED = "escalated"
     CLOSED_REPETITIVE = "closed_repetitive"
-    CLOSED_AGGRESSIVE = "closed_aggressive"
-    CLOSED_OFF_TOPIC = "closed_off_topic"
-    ESCALATED_UNSUPPORTED = "escalated_unsupported"  # Handed over without asking first.
     CONVERSATION_ENDED = "conversation_ended"  # A message after an escalation or a closure.
 
 
@@ -106,7 +103,6 @@ class TurnStep(StrEnum):
     ACTION = "action"  # Running the action, or recording the question or the ending.
     WRITING = "writing"
     PERSISTENCE = "persistence"  # Saving the conversation's state, the message and the reply.
-    LLM = "llm"  # Time inside LLM calls, already counted in the step that made them.
 
 
 class TurnTimings(BaseModel):
@@ -131,7 +127,6 @@ class TurnDetails(BaseModel):
     intent: Intent | None = None  # Resolved, or being asked about.
     match_kind: MatchKind | None = None
     guard_flags: list[GuardLabel] = Field(default_factory=list)
-    llm_used: bool = False  # Whether the LLM was called during the turn.
 
 
 class AgentReply(BaseModel):

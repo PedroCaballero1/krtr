@@ -7,11 +7,13 @@ security) registers its own Typer app here as it grows commands. Consumed by
 
 import typer
 
+from krtr.cli.back.ia.handler import ia_app
 from krtr.cli.back.security import security_app
 from krtr.cli.back.web.handler import web_app
 
 back_app = typer.Typer(
     name="back", help="Backend (ia, web and security) commands.", no_args_is_help=True
 )
+back_app.add_typer(ia_app, name="ia")
 back_app.add_typer(security_app, name="security")
 back_app.add_typer(web_app, name="web")

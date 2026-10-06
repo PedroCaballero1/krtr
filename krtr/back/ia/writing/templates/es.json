@@ -1,54 +1,17 @@
 {
   "messages": {
-    "account_balance": {
-      "text": "Saldo de {product_type}:",
-      "item": "- {product_number}: {balance} {currency}"
-    },
-    "credit_balance": {
-      "text": "Saldo de {product_type}:",
-      "item": "- {product_number}: saldo {balance} {currency}, cupo {credit_limit} {currency}"
-    },
-    "no_products": {
-      "text": "No encontré ningún producto de tipo {product_type} a tu nombre."
-    },
-    "complaint_status": {
-      "text": "Tu caso {complaint_id} ({category}), abierto el {created_on}, está en estado: {status}."
-    },
-    "complaint_not_found": {
-      "text": "No encontré un caso {complaint_id} a tu nombre. Revisa el número e inténtalo de nuevo."
-    },
-    "ask_choose_intent": {
-      "text": "¿Qué necesitas? Responde con el número:",
-      "item": "{number}. {option}"
-    },
-    "ask_choose_option": {
-      "text": "¿Sobre qué {slot}? Responde con el número:",
-      "item": "{number}. {option}"
-    },
-    "ask_provide_slot": {
-      "text": "Por favor, indícame el {slot}."
-    },
-    "ask_rephrase": {
-      "text": "No entendí tu mensaje. ¿Puedes decirlo de otra forma?"
-    },
-    "escalated": {
-      "text": "Voy a pasar tu caso a un asesor, que continuará la conversación."
-    },
-    "closed_repetitive": {
-      "text": "Cerramos esta conversación porque el mismo mensaje se repitió varias veces. Puedes abrir un caso nuevo cuando quieras."
-    },
-    "conversation_ended": {
-      "text": "Esta conversación ya terminó. Abre un caso nuevo para continuar."
-    },
-    "closed_aggressive": {
-      "text": "Cerramos esta conversación porque recibimos mensajes ofensivos. Si necesitas ayuda, abre un caso nuevo con respeto y te atenderemos con gusto."
-    },
-    "closed_off_topic": {
-      "text": "Cerramos esta conversación porque los mensajes no tienen que ver con tus productos o con el banco. Abre un caso nuevo cuando necesites ayuda con tu cuenta."
-    },
-    "escalated_unsupported": {
-      "text": "Esa solicitud la atiende un asesor. Te comunico con uno, que continuará la conversación."
-    }
+    "account_balance": {"text": "Saldo de {product_type}:", "item": "- {product_number}: {balance} {currency}"},
+    "credit_balance": {"text": "Saldo de {product_type}:", "item": "- {product_number}: saldo {balance} {currency}, cupo {credit_limit} {currency}"},
+    "no_products": {"text": "No encontré ningún producto de tipo {product_type} a tu nombre."},
+    "complaint_status": {"text": "Tu caso {complaint_id} ({category}), abierto el {created_on}, está en estado: {status}."},
+    "complaint_not_found": {"text": "No encontré un caso {complaint_id} a tu nombre. Revisa el número e inténtalo de nuevo."},
+    "ask_choose_intent": {"text": "¿Qué necesitas? Responde con el número:", "item": "{number}. {option}"},
+    "ask_choose_option": {"text": "¿Sobre qué {slot}? Responde con el número:", "item": "{number}. {option}"},
+    "ask_provide_slot": {"text": "Por favor, indícame el {slot}."},
+    "ask_rephrase": {"text": "No entendí tu mensaje. ¿Puedes decirlo de otra forma?"},
+    "escalated": {"text": "Voy a pasar tu caso a un asesor, que continuará la conversación."},
+    "closed_repetitive": {"text": "Cerramos esta conversación porque el mismo mensaje se repitió varias veces. Puedes abrir un caso nuevo cuando quieras."},
+    "conversation_ended": {"text": "Esta conversación ya terminó. Abre un caso nuevo para continuar."}
   },
   "labels": {
     "account_balance": "Consultar un saldo",
@@ -72,7 +35,6 @@
     "Fees": "comisiones",
     "Technical": "técnico",
     "Branch": "sucursal",
-    "Service": "servicio",
-    "request": "solicitud"
+    "Service": "servicio"
   }
 }

@@ -2,7 +2,6 @@
 
 import numpy as np
 
-from krtr.back.ia.config import IaModelsConfig
 from krtr.back.ia.demo import DEMO_COMPLAINTS, DEMO_PRODUCTS
 from krtr.back.ia.deterministic.actions.account_balance import AccountBalanceAction
 from krtr.back.ia.deterministic.actions.complaint_status import ComplaintStatusAction
@@ -12,15 +11,13 @@ from krtr.back.ia.deterministic.readers import (
     InMemoryProductsReader,
 )
 from krtr.back.ia.deterministic.registry import ActionRegistry
-from krtr.back.ia.engine.config import EngineConfig
 from krtr.back.ia.engine.engine import ConversationEngine
 from krtr.back.ia.engine.factory import build_engine
 from krtr.back.ia.engine.store import InMemoryConversationStateStore
 from krtr.back.ia.matching.base import Embedder
 from krtr.back.ia.matching.catalog import CatalogLabel, ExemplarCatalog
-from krtr.back.ia.matching.models import EmbeddingModel
+from krtr.back.ia.matching.hashing import HashingEmbedder
 from krtr.back.ia.messages.store import InMemoryMessageStore
-from krtr.back.ia.reasoning.llm.models import LlmModel
 
 CUSTOMER_ID = "CUST-1"
 OTHER_CUSTOMER_ID = "CUST-2"
@@ -69,15 +66,12 @@ def sample_registry() -> ActionRegistry:
     )
 
 
-HASHING_MODELS = IaModelsConfig(embedding=EmbeddingModel.HASHING, llm=LlmModel.NONE)  # Offline.
-
-
 def sample_engine(messages: InMemoryMessageStore | None = None) -> ConversationEngine:
-    """Builds the full engine over the demo data, owned by CUSTOMER_ID, with the hashing model."""
+    """Builds the full phase 1 engine over the demo data, owned by CUSTOMER_ID."""
     return build_engine(
+        embedder=HashingEmbedder(),
         products=InMemoryProductsReader({CUSTOMER_ID: DEMO_PRODUCTS}),
         complaints=InMemoryComplaintsReader({CUSTOMER_ID: DEMO_COMPLAINTS}),
         store=InMemoryConversationStateStore(),
         messages=messages or InMemoryMessageStore(),
-        config=EngineConfig(models=HASHING_MODELS),
     )

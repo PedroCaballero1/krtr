@@ -1201,9 +1201,9 @@ dependencies = [
     { name = "joserfc" },
     { name = "notebook" },
     { name = "numpy" },
-    { name = "onnxruntime-genai" },
     { name = "polars" },
     { name = "psycopg2-binary" },
+    { name = "py3langid" },
     { name = "pyarrow" },
     { name = "notebook" },
     { name = "pydantic" },
@@ -1266,9 +1266,9 @@ requires-dist = [
     { name = "modal", marker = "extra == 'modal'", specifier = ">=1.5.5" },
     { name = "notebook", specifier = ">=7.6.3" },
     { name = "numpy", specifier = ">=2.5.3" },
-    { name = "onnxruntime-genai", specifier = ">=0.15.2,<0.16" },
     { name = "polars", specifier = ">=1.44.2" },
     { name = "psycopg2-binary", specifier = ">=2.9.13" },
+    { name = "py3langid", specifier = ">=0.4.0" },
     { name = "pyarrow", specifier = ">=25.0.1" },
     { name = "notebook", specifier = ">=7.6.3" },
     { name = "pydantic", specifier = ">=2.13.5" },
@@ -2040,6 +2040,48 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/36/fa/ed742cd4e5dbddcb44702f9c4a97f7f5b62d97e3d9d00907ecc8ac750ef4/psycopg2_binary-2.9.13-cp315-cp315-musllinux_1_2_riscv64.whl", hash = "sha256:6ede8595767e19d30a7e8a84a7d47bfde6176d45d194fed08dbb68d1584a780b", size = 3055143, upload-time = "2026-09-09T23:56:17.168Z" },
     { url = "https://files.pythonhosted.org/packages/d5/3a/5c2cb71a844ee236be2ce91b286d797e34a21489909357c7cfba0f5c0197/psycopg2_binary-2.9.13-cp315-cp315-musllinux_1_2_x86_64.whl", hash = "sha256:0ebcf3c4266a695df9d0ef51296155f60c86ac51cf82f0d0dd2e827255a891c5", size = 3355374, upload-time = "2026-09-09T23:56:18.793Z" },
     { url = "https://files.pythonhosted.org/packages/e8/30/3991c9fdcca90a5a1e55435292f4d74d176da2be15f3998f6858da3658cc/psycopg2_binary-2.9.13-cp315-cp315-win_amd64.whl", hash = "sha256:1752b9821f1377404d65ac43af03d59a1eccc57fb2c1eb8305f9a3fe8eb7a8ba", size = 2867246, upload-time = "2026-09-09T23:56:20.501Z" },
+]
+
+[[package]]
+name = "ptyprocess"
+version = "0.7.0"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/20/e5/16ff212c1e452235a90aeb09066144d0c5a6a8c0834397e03f5224495c4e/ptyprocess-0.7.0.tar.gz", hash = "sha256:5c5d0a3b48ceee0b48485e0c26037c0acd7d29765ca3fbb5cb3831d347423220", size = 70762, upload-time = "2020-12-28T15:15:30.155Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/22/a6/858897256d0deac81a172289110f31629fc4cee19b6f01283303e18c8db3/ptyprocess-0.7.0-py2.py3-none-any.whl", hash = "sha256:4b41f3967fce3af57cc7e94b888626c18bf37a083e3651ca8feeb66d492fef35", size = 13993, upload-time = "2020-12-28T15:15:28.35Z" },
+]
+
+[[package]]
+name = "pure-eval"
+version = "0.2.4"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/da/9f/abfd2959e9261dd5217ca8551d4de211ca6ab26fe9b72cf44731ff6c4442/pure_eval-0.2.4.tar.gz", hash = "sha256:260c2774686e651b79f8b8e7fc9d80b3599ea6a66334b47d5f4abb69fc2c0ea1", size = 20563, upload-time = "2026-09-10T21:41:22.836Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/6d/18/83376915176eb058cb86470eb7396388a13350b09a8f233a79303bbcbc5b/pure_eval-0.2.4-py3-none-any.whl", hash = "sha256:96cae060a313cfaad51bb761278bfb0e62dc0248d9315a81173752dc546cd37a", size = 11893, upload-time = "2026-09-10T21:41:21.532Z" },
+]
+
+[[package]]
+name = "py-serializable"
+version = "2.1.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "defusedxml" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/73/21/d250cfca8ff30c2e5a7447bc13861541126ce9bd4426cd5d0c9f08b5547d/py_serializable-2.1.0.tar.gz", hash = "sha256:9d5db56154a867a9b897c0163b33a793c804c80cee984116d02d49e4578fc103", size = 52368, upload-time = "2025-07-21T09:56:48.07Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/9b/bf/7595e817906a29453ba4d99394e781b6fabe55d21f3c15d240f85dd06bb1/py_serializable-2.1.0-py3-none-any.whl", hash = "sha256:b56d5d686b5a03ba4f4db5e769dc32336e142fc3bd4d68a8c25579ebb0a67304", size = 23045, upload-time = "2025-07-21T09:56:46.848Z" },
+]
+
+[[package]]
+name = "py3langid"
+version = "0.4.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "numpy" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/16/fc/51c88e5ef8346878ae6c09e1f7c86c6e6308c57794723bf423a72ddba4dd/py3langid-0.4.0.tar.gz", hash = "sha256:5924159039b5cc282c2edc10a7ea9363b2099834a0e99ed8d5bea3cc435d7871", size = 4604185, upload-time = "2026-09-02T09:10:53.983Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/69/2d/0eeff2727c970b1d553be70d15ba2d84e3830696c09a79d954c5ae3d5212/py3langid-0.4.0-py3-none-any.whl", hash = "sha256:c25bd038147951ba3a89efe9ec12cc7d2116cb6f311ff8af84ade398a8bc0616", size = 4600605, upload-time = "2026-09-02T09:10:49.54Z" },
 ]
 
 [[package]]
