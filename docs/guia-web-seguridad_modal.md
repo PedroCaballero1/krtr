@@ -718,6 +718,19 @@ Guarda el texto de la conversación, separado de `events`, por dos razones:
 - Se corren **con el modo demo encendido**. Ojo: Modal limita las cuentas nuevas a unas 200 peticiones por segundo; la prueba no debe pasar de eso.
 - **Commit:** `test(e2e/load): add Locust load scenarios`
 - **Depende de:** 6.8
+- **Resultado (5-oct):** `e2e/load/locustfile.py`, un usuario de Locust por cuenta QA, con el login real de Keycloak. Perfiles con `--load-profile`: `smoke` (20 usuarios, 3 min), `baseline` (20 × 10 min) y `spike` (20 → 50 → 20 en 5 min). La prueba sostenida de 30 min no se corrió (no se pidió en esta tarea).
+  - **Límite por IP:** Locust sale de una sola IP, así que todas las peticiones a la app, incluidas las del login, pasan por un regulador común de **8 por segundo** (480/min, el 80% de los 600). Más usuarios significa más sesiones simultáneas, no más tráfico. Un 429 cuenta como fallo de la prueba.
+  - **Qué mide D7:** el grupo `api` (todo `/api/*` y `/app`). El login (Keycloak) y el chat (motor de IA, ~1 mensaje por minuto por usuario) se reportan aparte. Al terminar, se registra el veredicto y el código de salida es 1 si el p95 pasa de 300 ms, o si hubo algún 5xx o 429.
+  - **Números** (desde Colombia; unos 130 ms de cada petición son la ida y vuelta a us-east):
+
+    | Perfil | Peticiones `api` | p50 | **p95 `api`** | 5xx | 429 | Chat p95 | Login p95 |
+    |---|---:|---:|---:|---:|---:|---:|---:|
+    | smoke | 1.281 | 170 ms | **250 ms** | 0 | 0 | 360 ms | 1,1 s |
+    | baseline | 4.365 | 170 ms | **250 ms** | 0 | 0 | 300 ms | 1,5 s |
+    | spike (pico de 50) | 2.060 | 170 ms | **240 ms** | 0 | 0 | 300 ms | 1,2 s |
+
+  - ✅ **D7 se cumple** en los tres. El endpoint más lento es `/api/session/activity` (p95 330–430 ms), porque a veces renueva el token con Keycloak.
+  - **Ojo:** en la base hubo 405 respuestas 401 (9%). Mientras corría, otra persona o proceso inició sesión con las filas 1–9 de `qa_credentials.csv` (el patrón de `e2e/security`), y cada login cerró la sesión de un usuario de Locust (G15). Se comprobó con los eventos `session_created` y `session_revoked_by_new_login` en `events`. No es un fallo de la app, pero **no hay que correr `e2e/security` al mismo tiempo que Locust**. El pico, sin interferencias, tuvo 0 fallos.
 
 #### 7.6 👤 Revisión contra ASVS nivel 2
 - **Objetivo:** `docs/security-checklist.md` con los controles aplicables de ASVS 5.0 L2. Cada control con estado y evidencia.
