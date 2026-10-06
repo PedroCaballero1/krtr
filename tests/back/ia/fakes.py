@@ -20,6 +20,7 @@ from krtr.back.ia.matching.base import Embedder
 from krtr.back.ia.matching.catalog import CatalogLabel, ExemplarCatalog
 from krtr.back.ia.matching.models import EmbeddingModel
 from krtr.back.ia.messages.store import InMemoryMessageStore
+from krtr.back.ia.reasoning.llm.config import LlmConfig
 from krtr.back.ia.reasoning.llm.models import LlmModel
 
 CUSTOMER_ID = "CUST-1"
@@ -72,12 +73,14 @@ def sample_registry() -> ActionRegistry:
 HASHING_MODELS = IaModelsConfig(embedding=EmbeddingModel.HASHING, llm=LlmModel.NONE)  # Offline.
 
 
-def sample_engine(messages: InMemoryMessageStore | None = None) -> ConversationEngine:
+def sample_engine(
+    messages: InMemoryMessageStore | None = None, llm: LlmConfig | None = None
+) -> ConversationEngine:
     """Builds the full engine over the demo data, owned by CUSTOMER_ID, with the hashing model."""
     return build_engine(
         products=InMemoryProductsReader({CUSTOMER_ID: DEMO_PRODUCTS}),
         complaints=InMemoryComplaintsReader({CUSTOMER_ID: DEMO_COMPLAINTS}),
         store=InMemoryConversationStateStore(),
         messages=messages or InMemoryMessageStore(),
-        config=EngineConfig(models=HASHING_MODELS),
+        config=EngineConfig(models=HASHING_MODELS, llm=llm or LlmConfig()),
     )

@@ -32,14 +32,14 @@ _Meta: terminar el 2-oct-2026 · Fecha límite de la hackathon: 5-oct-2026_
 | Frontend | React + Vite + TypeScript + Tailwind + shadcn/ui, compilado a estáticos que sirve FastAPI en el mismo dominio. | — |
 | Autenticación | Opción (a): cuentas propias para los **150.000 `customer_id`** del dataset, con contraseñas aleatorias de **8 caracteres**. Proveedor de identidad: **Keycloak en Cloud Run**, flujo OIDC Authorization Code + PKCE, con FastAPI como BFF (backend-for-frontend). | G5, G6 |
 | Registro | **No** se pueden crear cuentas nuevas. La única excepción es 1 cuenta con **MFA TOTP**, que crea el equipo. | G5 |
-| Credenciales para el jurado | Archivo con una **muestra de 50** clientes **Active** elegidos al azar. No se sube al repo. | G6 |
+| Credenciales para el jurado | Archivo con una **muestra de 50** clientes **Active** elegidos al azar. Se publica en `JURY_ACCESS.md`, en la raíz del repo: son cuentas de prueba (E9 de `docs/security-checklist.md`). | G6 |
 | Bloqueo por intentos | 5 intentos fallidos → bloqueo de 15 minutos. | G3 |
 | Sesión | Se cierra tras **5 min** sin interacción y a los **30 min** como máximo aunque haya actividad. Se avisa **30 s antes**. **1 sesión por usuario**. Los casos abiertos se conservan. | G15 |
 | Idiomas | Interfaz y login en **ES y PT** con selector. Por defecto **ES**. | G14 |
 | Pantallas | Landing = login. Después del login: botón de **soporte**, **número de usuario** y **cerrar sesión**. | G5 |
 | Casos | La web solo muestra los casos abiertos (ID, fecha, resumen) y permite escribir un ID. Qué casos existen y cuándo se abren o cierran lo decide el backend. Por ahora, datos de prueba. | G18 |
 | Chat | El frontend solo habla con **un endpoint del backend**, y el backend se encarga de la IA. Por ahora responde un **mensaje genérico**, **completo** (sin streaming). | G7, G11 |
-| "Escribiendo…" | Si la respuesta tarda **más de 2 s**, se muestra el indicador. La meta es responder en menos de 1 s. | G9, G16 |
+| "Escribiendo…" | Si la respuesta tarda **más de 2 s**, se muestra el indicador. La meta es responder en menos de 4 s (revisada el 2026-10-06; antes, 1 s). | G9, G16 |
 | Voz | Botón que graba y **envía el audio al backend**. Se aceptan WebM/Opus y MP4/AAC, con un máximo de 60 s. Qué hace el backend con el audio queda fuera de alcance. | G8, G10 |
 | Eventos | Una sola tabla `events(id UUID, event_name, properties cifrado, occurred_at)`. Se registra **todo**. Retención de **3 meses**. | G21 |
 | Base de datos | Todo en **Neon** (AWS us-east-1, Norte de Virginia). Scale-to-zero **desactivado**. Base aparte `keycloak`. | — |
@@ -670,7 +670,7 @@ Nunca se guardan contraseñas, tokens ni cookies en `properties`.
 - **Objetivo:**
   - Correr 7.2 y 7.3 en verde.
   - Revocar las sesiones QA.
-  - Entregar `jury_credentials.csv` por un canal privado y enviar las instrucciones al jurado (URL, idioma, cómo se usa).
+  - Publicar las cuentas del jurado en `JURY_ACCESS.md` (raíz del repo), con las instrucciones (URL, idioma, cómo se usa).
   - Etiquetar la versión.
 - **Aceptación:** checklist firmado por el revisor humano.
 - **Depende de:** 8.1

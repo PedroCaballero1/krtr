@@ -46,8 +46,9 @@ Lo más importante que queda abierto (detalle en §5):
 
 | # | Excepción | Por qué | Cómo se mitiga | Controles |
 |---|---|---|---|---|
-| E7 | **Contraseñas generadas por el sistema, sin cambio ni recuperación** (G6, D5). | Los 150.000 clientes son datos de prueba y no tienen email real; cada uno recibe una contraseña aleatoria de 8 caracteres. | Contraseñas de 62⁸ combinaciones generadas con `secrets` y guardadas con argon2id; bloqueo tras 5 fallos; sesiones de 5/30 min; las cuentas del jurado se entregan por un canal privado. Un administrador puede cambiar una contraseña con `kcadm.sh` (E4). | V6.2.2, V6.4.1, V6.4.3, V6.4.4, V7.5.2 |
+| E7 | **Contraseñas generadas por el sistema, sin cambio ni recuperación** (G6, D5). | Los 150.000 clientes son datos de prueba y no tienen email real; cada uno recibe una contraseña aleatoria de 8 caracteres. | Contraseñas de 62⁸ combinaciones generadas con `secrets` y guardadas con argon2id; bloqueo tras 5 fallos; sesiones de 5/30 min; las cuentas del jurado se publican en `JURY_ACCESS.md` (E9). Un administrador puede cambiar una contraseña con `kcadm.sh` (E4). | V6.2.2, V6.4.1, V6.4.3, V6.4.4, V7.5.2 |
 | E8 | **MFA solo en una cuenta** (`CLI-MFA000000001`, G5). | G5 pide demostrar MFA con TOTP en una sola cuenta; exigirlo a 150.000 cuentas de prueba no tiene sentido para la demo. | Lo mismo que E7. Ninguna función de la app exige un factor más fuerte (V6.8.4). | V6.3.3 |
+| E9 | **Las contraseñas de las 50 cuentas del jurado se publican** en `JURY_ACCESS.md`, en la raíz del repositorio. | Son cuentas de prueba, no clientes reales, y publicarlas simplifica el acceso del jurado. | Quien lea el repo puede entrar a producción con ellas, pero solo ve los datos de prueba de esa cuenta. Aplican el bloqueo tras 5 fallos, una sesión por usuario, las sesiones de 5/30 min y los límites por usuario e IP (4.6). Las cuentas QA y la de MFA no se publican. Pendiente de decidir: deshabilitarlas al terminar la evaluación. | V6.2.2, V14.1.1 |
 
 ## 3. Controles aplicables
 
@@ -387,7 +388,8 @@ Total: 57 controles.
 
 | Dato | Nivel | Dónde | Protección |
 |---|---|---|---|
-| Contraseñas en claro (jurado, QA, MFA) | Secreto | `data/credentials/` (fuera de git, `600`) | Nunca en el repo; se entregan por canal privado. Las demás se descartan (3.4). |
+| Contraseñas en claro (QA, MFA) | Secreto | `data/credentials/` (fuera de git, `600`) | Nunca en el repo; se entregan por canal privado. Las demás se descartan (3.4). |
+| Contraseñas de las 50 cuentas del jurado | Pública (E9) | `JURY_ACCESS.md`, en la raíz del repo | Cuentas de prueba; las protecciones de E7 y E9. |
 | Tokens OIDC y de sesión | Secreto | `app_sessions`, cookies | Cifrados o hasheados; el navegador solo tiene el token de sesión, `HttpOnly`. |
 | Texto del chat (saldos, tarjetas enmascaradas) | Confidencial | `messages` | AES-256-GCM, 3 meses, lectura por `incident_id` + `customer_id`. |
 | Eventos (IP, user-agent, `customer_id`, rutas) | Interno | `events` | AES-256-GCM, 3 meses, sin contraseñas, tokens ni cookies. |

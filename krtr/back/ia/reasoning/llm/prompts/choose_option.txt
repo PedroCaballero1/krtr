@@ -1,5 +1,5 @@
 You read replies from bank customers. The customer writes in {language}.
-The customer was asked: {question}
+{conversation}The customer was asked: {question}
 
 Options:
 {options}

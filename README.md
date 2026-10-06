@@ -6,6 +6,10 @@
 > in a browser. It's the full story as an infographic, with the numbers behind each decision.
 > GitHub shows HTML files as source code, so the file has to be opened locally.
 
+> **For the jury, try it live:** log in at <https://juan-alvarezo-2002--krtr.modal.run/> with one
+> of the 50 test accounts listed in [`JURY_ACCESS.md`](JURY_ACCESS.md): customer number, password,
+> and what each one can ask the assistant. They are test accounts, not real customers.
+
 ## What we achieved
 
 A bank customer asks for a balance or how a complaint is going, in Spanish or Portuguese. krtr
@@ -13,8 +17,8 @@ answers from that customer's own data, or hands the case to a person.
 
 - **Zero wrong answers on the evaluation set,** in both languages. The thresholds are set so a
   doubtful message gets a question, never a guess.
-- **About 3 ms for a clear request,** with no LLM. About 1.3 s only when the local LLM reads a
-  doubtful reply.
+- **About 3 ms for a clear request,** with no LLM. About 1.3–2.5 s only when the local LLM
+  reads a doubtful reply with the conversation as context, within the 4 s response-time SLA.
 - **Under 10 USD a month for the whole solution,** all the infrastructure and model hosting
   included.
 - **No tokens sent to an outside model.** Both models run locally: no per-token cost, and no
@@ -22,13 +26,6 @@ answers from that customer's own data, or hands the case to a person.
 - **656 automated tests,** with 98% coverage on the agent. The tests never download a model.
 - **Built:** the agent (three phases, usable from the command line), login with Keycloak and
   sessions on the server, an encrypted log of every event, and the bilingual web front end.
-
-### For the jury
-
-Log in at `https://juan-alvarezo-2002--krtr.modal.run/` with one of the 50 test accounts.
-The accounts (customer number and password), with what each one can ask the assistant, are
-handed to the jury separately through a private channel: passwords are never stored in this
-repository.
 
 ## The solution: deterministic first
 
@@ -58,7 +55,7 @@ agent ([`docs/goals.md`](docs/goals.md)). It had to:
 - close the session after 5 minutes idle;
 - log every event;
 - support Spanish and Portuguese (a requirement of the challenge);
-- answer in under a second;
+- answer in under a second (since revised to 4 seconds);
 - route by difficulty to cut cost, and hand a case to a person when needed.
 
 ### What the data said
@@ -257,7 +254,7 @@ uv run --env-file .env krtr back security credentials import --remote
 uv run pytest e2e/security
 ```
 
-- Las credenciales quedan en `data/credentials/` (fuera de git, permisos `600`). `jury_credentials.csv` se entrega al jurado por un canal privado.
+- Las credenciales quedan en `data/credentials/` (fuera de git, permisos `600`). Las 50 cuentas del jurado se publican en [`JURY_ACCESS.md`](JURY_ACCESS.md), en la raíz del repositorio: son cuentas de prueba (excepción E9 de [`docs/security-checklist.md`](docs/security-checklist.md)). Las de QA y la de MFA nunca se suben al repo.
 - La purga diaria (`purge_events`, 03:00 COT) borra eventos y mensajes de más de 3 meses. Para correrla a mano: `uv run --env-file .env modal run -m krtr.back.deploy.app::purge_events`.
 - Cada despliegue reinicia Keycloak (unos 30 s sin login): no desplegar durante la evaluación.
 - Desde la tarea 6.7, el despliegue lo hace GitHub Actions con cada merge a `master` que pasa el CI (`.github/workflows/deploy.yml`). El modo demo se controla con la variable del repositorio `KRTR_WARM`. Los pasos 1 y 2 de arriba quedan para la puesta en marcha y para emergencias.
@@ -385,7 +382,7 @@ uv run krtr --verbose back ia ask "¿Cuál es mi saldo?"
 
 With `multilingual_minilm` a turn takes about 3–5 ms on a laptop, almost all of it the
 embedding; with `hashing`, under 1 ms. Neon reads and the LLM clarifier (phase 3) will add to
-that, against the < 1 s target (G16).
+that, against the 4 s target (G16, revised from 1 s).
 
 ### LLM (local Qwen)
 
@@ -394,9 +391,12 @@ The LLM only handles what the deterministic path can't:
 - a detail the rules don't find;
 - the yes/no confirmation before closing on an aggressive or off-topic message.
 
-Its answers are restricted to the options offered (constrained JSON). If it's slow
-(> 2.5 s) or fails, the deterministic answer is used. A banking request the agent can't
-answer (a lost card, an unrecognised charge) goes straight to a person, with no LLM involved.
+Its answers are restricted to the options offered (constrained JSON). All the LLM calls of a
+turn share 3.5 s, so the turn stays inside the 4 s SLA. A call starts only if the longest call
+still fits in what's left (2.75 s; the longest measured took 2.5 s), and reading the prompt
+counts. If a call is slow, skipped or fails, the deterministic answer is used. A banking
+request the agent can't answer (a lost card, an unrecognised charge) goes straight to a person,
+with no LLM involved.
 
 The model is the official [`Qwen/Qwen2.5-1.5B-Instruct`](https://huggingface.co/Qwen/Qwen2.5-1.5B-Instruct),
 converted once to int4 ONNX. It's public, so no Hugging Face token is needed. Convert it
@@ -420,12 +420,18 @@ uvx --with "onnxruntime-genai==0.15.2" --with onnx --with onnx-ir --with torch -
 
 Every value the LLM proposes is checked by a deterministic rule before it's used:
 - an ID must match the action's format;
-- a product must be the one the reply singles out ("la de la tarjeta" fits credit and debit
-  cards alike, so the agent asks again).
+- a product must be the one the customer's words single out ("la de la tarjeta" fits credit
+  and debit cards alike, so the agent asks again). An earlier customer message can break the
+  tie ("la de la tarjeta" after "mi tarjeta de crédito"); the agent's own messages never count.
+
+Each LLM call reads the case's earlier messages, customer and agent, oldest first, as context
+for the latest one, which is the only one it decides on. The history is read only on the turns
+that call the LLM. It is capped (`HistoryConfig`: the newest 10 messages, 300 characters each,
+1,000 in all), so a long case, or one flooded with long messages, stays within the timeout.
 
 A conversation is closed only if the matcher flags it **and** the LLM classifies it as abusive
 or off-topic. An angry complaint about the service is "banking" and is never closed. An LLM
-turn takes about 1.3 s.
+call takes about 1.3 s, and up to about 2.5 s with a full history.
 
 ```bash
 uv run krtr back ia evaluate-llm      # accuracy, false positives and latency, per language

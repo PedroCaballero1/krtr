@@ -604,3 +604,213 @@ two intents. The same work done properly is a few dozen strings:
 - **Seed phrases:** only the 2 balance lines come from the call history (translated to PT).
   The complaint and guard phrases were written by hand; tracks D.1–D.4 replace them.
 - **The clarifier lists all 7 product types,** not only the ones the customer holds.
+
+---
+
+# Conversation context for the LLM
+
+_2026-10-06 · Status: **implemented, pending your review**_
+
+**Problem:** every LLM task (`choose_option`, `extract_value`, `confirm_guard` in
+`reasoning/llm/tasks.py`) sees only the current message. A reply such as "the other one" or
+"same as before" can't be read without the conversation.
+
+**Decided (2026-10-06):**
+- **The whole case, capped:** every earlier message of the incident, customer and agent,
+  oldest first, within the limits of `HistoryConfig`. The plan's "20 messages" turned out too
+  big; see the review below.
+- **All three tasks** get the history. Each task still decides on the **last** message only;
+  the history is context.
+
+**Design:**
+- **Source: `MessageStore.list_case`.** It already stores every message, encrypted. During a
+  turn it holds the earlier messages, because the current one is stored at the end of the
+  turn. History is loaded **only when an LLM task actually runs**, so clear turns (≈3 ms)
+  keep no extra DB read. Plaintext is never copied into `ConversationState`, so encryption
+  at rest still holds.
+- **Plumbing:** `LlmTasks` stays free of I/O. Its methods take a `ConversationTranscript`;
+  callers load it.
+
+## Tasks
+
+- [x] **C.1 `ConversationTranscript`:** a pydantic contract in a new
+  `reasoning/llm/artifacts.py`. It holds a list of (sender, text) and has:
+  - `render()`: `Customer: …` / `Agent: …` lines, or "(no earlier messages)";
+  - `customer_texts()`: the customer's messages only.
+  - The role labels are mapped from `MessageSender`, with no literals.
+- [x] **C.2 `ConversationHistory`:** in a new `reasoning/llm/history.py`, built with a
+  `MessageStore` and the cap. `load(state) -> ConversationTranscript` reads
+  `list_case(state.customer_id, state.incident_id)` and keeps the newest N.
+- [x] **C.3 Config:** add `history_messages_kept: int = Field(default=20, ge=0)` to the LLM
+  config (`reasoning/llm/config.py`), loaded the same way as the existing fields.
+- [x] **C.4 Prompts:** add a `{conversation}` block to the three `.txt` templates, with the
+  instruction "decide/classify only the last reply; earlier messages are context". In
+  `confirm_guard`, a flagged reply that follows a banking problem stays `banking`.
+- [x] **C.5 `LlmTasks`:** `choose_option`, `extract_value`, `fill_slot` and `confirm_guard`
+  take the transcript and render it into the prompt.
+- [x] **C.6 Grounding (needs your OK):** the LLM's answer is checked against the current
+  reply **plus the customer's earlier messages, never the agent's**. The agent's questions
+  list every option label, so counting them would ground any answer.
+  - Trade-off: "the card" after an earlier "my credit card" now resolves to credit. Today it
+    is rejected.
+  - Alternative: keep grounding on the current reply only. That is safest, but for closed
+    slots the history then cannot change the outcome; it only helps `CHOOSE_INTENT`.
+- [x] **C.7 `LlmClarifier`:** receives `ConversationHistory` and loads the transcript once,
+  inside `_read_with_llm`, so only when the template clarifier would repeat the question.
+- [x] **C.8 Guard confirmation:**
+  - `GuardConfirmer.confirm_guard` gains `state`, which `GuardrailPolicy.check_flags`
+    already has.
+  - A new `LlmGuardConfirmer` in `reasoning/llm/guard.py` (tasks + history) implements it,
+    loading the transcript once per flagged turn, not once per flag.
+- [x] **C.9 Wiring:** `engine/factory.py` builds one `ConversationHistory` from the engine's
+  `messages` store and passes it to both consumers.
+- [x] **C.10 Tests** (mirrored under `tests/back/ia/`, ≥85% coverage):
+  - transcript rendering, order, cap and empty case;
+  - the history excludes the current message;
+  - no history read on a turn without the LLM;
+  - the prompt contains the history;
+  - grounding accepts earlier customer text and rejects agent-only text;
+  - the guard loads once with two flags;
+  - an engine test where "la otra" is resolved through history.
+- [x] **C.11 Evaluation (lesson: an evaluation must offer what production offers):**
+  - add an optional 6th field `history` to `replies.tsv`;
+  - add ES and PT-BR cases that need context, using the real option lists, plus cases where
+    history must **not** change the answer;
+  - run the evaluation before and after; zero wrong answers must hold.
+- [x] **C.12 Latency check on the real model:**
+  - p50/p95 with 0, 10 and 20 messages of history, against the 2.5 s timeout;
+  - adjust the default cap if 20 doesn't fit;
+  - finish with a few real end-to-end conversations in `krtr back ia`.
+
+**Risks:**
+- **Prompt injection through earlier messages:** contained. The output is still
+  schema-constrained to the offered options and checked by grounding and the actions' rules.
+- **Longer prompts on CPU:** measured in C.12.
+
+## Review (2026-10-06)
+
+**Changes from the plan:**
+- **Character limits (requested mid-task):** `HistoryConfig` caps the transcript three ways.
+  Each message is cut to 300 characters, marked ` […]`. The whole transcript holds at most
+  1,000 characters and the newest 10 messages; past that, the oldest go. A customer who keeps
+  sending 2,000-character messages can't push the prompt past the timeout.
+- **SLA revised to 4 s (requested mid-task):** the LLM timeout per call went from 2.5 s to
+  3.5 s, leaving ~0.5 s for the rest of the turn. Docs were updated: the README, the story
+  HTML, `docs/goals.md` (G16, with the original 1 s kept visible), both web guides and the
+  `timing.py` docstring. The phase-3 records above still say 2.5 s, because they record what
+  was measured then.
+- **The plan's defaults were wrong, measured:** each character of history adds about 1.1 ms
+  to a call. 20 short messages took 3.5 s and a flooded case 4.2 s, so both would have timed
+  out. With 1,200 characters, p95 was 2.8 s and the slowest call 3.1 s; the default is 1,000.
+- **Prompts:** the context is an optional section that is empty when there are no earlier
+  messages. A first version reworded every template; it changed the baseline, and two PT
+  banking messages were falsely confirmed as aggressive. With the section, turns without
+  history get the exact prompts measured in phase 3. The results on the old cases match it:
+  - choose: ES 8/11 with 1 false, PT 9/11 with 0 false;
+  - guard confirmations: ES 1 false, PT 0 false.
+- **Grounding (C.6):** messages narrow the options in turn: the reply first, then earlier
+  customer messages from newest to oldest. Pooling them all would have tied "la de crédito"
+  against an earlier "débito" and rejected an answer that is accepted today.
+- **Guard confirmation:** the protocol is now `confirm_first(state, labels, …)`, one history
+  read per flagged turn.
+
+**Evaluation** (`evaluate-llm`, 22 new cases with history, 11 per language):
+
+| Task | ES | PT |
+|---|---|---|
+| Choose an option | 12/17, 1 false (the old "quiero un préstamo") | 12/17, 0 false |
+| Extract an ID | 5/5, 0 false | 4/5, 0 false |
+| Confirm a guard flag | 34/45, 2 false | 33/45, 1 false |
+
+- **Context helps:** "la de la tarjeta" after "mi tarjeta de crédito" (ES), "no, la de débito"
+  over an earlier credit card, and an ID the customer gave earlier (ES).
+- **Context doesn't help yet**, but these come back `none`, so the question is asked again:
+  "la que usé ayer", "lo que te acabo de contar", and the PT "já te passei".
+- **New false confirmations:** "son unos ladrones, unos inútiles" (and the PT version) after a
+  banking complaint is confirmed as aggressive. Measured: the model confirms it with or
+  without the history, so it is an existing miss, not a regression. Both cases stay in the
+  evaluation as misses.
+- **Latency:** p50 1.2–1.5 s, p95 under 1.8 s, 0 unavailable.
+
+**End-to-end** (`krtr back ia chat`, real Qwen):
+- ES, credit card mentioned, then "¿Cuál es mi saldo?" → "la de la tarjeta": credit card
+  balance, 1.99 s.
+- ES, the same without the earlier mention: asked again, 1.89 s.
+- PT, ID given, then the complaint request → "já te passei…": asked again, 1.50 s (the known
+  miss).
+
+**Tests:** 895 passed, 3 skipped. Coverage of the new modules is 98–100%. black, ruff and
+flake8 are clean; no function is over 40 lines.
+
+**Still open:**
+- **The SLA is per turn, but the timeout is per call.** A turn with two guard flags and then
+  a clarifier reply makes 3 calls (worst case ~10 s). See "Possible improvements" in the
+  session summary.
+- **Latency was measured on a laptop CPU only.** Modal's CPU may be slower; measure there
+  before raising `HistoryConfig`.
+
+---
+
+# Per-turn LLM deadline
+
+_2026-10-06 · Status: **implemented, pending your review**_
+
+**Problem:**
+- The 4 s SLA is per turn, but the LLM timeout is per call. A turn can make up to 3 calls:
+  two guard confirmations, then the clarifier.
+- Latent bug: `OnnxGenAiClient` starts its deadline after reading the prompt
+  (`append_tokens`). The prompt read, which is what grows with history, never counted.
+
+**Design:**
+- [x] **T.1 Contract:** `LlmClient.complete(prompt, schema, timeout_seconds)`. The caller gives
+  each call its time; the runtime no longer owns a timeout.
+- [x] **T.2 ONNX client:**
+  - the deadline starts **before** the prompt is read;
+  - it is checked right after the read and at every token;
+  - reading the prompt can't be interrupted, so the check after it stops the call as soon as
+    possible.
+- [x] **T.3 `MeteredLlmClient` owns the turn's budget:**
+  - each call gets the LLM time left in the turn;
+  - with less than `min_call_seconds` left, the call is skipped. It is recorded as
+    unavailable, so the template answer is used.
+  - `reset()` (once per turn, in the engine) restores the budget;
+  - the clock is injected for tests.
+- [x] **T.4 Config:**
+  - `LlmConfig.timeout_seconds` becomes `turn_budget_seconds` (3.5 s);
+  - new `min_call_seconds` (2.75 s after measuring; see the review).
+- [x] **T.5 `LlmTasks`** takes the `MeteredLlmClient`.
+- [x] **T.6 Evaluation:** each case is one turn, so the budget restarts per case. The unavailable
+  count is summed per task.
+- [x] **T.7 Tests:**
+  - the budget is split across calls;
+  - a call is skipped below the floor without reaching the model;
+  - `reset` restores the budget;
+  - the ONNX client fails fast on a tiny budget (real model, skipped without it);
+  - the runner restarts per case.
+- [x] **T.8 Docs:** README (the timeout sentence) and the comments in `config.py`.
+
+## Review (2026-10-06)
+
+- **The floor changed from 1.5 s to 2.75 s, measured:**
+  - reading the prompt is nearly all of a call: 1.86 s to read a 3,000-character prompt,
+    0.07 s to generate the answer (7 tokens);
+  - a call started with 1.5 s left would still read its whole prompt, so a 2-call turn could
+    reach ~5 s;
+  - the longest single call at the history cap (1,000 characters) took 2.52 s, so a call now
+    starts only if that still fits.
+  - On this CPU a turn makes one LLM call. With two guard flags, only the first (aggressive)
+    is checked, and a guard call leaves no time for the clarifier. Both fallbacks are the
+    conservative ones: the case isn't closed, and the question is asked again.
+- **The ONNX deadline fix is proven by its test:** a ~3,000-character prompt with a 1.5 s
+  limit fails as soon as it is read. Under the old timing (generation only, 0.07 s) it would
+  have passed.
+- **Evaluation unchanged:**
+  - choose: ES 12/17 and PT 12/17;
+  - extract: ES 5/5 and PT 4/5;
+  - guard confirmations: ES 34/45 and PT 33/45;
+  - same false positives, 0 unavailable, p95 under 1.7 s.
+- **End-to-end:** the ES credit card conversation resolves through history in 1.98 s.
+- **Tests:** 900 passed, 3 skipped. `base.py` and `onnx/client.py` are at 100%; the runner's
+  guard and slot paths are now covered too. black, ruff and flake8 are clean.
+- **Still open:** the latency figures come from a laptop CPU. If Modal's CPU is slower, the
+  longest call grows, and `min_call_seconds` must be measured there and raised to match.

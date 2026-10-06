@@ -34,3 +34,16 @@ evaluation and was a guess in production. Live conversations showed it; the eval
 **Rule:**
 - Build evaluation cases from the real option lists the code produces, not hand-trimmed ones.
 - Always follow an evaluation with a few real end-to-end conversations before reporting it.
+
+## 2026-10-06 — Limits that bound latency are measured before they get a default
+
+**What happened:** the plan for the LLM's conversation context set a default of 20 messages
+from intuition. Measured, 20 short messages took 3.5 s per call against a 2.5 s timeout. The
+LLM would have silently stopped helping on exactly the long conversations. The same change
+also reworded every prompt, which moved the phase-3 baseline even on turns with no history.
+
+**Rule:**
+- A size limit that drives latency (context, batch, prompt) gets its default from a
+  measurement on the real model, at the worst case (maximum-length inputs), never from a guess.
+- A prompt change behind a new feature must leave the old path's prompt byte-identical (an
+  optional section that renders empty), so the existing evaluation still holds.

@@ -84,15 +84,23 @@ def test_the_signature_ignores_the_order_of_the_slots() -> None:
 
 
 class FixedConfirmer:
-    """Confirms every flag, or none."""
+    """Confirms the first flag it is asked about, or none; records every call's labels."""
 
-    def __init__(self, answer: bool) -> None:
+    def __init__(self, answer: bool | GuardLabel) -> None:
         self.answer = answer
-        self.asked: list[GuardLabel] = []
+        self.asked: list[list[GuardLabel]] = []
 
-    def confirm_guard(self, label: GuardLabel, reply: str, language: InterfaceLanguage) -> bool:
-        self.asked.append(label)
-        return self.answer
+    def confirm_first(
+        self,
+        state: ConversationState,
+        labels: list[GuardLabel],
+        reply: str,
+        language: InterfaceLanguage,
+    ) -> GuardLabel | None:
+        self.asked.append(labels)
+        if isinstance(self.answer, GuardLabel):
+            return self.answer if self.answer in labels else None
+        return labels[0] if self.answer else None
 
 
 def _flagged(*labels: GuardLabel, kind: MatchKind = MatchKind.NO_MATCH) -> MatchResult:
@@ -144,3 +152,15 @@ def test_unsupported_flags_are_never_sent_for_confirmation() -> None:
 
     assert policy.check_flags(_state(), "m", _flagged(GuardLabel.UNSUPPORTED), SPANISH) is None
     assert confirmer.asked == []
+
+
+def test_every_closing_flag_is_confirmed_in_one_call_and_the_confirmed_one_closes() -> None:
+    """Both flags go to the confirmer together (one history read); the confirmed one decides."""
+    confirmer = FixedConfirmer(GuardLabel.OFF_TOPIC)
+    policy = GuardrailPolicy(IaConfig(), THRESHOLDS, confirmer=confirmer)
+    match = _flagged(GuardLabel.UNSUPPORTED, GuardLabel.AGGRESSIVE, GuardLabel.OFF_TOPIC)
+
+    closure = policy.check_flags(_state(), "msg", match, SPANISH)
+
+    assert closure is not None and closure.reason == ClosureReason.OFF_TOPIC
+    assert confirmer.asked == [[GuardLabel.AGGRESSIVE, GuardLabel.OFF_TOPIC]]

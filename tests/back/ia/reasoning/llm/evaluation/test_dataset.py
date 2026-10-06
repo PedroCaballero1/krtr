@@ -6,6 +6,7 @@ import pytest
 
 from krtr.back.ia.matching.evaluation.artifacts import EvaluationCase, EvaluationSet
 from krtr.back.ia.matching.labels import GuardLabel
+from krtr.back.ia.messages.artifacts import MessageSender
 from krtr.back.ia.reasoning.llm.evaluation.artifacts import LlmTask
 from krtr.back.ia.reasoning.llm.evaluation.dataset import load_llm_cases
 from krtr.back.security.oidc.artifacts import InterfaceLanguage
@@ -55,7 +56,7 @@ def test_a_malformed_line_fails(tmp_path: Path) -> None:
     (tmp_path / "es").mkdir()
     (tmp_path / "es" / "replies.tsv").write_text("choose_option\tproduct_type\tla b\n")
 
-    with pytest.raises(ValueError, match="5 tab-separated fields"):
+    with pytest.raises(ValueError, match="5 or 6 tab-separated fields"):
         load_llm_cases(_guards(), tmp_path)
 
 
@@ -67,3 +68,33 @@ def test_the_shipped_replies_cover_both_languages_and_every_task() -> None:
         tasks = {c.task for c in cases if c.language == language}
         assert {LlmTask.CHOOSE_OPTION, LlmTask.EXTRACT_VALUE} <= tasks
         assert any(c.expected == "none" for c in cases if c.language == language)
+
+
+def test_a_sixth_field_is_the_cases_history_with_its_line_breaks(tmp_path: Path) -> None:
+    """`customer: … || agent: …` entries, oldest first; a literal backslash-n breaks a line."""
+    (tmp_path / "es").mkdir()
+    (tmp_path / "es" / "replies.tsv").write_text(
+        "choose_option\tproduct_type\ta,b\tesa\tb\t"
+        "customer: mi b || agent: ¿Cuál?\\n1. a\\n2. b\n"
+        "choose_option\tproduct_type\ta,b\tla b\tb\n"
+    )
+
+    with_history, without_history = load_llm_cases(_guards(), tmp_path)
+
+    assert [(e.sender, e.content) for e in with_history.history.entries] == [
+        (MessageSender.CUSTOMER, "mi b"),
+        (MessageSender.AGENT, "¿Cuál?\n1. a\n2. b"),
+    ]
+    assert without_history.history.entries == []
+
+
+@pytest.mark.parametrize("entry", ["mi b", "robot: mi b"])
+def test_a_history_entry_without_a_known_sender_fails(tmp_path: Path, entry: str) -> None:
+    """A typo in the sender would silently turn a customer's words into nobody's."""
+    (tmp_path / "es").mkdir()
+    (tmp_path / "es" / "replies.tsv").write_text(
+        f"choose_option\tproduct_type\ta\tesa\ta\t{entry}\n"
+    )
+
+    with pytest.raises(ValueError):
+        load_llm_cases(_guards(), tmp_path)

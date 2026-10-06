@@ -6,8 +6,9 @@ contracts shared by the loader, the runner and `krtr back ia evaluate-llm`.
 
 from enum import StrEnum
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
+from krtr.back.ia.reasoning.llm.artifacts import ConversationTranscript
 from krtr.back.ia.reasoning.llm.models import LlmModel
 from krtr.back.security.oidc.artifacts import InterfaceLanguage
 
@@ -26,7 +27,8 @@ class LlmCase(BaseModel):
     """One question for the LLM and the answer it must give.
 
     `subject` is the slot, `request`, or the guard label; `expected` is an option, a value,
-    `none`, or `true` / `false` for a confirmation.
+    `none`, or `true` / `false` for a confirmation. `history` holds the case's earlier
+    messages, empty for a reply read on its own.
     """
 
     language: InterfaceLanguage
@@ -35,6 +37,7 @@ class LlmCase(BaseModel):
     options: list[str]
     reply: str
     expected: str
+    history: ConversationTranscript = Field(default_factory=ConversationTranscript)
 
 
 class TaskOutcome(BaseModel):

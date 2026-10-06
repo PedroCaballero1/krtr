@@ -47,7 +47,7 @@ Phase 2: Using the perfected text flow, enable voice-to-text.
 
 G14 – Languages. Must support queries in both Spanish and Portuguese.
 
-G16 – Latency. Target response times under 1 second.
+G16 – Latency. Target response times under 4 seconds (revised on 2026-10-06; originally under 1 second).
 
 6. Agent Behavior & Intelligence
 

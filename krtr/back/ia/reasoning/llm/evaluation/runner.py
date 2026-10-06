@@ -57,7 +57,7 @@ def run_llm_evaluation(models: IaModelsConfig, config: LlmConfig) -> LlmEvaluati
     client = build_llm_client(models.llm, models.model_cache, config)
     if client is None:
         raise ValueError("Select an LLM to evaluate (--llm-model); `none` runs no model")
-    metered = MeteredLlmClient(client)
+    metered = MeteredLlmClient(client, config.turn_budget_seconds, config.min_call_seconds)
     tasks = LlmTasks(metered, PromptCatalog.load(), TemplateResponseWriter.load())
     gates = _slot_gates()
     cases = load_llm_cases(load_evaluation_set())
@@ -91,7 +91,7 @@ def _run_task(
 
     Args:
         tasks: The real LLM tasks.
-        metered: The same client, to count unavailability.
+        metered: The same client, to restart the turn's budget and count unavailability.
         gates: The action that validates each slot, as the agent applies it.
         task: The task.
         cases: Its cases in one language.
@@ -100,12 +100,13 @@ def _run_task(
         TaskOutcome: the counts and the latency.
     """
     logger.info("Evaluating %s on %d cases", task.value, len(cases))
-    metered.reset()
-    latencies, right, false_positives = [], 0, 0
+    latencies, right, false_positives, unavailable = [], 0, 0, 0
     for case in cases:
+        metered.reset()  # Each case is one turn, with the turn's whole LLM budget.
         started_at = time.perf_counter()
         answer = _answer(tasks, gates, case)
         latencies.append((time.perf_counter() - started_at) * MILLISECONDS_PER_SECOND)
+        unavailable += metered.failures
         right += answer == case.expected
         false_positives += case.expected in (NO_ANSWER, NOT_CONFIRMED) and answer != case.expected
     return TaskOutcome(
@@ -114,7 +115,7 @@ def _run_task(
         right=right,
         wrong=len(cases) - right,
         false_positives=false_positives,
-        unavailable=metered.failures,
+        unavailable=unavailable,
         latency_ms_p50=float(np.percentile(latencies, 50)) if latencies else 0.0,
         latency_ms_p95=float(np.percentile(latencies, P95)) if latencies else 0.0,
     )
@@ -136,13 +137,17 @@ def _answer(tasks: LlmTasks, gates: dict[str, DeterministicAction], case: LlmCas
         str: an option, a value, `none`, or `true` / `false`.
     """
     if case.task == LlmTask.CONFIRM_GUARD:
-        confirmed = tasks.confirm_guard(GuardLabel(case.subject), case.reply, case.language)
+        confirmed = tasks.confirm_guard(
+            GuardLabel(case.subject), case.reply, case.history, case.language
+        )
         return CONFIRMED if confirmed else NOT_CONFIRMED
     gate = gates.get(case.subject)
     if gate is None:
-        answer = tasks.choose_option(case.subject, case.options, case.reply, case.language)
+        answer = tasks.choose_option(
+            case.subject, case.options, case.reply, case.history, case.language
+        )
         return answer or NO_ANSWER
-    answer = tasks.fill_slot(case.subject, case.options, case.reply, case.language)
+    answer = tasks.fill_slot(case.subject, case.options, case.reply, case.history, case.language)
     if answer:
         answer = gate.validate_slot(case.subject, answer)
     return answer or NO_ANSWER

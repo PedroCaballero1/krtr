@@ -11,6 +11,7 @@ from krtr.back.ia.matching.artifacts import MatchKind
 from krtr.back.ia.matching.labels import GuardLabel
 from krtr.back.ia.messages.artifacts import MessageSender
 from krtr.back.ia.messages.store import InMemoryMessageStore
+from krtr.back.ia.reasoning.llm.config import LlmConfig
 from krtr.back.security.oidc.artifacts import InterfaceLanguage
 from tests.back.ia.fakes import CUSTOMER_ID, OTHER_CUSTOMER_ID, sample_engine
 from tests.back.ia.reasoning.llm.fakes import ScriptedLlm
@@ -213,7 +214,7 @@ def test_with_an_llm_a_free_form_reply_is_answered_and_reported(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """The LLM reads "la de ahorrar"; the turn says the LLM ran and how long it took."""
-    llm = ScriptedLlm({"choice": "savings_account"})  # Only the reply reaches the LLM.
+    llm = ScriptedLlm({"choice": "savings_account"})
     monkeypatch.setattr(factory, "build_llm_client", lambda *args: llm)
     engine = sample_engine()
     _say(engine, "¿Cuál es mi saldo?")
@@ -234,3 +235,41 @@ def test_with_an_llm_a_confirmed_off_topic_message_closes(monkeypatch: pytest.Mo
 
     assert reply.outcome == TurnOutcome.CLOSED
     assert reply.reply.startswith("Cerramos esta conversación porque los mensajes no tienen")
+
+
+def test_with_an_llm_the_reply_is_read_with_the_whole_conversation_before_it(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The earlier turns reach the prompt in order; the reply being read is not among them."""
+    llm = ScriptedLlm({"choice": "savings_account"})
+    monkeypatch.setattr(factory, "build_llm_client", lambda *args: llm)
+    engine = sample_engine()
+    _say(engine, "Hola, buenos días")
+    _say(engine, "¿Cuál es mi saldo?")
+
+    _say(engine, "la de ahorrar, porfa")
+
+    prompt = llm.prompts[0]
+    conversation = prompt[prompt.index("Customer: Hola") : prompt.index("The customer was asked")]
+    assert conversation.index("Customer: Hola, buenos días") < conversation.index(
+        "Customer: ¿Cuál es mi saldo?"
+    )
+    assert "Agent: ¿Sobre qué producto?" in conversation
+    assert "\n  1. cuenta de ahorros" in conversation
+    assert "la de ahorrar" not in conversation
+
+
+def test_with_no_llm_time_left_in_the_turn_the_question_is_asked_again(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The engine applies the turn's budget: a call that can't fit never reaches the model."""
+    llm = ScriptedLlm()  # Any call would fail: there is no scripted answer.
+    monkeypatch.setattr(factory, "build_llm_client", lambda *args: llm)
+    engine = sample_engine(llm=LlmConfig(turn_budget_seconds=1.0, min_call_seconds=2.0))
+    _say(engine, "¿Cuál es mi saldo?")
+
+    reply = _say(engine, "la de ahorrar, porfa")
+
+    assert reply.outcome == TurnOutcome.NEEDS_CLARIFICATION
+    assert llm.prompts == []
+    assert not reply.details.llm_used

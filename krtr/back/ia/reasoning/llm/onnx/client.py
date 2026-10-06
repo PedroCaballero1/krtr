@@ -2,9 +2,10 @@
 
 Exists as the client of the local Hugging Face models (`LlmModel.QWEN2_5_1_5B_INSTRUCT`): CPU,
 no per-token cost, and the conversation never leaves the container. Generation is guided by the
-answer's JSON schema (LLGuidance), so the text always parses; it stops at the time budget, and
-then the caller falls back to the deterministic path. Imported only by `reasoning/llm/factory.py`
-when such a model is selected, so `none` never loads the runtime.
+answer's JSON schema (LLGuidance), so the text always parses; it stops at the time it is given,
+reading the prompt included, and then the caller falls back to the deterministic path. Imported
+only by `reasoning/llm/factory.py` when such a model is selected, so `none` never loads the
+runtime.
 """
 
 import json
@@ -34,7 +35,7 @@ class OnnxGenAiClient(LlmClient):
 
         Args:
             model_dir: The folder of the converted ONNX build (with its `genai_config.json`).
-            config: The time budget and the answer size.
+            config: The answer size.
 
         Raises:
             FileNotFoundError: if the folder doesn't hold a converted build.
@@ -48,12 +49,13 @@ class OnnxGenAiClient(LlmClient):
         self._tokenizer = og.Tokenizer(self._model)
         self._config = config
 
-    def complete(self, prompt: str, schema: type[SchemaT]) -> SchemaT:
-        """Generates one answer, guided by the schema, within the time budget.
+    def complete(self, prompt: str, schema: type[SchemaT], timeout_seconds: float) -> SchemaT:
+        """Generates one answer, guided by the schema, within the time it is given.
 
         Args:
             prompt: The full instruction, with the customer's text inside it.
             schema: The pydantic model the answer must validate against.
+            timeout_seconds: How long the call may take, reading the prompt included.
 
         Returns:
             SchemaT: the validated answer.
@@ -62,23 +64,28 @@ class OnnxGenAiClient(LlmClient):
             LlmUnavailable: on timeout, a runtime error, or an answer that doesn't validate.
         """
         try:
-            text = self._generate(prompt, json.dumps(schema.model_json_schema()))
+            deadline = time.perf_counter() + timeout_seconds
+            text = self._generate(prompt, json.dumps(schema.model_json_schema()), deadline)
             return schema.model_validate_json(text)
         except (RuntimeError, ValidationError) as error:
             raise LlmUnavailable(str(error)) from error
 
-    def _generate(self, prompt: str, json_schema: str) -> str:
-        """Runs the token loop until the answer ends, the size limit, or the time budget.
+    def _generate(self, prompt: str, json_schema: str, deadline: float) -> str:
+        """Reads the prompt and generates until the answer ends, the size limit, or the deadline.
+
+        Reading the prompt is one call into the runtime and can't be interrupted; the deadline is
+        checked right after it, so a long prompt fails before any token is generated.
 
         Args:
             prompt: The instruction.
             json_schema: The answer's JSON schema, as text.
+            deadline: The `time.perf_counter()` value the answer must arrive by.
 
         Returns:
             str: the generated JSON text.
 
         Raises:
-            LlmUnavailable: if the time budget runs out first.
+            LlmUnavailable: if the deadline passes first.
         """
         chat = self._tokenizer.apply_chat_template(
             json.dumps([{"role": "user", "content": prompt}]), add_generation_prompt=True
@@ -88,7 +95,6 @@ class OnnxGenAiClient(LlmClient):
         params.set_guidance(GUIDANCE_TYPE, json_schema)
         generator = og.Generator(self._model, params)
         generator.append_tokens(self._tokenizer.encode(chat))
-        deadline = time.perf_counter() + self._config.timeout_seconds
         tokens: list[int] = []
         while not generator.is_done() and len(tokens) < self._config.max_new_tokens:
             if time.perf_counter() > deadline:

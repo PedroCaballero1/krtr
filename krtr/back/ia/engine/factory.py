@@ -28,6 +28,8 @@ from krtr.back.ia.reasoning.clarifier import TemplateClarifier
 from krtr.back.ia.reasoning.llm.base import MeteredLlmClient
 from krtr.back.ia.reasoning.llm.clarifier import LlmClarifier
 from krtr.back.ia.reasoning.llm.factory import build_llm_client
+from krtr.back.ia.reasoning.llm.guard import LlmGuardConfirmer
+from krtr.back.ia.reasoning.llm.history import ConversationHistory
 from krtr.back.ia.reasoning.llm.prompts.catalog import PromptCatalog
 from krtr.back.ia.reasoning.llm.tasks import LlmTasks
 from krtr.back.ia.reasoning.resolver import TurnResolver
@@ -68,12 +70,14 @@ def build_engine(
     thresholds = load_thresholds(settings.models.embedding)
     writer = TemplateResponseWriter.load()
     llm, tasks = _build_llm(settings, writer)
+    history = ConversationHistory(messages, settings.llm.history)
     template = TemplateClarifier(actions)
-    clarifier = LlmClarifier(template, tasks, actions) if tasks else template
+    clarifier = LlmClarifier(template, tasks, actions, history) if tasks else template
+    confirmer = LlmGuardConfirmer(tasks, history) if tasks else None
     return ConversationEngine(
         embedder=embedder,
         matcher=IntentMatcher(catalog, thresholds),
-        guardrails=GuardrailPolicy(settings.conversation, thresholds, confirmer=tasks),
+        guardrails=GuardrailPolicy(settings.conversation, thresholds, confirmer=confirmer),
         resolver=TurnResolver(actions, clarifier, settings.conversation),
         actions=actions,
         writer=writer,
@@ -126,5 +130,7 @@ def _build_llm(
     client = build_llm_client(settings.models.llm, settings.models.model_cache, settings.llm)
     if client is None:
         return None, None
-    metered = MeteredLlmClient(client)
+    metered = MeteredLlmClient(
+        client, settings.llm.turn_budget_seconds, settings.llm.min_call_seconds
+    )
     return metered, LlmTasks(metered, PromptCatalog.load(), writer)
