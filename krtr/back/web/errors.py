@@ -23,6 +23,9 @@ class ApiErrorCode(StrEnum):
     AUTH_UNAVAILABLE = "auth_unavailable"  # Login is not configured (development only).
     CSRF_REJECTED = "csrf_rejected"  # Foreign origin, or no matching X-KRTR-CSRF (task 4.5).
     CASE_NOT_FOUND = "case_not_found"  # Also another customer's case: the same 404 (task 4.8).
+    AUDIO_TOO_LARGE = "audio_too_large"  # A voice note over 2 MB (task 4.9).
+    UNSUPPORTED_AUDIO = "unsupported_audio"  # Not WebM/MP4 audio, by type or by its bytes.
+    REQUEST_TOO_LARGE = "request_too_large"  # Any body over the app-wide limit.
 
 
 class MessageKey(StrEnum):
@@ -38,6 +41,9 @@ class MessageKey(StrEnum):
     AUTH_UNAVAILABLE = "auth_unavailable"
     CSRF_REJECTED = "csrf_rejected"
     CASE_NOT_FOUND = "support_case_not_found"
+    AUDIO_TOO_LARGE = "chat_error_voice_too_large"
+    UNSUPPORTED_AUDIO = "chat_error_voice_unsupported"
+    REQUEST_TOO_LARGE = "request_too_large"
 
 
 def api_error(status_code: int, code: ApiErrorCode, message_key: MessageKey) -> JSONResponse:
