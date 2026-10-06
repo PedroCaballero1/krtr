@@ -2,8 +2,7 @@
 
 Exists to give every request a `request_id` and a one-line start/end log
 entry, per §3.4 of docs/guia-web-seguridad_modal.md ("Todas las respuestas llevan
-un request_id"), and to refuse oversized bodies before anything reads them.
-Consumed by `krtr/back/web/app.py`.
+un request_id"). Consumed by `krtr/back/web/app.py`.
 """
 
 import logging

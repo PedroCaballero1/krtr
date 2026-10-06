@@ -240,18 +240,29 @@ goes through the standard `logging` module.
 - Get a module-scoped logger with `logging.getLogger(__name__)`; do not configure
   logging handlers inside library/vertical code — configuration belongs in the CLI
   entrypoint (`krtr/cli/`).
-- **Exception:** the remote entrypoint under `krtr/compute/modal/` runs in a Modal
-  container, which is a separate process with no CLI entrypoint. It configures logging
-  itself, once, before dispatching the task.
+- **Exception:** code that runs inside a Modal container has no CLI entrypoint, because it
+  is a separate process: the remote entrypoint under `krtr/compute/modal/` and the functions
+  of the krtr-web Modal app under `krtr/back/deploy/`. Each configures logging itself, once,
+  when it starts.
 
 ## Modal (remote execution) is optional
 
 `modal` is an optional dependency (the `modal` extra: `uv add --optional modal modal`),
 so a user who only loads data into Neon locally needs neither the SDK nor a token.
 
-- Import `modal` only inside the code paths that run remotely (`krtr/compute/modal/`),
-  never at module level of anything the local path imports, so `krtr database neon load`
-  without `--remote` never loads it.
+- Import `modal` only in the code paths that run on Modal: `krtr/compute/modal/` and
+  `krtr/back/deploy/` (the krtr-web Modal app of `docs/guia-web-seguridad_modal.md`). Never
+  import it at module level of anything the local path imports, so `krtr database neon load`
+  without `--remote` and `krtr back web serve` never load it.
+- `krtr/back/deploy/` may import `modal` at module level: only `modal deploy`, `modal serve`
+  and the Modal containers load it. CLI commands that talk to Modal (such as
+  `krtr back deploy push-secrets`) import it inside the function that uses it, as
+  `krtr/compute/modal/secrets.py` does.
+- Tests of a module that imports `modal` at module level start with
+  `pytest.importorskip("modal")`, as `tests/compute/modal/test_app.py` does.
+- Run the Modal CLI for krtr from the repo root as `uv run --env-file .env modal …`. The
+  `modal` CLI does not read `.env`, so without it the active `~/.modal.toml` profile is used,
+  which may be another workspace.
 - The local path must keep working, unchanged, without Modal installed.
 
 ## Local CLI state lives in `.krtr/`

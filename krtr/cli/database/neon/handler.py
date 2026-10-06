@@ -18,11 +18,12 @@ import typer
 
 from krtr.cli.compute.modal.options import DetachOption, RemoteOption, resolve_execution_mode
 from krtr.cli.compute.modal.reporting import report_launched
-from krtr.compute.modal.config import RemoteTask, RunStatus
+from krtr.compute.modal.config import ExecutionMode, RemoteTask, RunStatus
 from krtr.compute.modal.errors import RemoteExecutionError
 from krtr.compute.modal.runner import run_task
+from krtr.database.neon.artifacts import LoadSummary
 from krtr.database.neon.client import NeonClient
-from krtr.database.neon.loader import DEFAULT_BATCH_SIZE
+from krtr.database.neon.loader import DEFAULT_BATCH_SIZE, merge_load_summaries
 from krtr.database.neon.schema import create_table_schema
 from krtr.database.neon.source import resolve_partitioned_sources, resolve_table_source
 from krtr.database.neon.validation import RowValidationError

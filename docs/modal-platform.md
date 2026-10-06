@@ -175,35 +175,6 @@ HTTP 404
 
 Sin `--yes`, `modal app stop` pide confirmación y, fuera de una terminal interactiva, cancela sin detener nada.
 
-## Registro de gasto diario
-
-_Tarea 6.8 de la guía. Una fila por día mientras la página esté en producción, sobre todo con el modo demo encendido (D17)._
-
-**Presupuesto.** Plan Starter de Modal: 30 USD/mes de créditos, sin pagos adicionales. Con el modo demo encendido y la región fija `us-east`, `web` (0,25 CPU / 0,5 GiB) y `auth` (1 CPU / 1,5 GiB) cuestan unos **3,15 USD/día** (§8 de la guía; las tarifas de `modal billing rates` coinciden: 0,0473 USD/núcleo/h y 0,008 USD/GiB/h, ×1,75 por la región). Alcanza para unos 9 días encendidos. Neon tiene `production` encendido 24/7 (scale-to-zero desactivado) y puede escalar hasta 8 CU.
-
-### Cómo leer el gasto
-
-**Modal, desde el CLI** (desde la raíz del repo):
-
-```bash
-# Mes en curso: gasto medido, créditos aplicados y lo que se cobraría
-uv run --env-file .env modal billing summary
-# Por día y por recurso (los días son UTC y solo salen los completos)
-uv run --env-file .env modal billing report --start 2026-10-05 --resolution d --show-resources
-# Hoy, por hora, en hora local
-uv run --env-file .env modal billing report --for today -r h --tz local --show-resources
-```
-
-El CLI **no** muestra el saldo de créditos que queda ni permite fijar un límite de gasto: `modal workspace settings` solo maneja `default-environment` e `image-builder-version`. Ambas cosas se ven en el dashboard: **Settings → Usage and Billing** del workspace `juan-alvarezo-2002` (https://modal.com/settings/juan-alvarezo-2002/usage). Ahí también se revisa si Modal ofrece un límite de gasto para el plan Starter.
-
-**Neon:** no hay CLI ni API key de Neon en el repo. El consumo (horas de cómputo, almacenamiento) se ve en la consola, https://console.neon.tech → proyecto "Hackathon" → **Billing** (y **Monitoring** para las CU de `production`).
-
-### Registro
-
-| Fecha (COT) | Modo demo | Modal: gasto del mes | Modal: créditos restantes | Neon | Proyección | Notas |
-|---|---|---|---|---|---|---|
-| 5-oct-2026 | Encendido desde las 21:25 | 0,35 USD medidos (apps desplegadas 0,36; temporales 0,00), cubiertos por créditos (−0,34) y la franquicia de egreso (−0,01): **0,00 USD cobrados** | ⬜ Ver en el dashboard (≈ 29,65 si el mes empezó con 30) | ⬜ Ver en la consola | ≈ 3,15 USD/día con el modo demo: ≈ 9 días | `krtr-web` salió al aire a las 21:25 COT (02:25 UTC del 6-oct). Su primera hora completa (02:00–03:00 UTC) costó 0,088 USD (CPU 0,062, memoria 0,016, egreso 0,010), con la importación de 150.000 usuarios incluida. Del 1 al 4 de octubre solo hubo pruebas (`krtr-probe`, `krtr-image-check`): menos de 0,01 USD. Leído con `modal billing summary --json` y `modal billing report` a las 22:48 COT. |
-
 ## Anexo: código de `krtr-probe`
 
 La app no forma parte del paquete `krtr`. Se desplegó desde un archivo temporal con `uv run --env-file .env modal deploy krtr_probe.py`.

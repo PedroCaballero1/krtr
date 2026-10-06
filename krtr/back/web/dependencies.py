@@ -27,7 +27,7 @@ from krtr.back.security.sessions.config import SESSION_COOKIE_NAME
 from krtr.back.security.sessions.errors import SessionRejected
 from krtr.back.security.sessions.service import SessionService
 from krtr.back.web.auditing import schedule_event
-from krtr.back.web.cookies import clear_csrf_cookie, clear_session_cookie
+from krtr.back.web.cookies import clear_session_cookie
 from krtr.back.web.errors import ApiErrorCode, MessageKey, api_error
 
 logger = logging.getLogger(__name__)
@@ -121,7 +121,7 @@ def require_session(
 
 
 async def handle_session_rejected(request: Request, error: SessionRejected) -> JSONResponse:
-    """Answers a rejected session with 401, clears its cookies, and records why.
+    """Answers a rejected session with 401, clears its cookie, and records why.
 
     Args:
         request: The rejected request.
@@ -135,7 +135,6 @@ async def handle_session_rejected(request: Request, error: SessionRejected) -> J
     )
     response = api_error(401, code, message_key)
     clear_session_cookie(response)
-    clear_csrf_cookie(response)
     tasks = BackgroundTasks()
     reason = {"path": request.url.path, "reason": error.reason.value}
     schedule_event(request, tasks, EventName.UNAUTHORIZED_REQUEST, reason)

@@ -10,7 +10,6 @@ from krtr.back.security.keycloak.config import KeycloakAdminConfig
 CONFIG = KeycloakAdminConfig(admin_password="test-admin-password")
 TOKEN_URL = "http://localhost:8080/realms/master/protocol/openid-connect/token"
 USERS_URL = "http://localhost:8080/admin/realms/krtr/users"
-PARTIAL_IMPORT_URL = "http://localhost:8080/admin/realms/krtr/partialImport"
 
 
 class FakeKeycloakAdmin:
@@ -20,12 +19,10 @@ class FakeKeycloakAdmin:
         """Registers the routes on a respx router; starts with no users."""
         self.users: dict[str, dict] = {}  # id → user representation, as POSTed.
         self.admin_logins: list[dict[str, str]] = []
-        self.import_bodies: list[dict] = []
         router.post(TOKEN_URL).mock(side_effect=self._token)
         router.get(USERS_URL).mock(side_effect=self._search)
         router.post(USERS_URL).mock(side_effect=self._create)
         router.delete(url__startswith=f"{USERS_URL}/").mock(side_effect=self._delete)
-        router.post(PARTIAL_IMPORT_URL).mock(side_effect=self._partial_import)
 
     def _token(self, request: httpx.Request) -> httpx.Response:
         """Accepts only the configured admin password."""
@@ -33,7 +30,7 @@ class FakeKeycloakAdmin:
         self.admin_logins.append(form)
         if form.get("password") != CONFIG.admin_password.get_secret_value():
             return httpx.Response(401, json={"error": "invalid_grant"})
-        return httpx.Response(200, json={"access_token": "admin-token", "expires_in": 60})
+        return httpx.Response(200, json={"access_token": "admin-token"})
 
     def _authorized(self, request: httpx.Request) -> bool:
         """Tells whether the request carries the admin's token."""
@@ -68,16 +65,3 @@ class FakeKeycloakAdmin:
         """Returns the password a user was created with."""
         user = next(u for u in self.users.values() if u["username"] == username)
         return user["credentials"][0]["value"]
-
-    def _partial_import(self, request: httpx.Request) -> httpx.Response:
-        """Adds the users that do not exist yet and skips the rest, like ifResourceExists=SKIP."""
-        if not self._authorized(request):
-            return httpx.Response(401)
-        body = json.loads(request.content)
-        self.import_bodies.append(body)
-        existing = {user["username"] for user in self.users.values()}
-        added = [user for user in body["users"] if user["username"] not in existing]
-        for user in added:
-            self.users[f"id-{len(self.users) + 1}"] = user
-        skipped = len(body["users"]) - len(added)
-        return httpx.Response(200, json={"added": len(added), "skipped": skipped, "overwritten": 0})

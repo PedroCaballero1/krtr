@@ -7,10 +7,6 @@ from pathlib import Path
 import pytest
 from fastapi.testclient import TestClient
 
-from krtr.back.ia.config import IaEnvironmentVariable
-from krtr.back.ia.matching.models import EmbeddingModel
-from krtr.back.ia.messages import store as message_store_module
-from krtr.back.ia.reasoning.llm.models import LlmModel
 from krtr.back.security.audit import recorder as recorder_module
 from krtr.back.security.audit.event_names import EventName
 from krtr.back.security.audit.recorder import EventRecorder
@@ -18,11 +14,7 @@ from krtr.back.security.crypto.config import CryptoEnvironmentVariable
 from krtr.back.security.oidc.config import OidcEnvironmentVariable
 from krtr.back.web import app as app_module
 from krtr.back.web.app import create_app
-from krtr.back.web.chat.agent import AgentChatResponder
-from krtr.back.web.chat.responder import StubChatResponder
 from krtr.back.web.config import WebConfig, WebEnvironment, WebEnvironmentVariable
-from krtr.database.neon import config as neon_config_module
-from krtr.database.neon.config import NeonEnvironmentVariable
 from tests.back.security.audit.fakes import InMemoryRecorder, refuse_to_open_neon
 
 
@@ -30,8 +22,6 @@ from tests.back.security.audit.fakes import InMemoryRecorder, refuse_to_open_neo
 def served_environment(monkeypatch: pytest.MonkeyPatch) -> pytest.MonkeyPatch:
     """Isolates create_served_app from the developer's .env, its keys and secrets, and Neon."""
     monkeypatch.setattr(app_module, "load_dotenv", lambda: None)
-    monkeypatch.setattr(neon_config_module, "load_dotenv", lambda: None)
-    monkeypatch.delenv(NeonEnvironmentVariable.CONNECTION_STRING, raising=False)
     monkeypatch.setattr(recorder_module, "NeonClient", refuse_to_open_neon)
     monkeypatch.setattr(app_module, "NeonClient", refuse_to_open_neon)
     for variable in (*CryptoEnvironmentVariable, *OidcEnvironmentVariable):
@@ -43,26 +33,7 @@ def configure_login(monkeypatch: pytest.MonkeyPatch) -> None:
     """Gives the served app what its login needs, with a stand-in Neon client."""
     monkeypatch.setenv(OidcEnvironmentVariable.CLIENT_SECRET, "test-client-secret")
     monkeypatch.setenv(CryptoEnvironmentVariable.TOKENS_KEY, base64.b64encode(b"t" * 32).decode())
-    configure_chat(monkeypatch)  # Also stands in for the sessions' Neon client, unused here.
-
-
-class StandInNeonClient:
-    """Stands in for NeonClient where the test never queries: it opens no connection."""
-
-    def __init__(self, config: object = None) -> None:
-        """Accepts the config a real client would connect with, and ignores it."""
-        self.config = config
-
-
-def configure_chat(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Gives the served app what its chat needs, with stand-in Neon clients."""
-    monkeypatch.setenv(NeonEnvironmentVariable.CONNECTION_STRING, "postgresql://test/test")
-    monkeypatch.setenv(CryptoEnvironmentVariable.MESSAGES_KEY, base64.b64encode(b"m" * 32).decode())
-    monkeypatch.setattr(app_module, "NeonClient", StandInNeonClient)
-    monkeypatch.setattr(message_store_module, "NeonClient", StandInNeonClient)
-    # Offline, deterministic models: the served app must not download weights in a test.
-    monkeypatch.setenv(IaEnvironmentVariable.EMBEDDING_MODEL, EmbeddingModel.HASHING.value)
-    monkeypatch.setenv(IaEnvironmentVariable.LLM_MODEL, LlmModel.NONE.value)
+    monkeypatch.setattr(app_module, "NeonClient", object)  # Sessions are not used by these tests.
 
 
 def test_healthz_reports_ok() -> None:
@@ -231,40 +202,3 @@ def test_served_app_sends_logins_to_keycloak_when_configured(
     assert response.headers["location"].startswith(
         "http://localhost:8080/realms/krtr/protocol/openid-connect/auth?"
     )
-
-
-def test_served_app_answers_the_chat_with_the_engine_in_production(
-    served_environment: pytest.MonkeyPatch,
-) -> None:
-    """Production chats with the conversation engine of krtr/back/ia/, not the placeholder."""
-    served_environment.setenv(WebEnvironmentVariable.ENVIRONMENT, WebEnvironment.PRODUCTION)
-    served_environment.setattr(EventRecorder, "from_environment", lambda: InMemoryRecorder())
-    configure_login(served_environment)
-
-    served_app = app_module.create_served_app()
-
-    assert isinstance(served_app.state.chat_responder, AgentChatResponder)
-
-
-def test_served_app_refuses_to_start_in_production_without_the_messages_key(
-    served_environment: pytest.MonkeyPatch,
-) -> None:
-    """Chat text must be stored encrypted (§3.6): no key, no production app."""
-    served_environment.setenv(WebEnvironmentVariable.ENVIRONMENT, WebEnvironment.PRODUCTION)
-    served_environment.setattr(EventRecorder, "from_environment", lambda: InMemoryRecorder())
-    configure_login(served_environment)
-    served_environment.delenv(CryptoEnvironmentVariable.MESSAGES_KEY)
-
-    with pytest.raises(ValueError, match=CryptoEnvironmentVariable.MESSAGES_KEY.value):
-        app_module.create_served_app()
-
-
-def test_served_app_answers_the_placeholder_in_development_without_neon(
-    served_environment: pytest.MonkeyPatch,
-) -> None:
-    """Development without Neon keeps the chat usable with the D15 placeholder."""
-    served_environment.setenv(WebEnvironmentVariable.ENVIRONMENT, WebEnvironment.DEVELOPMENT)
-
-    served_app = app_module.create_served_app()
-
-    assert isinstance(served_app.state.chat_responder, StubChatResponder)

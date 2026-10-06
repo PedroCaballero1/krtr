@@ -249,10 +249,7 @@ class KeycloakOidcClient:
             raise LoginError(LoginFailureReason.KEYS_UNAVAILABLE) from error
         except (JoseError, ValueError) as error:
             raise LoginError(LoginFailureReason.INVALID_ID_TOKEN) from error
-        # Keycloak stores usernames in lowercase; every customer_id in the source data is
-        # uppercase (CLI-XXXXXXXXXXXX), so this restores the exact ID the tables use.
-        customer_id = claims["preferred_username"].upper()
-        return LoginIdentity(customer_id=customer_id, subject=claims["sub"])
+        return LoginIdentity(customer_id=claims["preferred_username"], subject=claims["sub"])
 
     def _claims_registry(self, nonce: str) -> jwt.JWTClaimsRegistry:
         """Builds the claim rules an ID token of this login must satisfy.

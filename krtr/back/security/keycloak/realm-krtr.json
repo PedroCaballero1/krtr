@@ -2,7 +2,6 @@
   "id": "2e037caf-a906-4354-9aa2-243464cbb011",
   "realm": "krtr",
   "displayName": "krtr",
-  "loginTheme": "krtr",
   "notBefore": 0,
   "defaultSignatureAlgorithm": "RS256",
   "revokeRefreshToken": false,

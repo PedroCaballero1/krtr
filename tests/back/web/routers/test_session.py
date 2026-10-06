@@ -47,7 +47,7 @@ def test_activity_pushes_the_idle_deadline_back(web: WebHarness) -> None:
     web.log_in()
     web.clock.advance(minutes=4)
 
-    activity = web.post("/api/session/activity")
+    activity = web.client.post("/api/session/activity")
     web.clock.advance(minutes=4)
     me = web.client.get("/api/me")
 
@@ -61,10 +61,10 @@ def test_activity_never_moves_the_absolute_deadline(web: WebHarness) -> None:
     web.log_in()
     for _ in range(7):
         web.clock.advance(minutes=4)
-        assert web.post("/api/session/activity").status_code == 200
+        assert web.client.post("/api/session/activity").status_code == 200
     web.clock.advance(minutes=2)
 
-    response = web.post("/api/session/activity")
+    response = web.client.post("/api/session/activity")
 
     assert response.status_code == 401
     assert response.json() == {
@@ -120,7 +120,7 @@ def test_activity_refreshes_tokens_that_are_about_to_expire(web: WebHarness) -> 
     first_tokens = web.store.find(hash_session_token(token)).tokens
     web.clock.advance(minutes=4, seconds=30)
 
-    web.post("/api/session/activity")
+    web.client.post("/api/session/activity")
 
     assert web.refresher.calls == [first_tokens.refresh_token]
     assert web.store.find(hash_session_token(token)).tokens != first_tokens
@@ -132,7 +132,7 @@ def test_a_refused_refresh_ends_the_session(web: WebHarness) -> None:
     web.refresher.refuse = True
     web.clock.advance(minutes=4, seconds=30)
 
-    response = web.post("/api/session/activity")
+    response = web.client.post("/api/session/activity")
 
     assert response.status_code == 401
     assert response.json()["error"] == "unauthorized"

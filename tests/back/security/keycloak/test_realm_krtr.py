@@ -106,19 +106,6 @@ def test_login_is_offered_in_spanish_and_portuguese(realm: dict[str, Any]) -> No
     assert realm["defaultLocale"] == "es"
 
 
-def test_login_uses_the_krtr_theme_in_both_languages(realm: dict[str, Any]) -> None:
-    """Task 3.3: the login pages are krtr's, and the theme translates every realm language."""
-    theme = REALM_FILE.parent / "themes" / realm["loginTheme"] / "login"
-    properties = (theme / "theme.properties").read_text()
-    theme_locales = re.search(r"^locales=(.+)$", properties, flags=re.MULTILINE).group(1)
-
-    assert realm["loginTheme"] == "krtr"
-    assert sorted(theme_locales.split(",")) == sorted(realm["supportedLocales"])
-    for locale in realm["supportedLocales"]:
-        messages = theme / "messages" / f"messages_{locale.replace('-', '_')}.properties"
-        assert "krtrLoginBody=" in messages.read_text(encoding="utf-8"), locale
-
-
 def test_profile_never_asks_for_email_or_names(realm: dict[str, Any]) -> None:
     """D5: emails and names are not imported, so login neither requires nor accepts them."""
     provider = realm["components"]["org.keycloak.userprofile.UserProfileProvider"][0]
