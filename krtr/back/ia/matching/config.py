@@ -18,6 +18,7 @@ class MatchThresholds(BaseModel):
     reject: float = Field(default=0.25, ge=0, le=1)  # Best intent below this: no match.
     margin: float = Field(default=0.05, ge=0, le=1)  # Lead over the second intent to match.
     guard: float = Field(default=0.6, gt=0, le=1)  # A guard label at least this: flagged.
+    repeat: float = Field(default=0.95, gt=0, le=1)  # An earlier message this similar: a repeat.
     top_k: int = Field(default=3, ge=2)  # Candidates kept for the clarifier.
 
     @model_validator(mode="after")

@@ -20,6 +20,6 @@ def test_changing_a_loaded_state_does_not_change_the_saved_one() -> None:
     store = InMemoryConversationStateStore()
     store.save(store.load(CUSTOMER_ID, "INC-1"))
 
-    store.load(CUSTOMER_ID, "INC-1").recent_messages.append("hola")
+    store.load(CUSTOMER_ID, "INC-1").recent_requests.append("hola")
 
-    assert store.load(CUSTOMER_ID, "INC-1").recent_messages == []
+    assert store.load(CUSTOMER_ID, "INC-1").recent_requests == []

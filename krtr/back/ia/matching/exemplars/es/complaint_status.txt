@@ -3,3 +3,10 @@ Quiero saber el estado de mi queja
 ¿En qué estado está mi reclamación?
 Necesito hacer seguimiento a mi queja
 ¿Cuál es el estado de mi caso?
+¿Ya resolvieron mi reclamo?
+Puse una queja hace unos días, ¿qué ha pasado?
+¿Hay novedades sobre mi solicitud?
+¿Ya me respondieron la queja que puse?
+Consultar el estado de un caso
+¿Mi reclamo sigue abierto?
+Quiero saber si ya cerraron mi caso
