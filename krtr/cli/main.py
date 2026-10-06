@@ -16,10 +16,7 @@ from importlib.metadata import version as get_installed_version
 
 import typer
 
-from krtr.cli.database import database_app
-
 app = typer.Typer(name="krtr", help="krtr command-line interface.", no_args_is_help=True)
-app.add_typer(database_app, name="database")
 logger = logging.getLogger(__name__)
 
 

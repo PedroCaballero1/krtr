@@ -111,7 +111,8 @@ class DatabaseBackend(str, Enum):
     SNOWFLAKE = "snowflake"
 
 
-def get_client(backend: Literal[DatabaseBackend.S3, DatabaseBackend.SNOWFLAKE]) -> Client: ...
+def get_client(backend: Literal[DatabaseBackend.S3, DatabaseBackend.SNOWFLAKE]) -> Client:
+    ...
 ```
 
 ## No nested functions or methods
@@ -187,46 +188,6 @@ This repository uses `pydantic` (`BaseModel`) for exactly two purposes:
 Do not introduce `pydantic` models for internal, throwaway, or purely local data —
 plain classes or built-in types are fine there.
 
-## SQL statements live in `.sql` files, never as Python string literals
-
-Never declare a SQL statement (DDL or DML: `CREATE TABLE`, `CREATE INDEX`,
-`INSERT`, `SELECT`, ...) as a Python string constant or inline literal,
-including in an `artifacts.py`. All SQL text lives in `.sql` files under
-`krtr/database/queries/<table>/`, one subdirectory per table:
-
-- `krtr/database/queries/<table>/table.sql` — that table's schema DDL
-  (`CREATE TABLE`, its indexes, etc.).
-- `krtr/database/queries/<table>/query.sql` — that table's data-manipulation
-  query (e.g. the `INSERT` template a loader uses).
-
-Example: the `products` table's DDL lives at
-`krtr/database/queries/products/table.sql` and its load query at
-`krtr/database/queries/products/query.sql`.
-
-Python code never builds or concatenates SQL strings for these cases; it
-reads the `.sql` file (e.g. via `krtr.database.queries.load_sql`) and passes
-the text straight to the database client. This keeps SQL reviewable and
-editable as SQL, and keeps a table's schema and query in one discoverable
-place per table.
-
-Do not create indexes unless the user explicitly asks for them for that
-table; a table's `.sql` files ship with no indexes by default.
-
-### SQL docstrings
-
-Every `.sql` file must open with a docstring-style comment block (`--`
-lines) explaining, like a Python module docstring, why the file exists and
-where it is consumed — and every CTE (`WITH <name> AS (...)`) must have its
-own short `--` comment immediately above it explaining what that CTE
-computes.
-
-`table.sql` files must additionally document every column: its type and its
-business meaning, one `--` line per column, immediately above or beside its
-definition. This column documentation must come from the user (or from
-existing, user-provided documentation of the table) — never invented or
-inferred from the column name alone. If a table's full column documentation
-has not been provided, ask the user for it before writing the `table.sql`.
-
 ## Logging
 
 Never use `print` for output. All output — status updates, progress, results, errors —
@@ -240,36 +201,6 @@ goes through the standard `logging` module.
 - Get a module-scoped logger with `logging.getLogger(__name__)`; do not configure
   logging handlers inside library/vertical code — configuration belongs in the CLI
   entrypoint (`krtr/cli/`).
-- **Exception:** code that runs inside a Modal container has no CLI entrypoint, because it
-  is a separate process: the remote entrypoint under `krtr/compute/modal/` and the functions
-  of the krtr-web Modal app under `krtr/back/deploy/`. Each configures logging itself, once,
-  when it starts.
-
-## Modal (remote execution) is optional
-
-`modal` is an optional dependency (the `modal` extra: `uv add --optional modal modal`),
-so a user who only loads data into Neon locally needs neither the SDK nor a token.
-
-- Import `modal` only in the code paths that run on Modal: `krtr/compute/modal/` and
-  `krtr/back/deploy/` (the krtr-web Modal app of `docs/guia-web-seguridad_modal.md`). Never
-  import it at module level of anything the local path imports, so `krtr database neon load`
-  without `--remote` and `krtr back web serve` never load it.
-- `krtr/back/deploy/` may import `modal` at module level: only `modal deploy`, `modal serve`
-  and the Modal containers load it. CLI commands that talk to Modal (such as
-  `krtr back deploy push-secrets`) import it inside the function that uses it, as
-  `krtr/compute/modal/secrets.py` does.
-- Tests of a module that imports `modal` at module level start with
-  `pytest.importorskip("modal")`, as `tests/compute/modal/test_app.py` does.
-- Run the Modal CLI for krtr from the repo root as `uv run --env-file .env modal …`. The
-  `modal` CLI does not read `.env`, so without it the active `~/.modal.toml` profile is used,
-  which may be another workspace.
-- The local path must keep working, unchanged, without Modal installed.
-
-## Local CLI state lives in `.krtr/`
-
-State that the CLI itself keeps between runs (e.g. `.krtr/runs.jsonl`, the record of
-Modal runs) lives in `.krtr/` at the repo root, which is git-ignored. `data/` is reserved
-for datasets and must not hold CLI state.
 
 ## Testing philosophy
 
@@ -285,15 +216,6 @@ Tests must verify the actual behavior and intent of the code, not just exercise 
 - A test that would still pass after the underlying logic is broken is worse than no
   test — it should be rewritten or removed.
 
-## Dependency management: always use `uv`
-
-Never hand-edit `pyproject.toml`'s `dependencies` (or `uv.lock`) to add,
-remove, or change the version of a package. Always use `uv` for this
-(`uv add <package>`, `uv remove <package>`, `uv add --upgrade-package
-<package>`, etc.), so `pyproject.toml` and `uv.lock` stay resolved and
-consistent. If `uv` is not installed in the working environment, install it
-first rather than falling back to a manual edit.
-
 ## Commit messages
 
 Commits must follow Conventional Commits: `<type>(<scope>): <description>`.
@@ -305,9 +227,3 @@ Commits must follow Conventional Commits: `<type>(<scope>): <description>`.
 - `description` is a short, imperative summary (e.g. "add", not "added"/"adds").
 
 Example: `feat(database/snowflake): add connection pooling`.
-
-## Downloaded datasets
-
-All downloaded datasets must be saved under `C:\Users\pcaba\krtr\data` (the `data/` directory
-at the repo root). Use it as the `local_path` whenever downloading data (e.g. from S3) instead
-of any other location.

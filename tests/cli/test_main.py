@@ -6,8 +6,6 @@ commands execute without raising.
 """
 
 import logging
-import subprocess
-import sys
 from importlib.metadata import version as get_installed_version
 
 from typer.testing import CliRunner
@@ -61,18 +59,3 @@ def test_default_invocation_keeps_root_logger_at_info_level() -> None:
         assert root_logger.level == logging.INFO
     finally:
         root_logger.setLevel(original_level)
-
-
-def test_starting_the_cli_never_loads_the_optional_modal_sdk() -> None:
-    """Users of the local route may not have Modal; merely running `krtr` must not need it.
-
-    Runs in a fresh interpreter, because the test process may already have imported
-    the SDK.
-    """
-    program = "import sys, krtr.cli.main; print('modal' in sys.modules)"
-
-    completed = subprocess.run(
-        [sys.executable, "-c", program], capture_output=True, text=True, check=True
-    )
-
-    assert completed.stdout.strip() == "False"
