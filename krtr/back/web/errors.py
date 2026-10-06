@@ -22,6 +22,7 @@ class ApiErrorCode(StrEnum):
     LOGIN_FAILED = "login_failed"  # The OIDC callback was rejected (task 4.3).
     AUTH_UNAVAILABLE = "auth_unavailable"  # Login is not configured (development only).
     CSRF_REJECTED = "csrf_rejected"  # Foreign origin, or no matching X-KRTR-CSRF (task 4.5).
+    CASE_NOT_FOUND = "case_not_found"  # Also another customer's case: the same 404 (task 4.8).
 
 
 class MessageKey(StrEnum):
@@ -36,6 +37,7 @@ class MessageKey(StrEnum):
     LOGIN_FAILED = "login_failed"
     AUTH_UNAVAILABLE = "auth_unavailable"
     CSRF_REJECTED = "csrf_rejected"
+    CASE_NOT_FOUND = "support_case_not_found"
 
 
 def api_error(status_code: int, code: ApiErrorCode, message_key: MessageKey) -> JSONResponse:

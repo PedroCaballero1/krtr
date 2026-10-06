@@ -25,11 +25,13 @@ from krtr.back.security.oidc.config import OidcConfig
 from krtr.back.security.oidc.login_cookie import LoginCookieCodec
 from krtr.back.security.sessions.service import SessionService
 from krtr.back.security.sessions.store import SessionStore
+from krtr.back.web.cases.repository import CaseRepository, StubCaseRepository
 from krtr.back.web.config import WebConfig, WebEnvironment
 from krtr.back.web.csrf import register_csrf_error_handler
 from krtr.back.web.dependencies import AuthServices, register_auth_error_handlers
 from krtr.back.web.middleware import log_request
 from krtr.back.web.routers.auth import auth_router
+from krtr.back.web.routers.cases import cases_router
 from krtr.back.web.routers.events import events_router
 from krtr.back.web.routers.health import health_router
 from krtr.back.web.routers.session import session_router
@@ -47,6 +49,7 @@ def create_app(
     event_recorder: EventRecorder | None = None,
     auth_services: AuthServices | None = None,
     csrf_config: CsrfConfig | None = None,
+    case_repository: CaseRepository | None = None,
 ) -> FastAPI:
     """Builds and configures the krtr-web FastAPI application.
 
@@ -68,6 +71,8 @@ def create_app(
             `create_served_app` always provides them in production.
         csrf_config: The origin state-changing requests must come from (task 4.5). When
             None, it is loaded from the environment via `CsrfConfig.from_environment`.
+        case_repository: Where the customers' cases live (task 4.8). When None, an
+            in-memory `StubCaseRepository` with sample cases.
 
     Returns:
         FastAPI: the configured application, ready to serve.
@@ -85,12 +90,13 @@ def create_app(
     app.state.event_recorder = event_recorder
     app.state.auth_services = auth_services
     app.state.csrf_config = csrf_config or CsrfConfig.from_environment()
+    app.state.case_repository = case_repository or StubCaseRepository()
     app.middleware("http")(add_security_headers)
     app.middleware("http")(record_http_request)
     app.middleware("http")(log_request)
     register_auth_error_handlers(app)
     register_csrf_error_handler(app)
-    for router in (health_router, events_router, auth_router, session_router):
+    for router in (health_router, events_router, auth_router, session_router, cases_router):
         app.include_router(router)
     _mount_frontend_assets(app, resolved_config)
     app.include_router(spa_router)
