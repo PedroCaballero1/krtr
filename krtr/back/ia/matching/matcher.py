@@ -15,6 +15,8 @@ from krtr.back.ia.matching.artifacts import MatchCandidate, MatchKind, MatchResu
 from krtr.back.ia.matching.catalog import CatalogLabel, ExemplarCatalog
 from krtr.back.ia.matching.config import MatchThresholds
 from krtr.back.ia.matching.labels import GuardLabel
+from krtr.back.ia.matching.thresholds import LanguageThresholds
+from krtr.back.security.oidc.artifacts import InterfaceLanguage
 
 logger = logging.getLogger(__name__)
 
@@ -26,53 +28,77 @@ class IntentMatcher:
     Built by `engine/factory.py`.
     """
 
-    def __init__(self, catalog: ExemplarCatalog, thresholds: MatchThresholds) -> None:
-        """Keeps the catalog and the rule's thresholds.
+    def __init__(self, catalog: ExemplarCatalog, thresholds: LanguageThresholds) -> None:
+        """Keeps the catalog and the rule's thresholds for each language.
 
         Args:
             catalog: The embedded example phrases.
-            thresholds: When a score counts as a match.
+            thresholds: When a score counts as a match, per language.
         """
         self._catalog = catalog
         self._thresholds = thresholds
 
-    def match(self, vector: np.ndarray) -> MatchResult:
+    def match(self, vector: np.ndarray, language: InterfaceLanguage) -> MatchResult:
         """Scores a message and classifies it as matched, ambiguous or no match.
 
         Args:
             vector: The message's L2-normalised embedding.
+            language: The turn's language, whose thresholds apply.
 
         Returns:
             MatchResult: the verdict, the top intents and any guard flags.
         """
+        thresholds = self._thresholds[language]
         scores = self._catalog.best_scores(vector)
-        candidates = _rank_intents(scores)[: self._thresholds.top_k]
-        guard_flags = [
-            label for label in GuardLabel if scores.get(label, 0.0) >= self._thresholds.guard
-        ]
-        kind = self._classify(candidates)
+        candidates = rank_intents(scores)[: thresholds.top_k]
+        guard_flags = [label for label in GuardLabel if scores.get(label, 0.0) >= thresholds.guard]
+        kind = classify(candidates, thresholds, rival_score(scores))
+        top_label = max(scores, key=scores.__getitem__) if scores else None
         logger.debug("Matched %s: %s, flags %s", kind, candidates, guard_flags)
-        return MatchResult(kind=kind, candidates=candidates, guard_flags=guard_flags)
-
-    def _classify(self, candidates: list[MatchCandidate]) -> MatchKind:
-        """Applies the rule to the ranked intents.
-
-        Args:
-            candidates: The intents, best first.
-
-        Returns:
-            MatchKind: `MATCHED` only with a high score and a clear lead over the second.
-        """
-        best = candidates[0].score
-        second = candidates[1].score if len(candidates) > 1 else 0.0
-        if best < self._thresholds.reject:
-            return MatchKind.NO_MATCH
-        if best >= self._thresholds.accept and best - second >= self._thresholds.margin:
-            return MatchKind.MATCHED
-        return MatchKind.AMBIGUOUS
+        return MatchResult(
+            kind=kind, candidates=candidates, guard_flags=guard_flags, top_label=top_label
+        )
 
 
-def _rank_intents(scores: dict[CatalogLabel, float]) -> list[MatchCandidate]:
+def classify(
+    candidates: list[MatchCandidate], thresholds: MatchThresholds, rival: float = 0.0
+) -> MatchKind:
+    """Applies the threshold + margin rule to ranked intents.
+
+    Exists as a function so `krtr back ia evaluate` sweeps thresholds with the exact rule the
+    matcher applies.
+
+    Args:
+        candidates: The intents, best first.
+        thresholds: The rule's thresholds.
+        rival: The best guard label's score: the lead must also hold over it.
+
+    Returns:
+        MatchKind: `MATCHED` only with a high score and a clear lead over the second intent
+        and over every guard label.
+    """
+    best = candidates[0].score
+    second = max(candidates[1].score if len(candidates) > 1 else 0.0, rival)
+    if best < thresholds.reject:
+        return MatchKind.NO_MATCH
+    if best >= thresholds.accept and best - second >= thresholds.margin:
+        return MatchKind.MATCHED
+    return MatchKind.AMBIGUOUS
+
+
+def rival_score(scores: dict[CatalogLabel, float]) -> float:
+    """Returns the best guard label's score, the intents' strongest rival.
+
+    Args:
+        scores: The best score of every catalog label.
+
+    Returns:
+        float: the highest guard score, or 0 if no guard label has phrases.
+    """
+    return max((scores.get(label, 0.0) for label in GuardLabel), default=0.0)
+
+
+def rank_intents(scores: dict[CatalogLabel, float]) -> list[MatchCandidate]:
     """Keeps the intents' scores, best first.
 
     Args:

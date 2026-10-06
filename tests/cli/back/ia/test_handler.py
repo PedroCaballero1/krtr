@@ -1,9 +1,13 @@
 """Tests `krtr back ia ask` and `chat`: replies, the clarification flow, and leaving."""
 
 import re
+from pathlib import Path
 
+import pytest
 from typer.testing import CliRunner
 
+from krtr.back.ia.config import IaEnvironmentVariable
+from krtr.back.ia.matching.thresholds import THRESHOLDS_FILE
 from krtr.cli.main import app
 
 runner = CliRunner()
@@ -62,3 +66,61 @@ def test_ask_detects_portuguese_without_the_language_option() -> None:
 
     assert result.exit_code == 0, result.output
     assert "Saldo de cartão de crédito:" in result.output
+
+
+def test_an_unknown_model_in_the_environment_exits_naming_the_choices(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A typo in KRTR_IA_EMBEDDING_MODEL fails before any message, listing the valid values."""
+    monkeypatch.setenv(IaEnvironmentVariable.EMBEDDING_MODEL, "bert")
+
+    result = runner.invoke(app, ["back", "ia", "ask", "hola"])
+
+    assert result.exit_code == 1
+    assert "KRTR_IA_EMBEDDING_MODEL" in result.output
+    assert "'hashing' or 'multilingual_minilm'" in result.output
+
+
+def test_an_unknown_model_option_is_rejected_by_the_cli() -> None:
+    """The option only accepts the Enum's values."""
+    result = runner.invoke(app, ["back", "ia", "ask", "hola", "--embedding-model", "bert"])
+
+    assert result.exit_code == 2
+
+
+def test_the_option_overrides_the_environment(monkeypatch: pytest.MonkeyPatch) -> None:
+    """`--embedding-model` wins over an invalid environment value."""
+    monkeypatch.setenv(IaEnvironmentVariable.EMBEDDING_MODEL, "bert")
+
+    result = runner.invoke(
+        app, ["back", "ia", "ask", "Saldo de ahorros", "--embedding-model", "hashing"]
+    )
+
+    assert result.exit_code == 0, result.output
+
+
+def test_evaluate_reports_both_languages_without_writing() -> None:
+    """The report shows each language's outcomes; without --write nothing is saved."""
+    before = THRESHOLDS_FILE.read_text()
+
+    result = runner.invoke(app, ["back", "ia", "evaluate"])
+
+    assert result.exit_code == 0, result.output
+    assert "Embedding model: hashing" in result.output
+    assert "[es]" in result.output and "[pt-BR]" in result.output
+    assert re.search(r"proposed: right \d+ · wrong 0", result.output)
+    assert THRESHOLDS_FILE.read_text() == before
+
+
+def test_a_selected_llm_without_its_build_exits_with_a_hint(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """The default Qwen, not converted yet, fails before any message with a way out."""
+    monkeypatch.setenv(IaEnvironmentVariable.MODEL_CACHE, str(tmp_path))
+
+    result = runner.invoke(
+        app, ["back", "ia", "ask", "hola", "--llm-model", "qwen2_5_1_5b_instruct"]
+    )
+
+    assert result.exit_code == 1
+    assert "--llm-model none" in result.output

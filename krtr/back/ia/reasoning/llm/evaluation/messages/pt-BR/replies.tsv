@@ -1,0 +1,14 @@
+choose_option	product_type	savings_account,checking_account,credit_card,debit_card,personal_loan,mortgage,investment	a do cartão, não a outra	none
+choose_option	product_type	savings_account,checking_account,credit_card,debit_card,personal_loan,mortgage,investment	a conta onde eu guardo dinheiro	savings_account
+choose_option	product_type	savings_account,checking_account,credit_card,debit_card,personal_loan,mortgage,investment	a que eu uso para receber o salário, a corrente	checking_account
+choose_option	product_type	savings_account,checking_account,credit_card,debit_card,personal_loan,mortgage,investment	meu cartão de crédito	credit_card
+choose_option	product_type	savings_account,checking_account,credit_card,debit_card,personal_loan,mortgage,investment	Qual é o meu saldo?	none
+choose_option	product_type	savings_account,checking_account,credit_card,debit_card,personal_loan,mortgage,investment	sei lá, qualquer uma	none
+choose_option	product_type	savings_account,checking_account,credit_card,debit_card,personal_loan,mortgage,investment	quero falar com alguém	none
+choose_option	request	account_balance,complaint_status	aquilo da reclamação que eu fiz	complaint_status
+choose_option	request	account_balance,complaint_status	saber quanto dinheiro eu tenho	account_balance
+choose_option	request	account_balance,complaint_status	nenhuma dessas	none
+choose_option	request	account_balance,complaint_status	quero um empréstimo	none
+extract_value	complaint_id		o número é pqr-104233, obrigado	PQR-104233
+extract_value	complaint_id		não tenho ele aqui	none
+extract_value	complaint_id		é a reclamação da semana passada	none

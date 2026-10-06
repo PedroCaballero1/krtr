@@ -9,6 +9,7 @@ from krtr.back.ia.reasoning.artifacts import (
     Closed,
     ClosureReason,
     Escalated,
+    EscalationReason,
     NeedsClarification,
     QuestionKind,
 )
@@ -22,6 +23,13 @@ QUESTION_MESSAGES: dict[QuestionKind, MessageKey] = {
 
 CLOSURE_MESSAGES: dict[ClosureReason, MessageKey] = {
     ClosureReason.REPETITIVE: MessageKey.CLOSED_REPETITIVE,
+    ClosureReason.AGGRESSIVE: MessageKey.CLOSED_AGGRESSIVE,
+    ClosureReason.OFF_TOPIC: MessageKey.CLOSED_OFF_TOPIC,
+}
+
+ESCALATION_MESSAGES: dict[EscalationReason, MessageKey] = {
+    EscalationReason.CLARIFICATION_LIMIT: MessageKey.ESCALATED,
+    EscalationReason.UNSUPPORTED_REQUEST: MessageKey.ESCALATED_UNSUPPORTED,
 }
 
 
@@ -53,5 +61,5 @@ def ending_content(resolution: Escalated | Closed) -> ReplyContent:
         ReplyContent: the matching message.
     """
     if isinstance(resolution, Escalated):
-        return ReplyContent(message_key=MessageKey.ESCALATED)
+        return ReplyContent(message_key=ESCALATION_MESSAGES[resolution.reason])
     return ReplyContent(message_key=CLOSURE_MESSAGES[resolution.reason])

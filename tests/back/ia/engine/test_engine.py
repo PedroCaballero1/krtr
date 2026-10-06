@@ -1,8 +1,11 @@
-"""Tests whole conversations through the phase 1 engine: answers, questions and endings."""
+"""Tests whole conversations through the engine: answers, questions, endings and the LLM."""
+
+import pytest
 
 from krtr.back.ia.artifacts import AgentReply, TurnDetails, TurnOutcome, TurnStep, UserTurn
 from krtr.back.ia.demo import DEMO_COMPLAINT_ID
 from krtr.back.ia.deterministic.intents import Intent
+from krtr.back.ia.engine import factory
 from krtr.back.ia.engine.engine import ConversationEngine
 from krtr.back.ia.matching.artifacts import MatchKind
 from krtr.back.ia.matching.labels import GuardLabel
@@ -10,6 +13,7 @@ from krtr.back.ia.messages.artifacts import MessageSender
 from krtr.back.ia.messages.store import InMemoryMessageStore
 from krtr.back.security.oidc.artifacts import InterfaceLanguage
 from tests.back.ia.fakes import CUSTOMER_ID, OTHER_CUSTOMER_ID, sample_engine
+from tests.back.ia.reasoning.llm.fakes import ScriptedLlm
 
 
 def _say(
@@ -110,7 +114,7 @@ def test_a_clear_sentence_in_the_other_language_switches_the_replies() -> None:
     engine = sample_engine()
 
     _say(engine, "Preciso consultar o saldo do meu cartão de crédito")
-    switched = _say(engine, "Ahora quiero saber el saldo de mi cuenta de ahorros")
+    switched = _say(engine, "Buenas, quería saber cuál es mi saldo actual en mi cuenta de ahorros")
 
     assert switched.language == InterfaceLanguage.SPANISH
     assert switched.reply.startswith("Saldo de cuenta de ahorros:")
@@ -120,7 +124,7 @@ def test_every_step_of_a_resolved_turn_is_timed() -> None:
     """Each response carries its latency, broken down by step, within its total (G16)."""
     reply = _say(sample_engine(), "Necesito consultar el saldo de mi tarjeta de crédito")
 
-    assert set(reply.timings.steps_ms) == set(TurnStep)
+    assert set(reply.timings.steps_ms) == set(TurnStep) - {TurnStep.LLM}  # No LLM selected.
     assert sum(reply.timings.steps_ms.values()) <= reply.timings.total_ms
 
 
@@ -195,3 +199,38 @@ def test_messages_after_the_conversation_ended_are_stored_too() -> None:
         _say(engine, "hola banco")
 
     assert len(messages.list_case(CUSTOMER_ID, "INC-1")) == 8
+
+
+def test_an_unsupported_request_is_handed_to_a_person_at_once() -> None:
+    """A lost card gets the handover message on the first turn, in the customer's language."""
+    reply = _say(sample_engine(), "Perdí mi tarjeta y quiero bloquearla")
+
+    assert reply.outcome == TurnOutcome.ESCALATED
+    assert reply.reply.startswith("Esa solicitud la atiende un asesor")
+
+
+def test_with_an_llm_a_free_form_reply_is_answered_and_reported(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The LLM reads "la de ahorrar"; the turn says the LLM ran and how long it took."""
+    llm = ScriptedLlm({"choice": "savings_account"})  # Only the reply reaches the LLM.
+    monkeypatch.setattr(factory, "build_llm_client", lambda *args: llm)
+    engine = sample_engine()
+    _say(engine, "¿Cuál es mi saldo?")
+
+    reply = _say(engine, "la de ahorrar, porfa")
+
+    assert reply.reply.startswith("Saldo de cuenta de ahorros:")
+    assert reply.details.llm_used
+    assert TurnStep.LLM in reply.timings.steps_ms
+
+
+def test_with_an_llm_a_confirmed_off_topic_message_closes(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A flagged off-topic message, confirmed, ends with the off-topic closure."""
+    llm = ScriptedLlm({"category": "off_topic"})
+    monkeypatch.setattr(factory, "build_llm_client", lambda *args: llm)
+
+    reply = _say(sample_engine(), "¿Quién ganó el partido de fútbol ayer?")
+
+    assert reply.outcome == TurnOutcome.CLOSED
+    assert reply.reply.startswith("Cerramos esta conversación porque los mensajes no tienen")

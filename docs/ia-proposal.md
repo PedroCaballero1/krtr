@@ -222,6 +222,25 @@ score:
 | `s1 < reject` | `NO_MATCH` | the clarifier decides: rephrase, outside the catalog → escalate, or off-topic |
 | anything else | `AMBIGUOUS` | the clarifier asks the customer to choose between the top candidates |
 
+**Phase 2 changes to the rule (2026-10-05, measured with `krtr back ia evaluate`):**
+
+1. **The lead must hold over rivals, not only the second intent.** The guard labels
+   (`aggressive`, `off_topic`, and the new `unsupported`) count as rivals. `unsupported` holds
+   banking requests the agent can't answer (an unrecognised charge, a lost card, a loan):
+   without it they scored as high as real balance requests.
+2. **Identifiers are stripped before embedding** (`matching_text`): an ID such as "PQR-104233"
+   only pulls the message away from the catalog. The slot extractors still read the original
+   text.
+3. **Thresholds are measured per model and language** (`thresholds.json`), with no wrong
+   match, no false flag and no false repeat, and a 0.03 safety gap.
+4. **Repetition** counts a message as a repeat in two cases, anywhere in the last 10
+   messages:
+   - its text is nearly identical to an earlier one;
+   - it resolves to the same request (same intent, same details) as an earlier one, however
+     it is worded.
+
+   Similarity alone can't separate a rewording from the same question for another product.
+
 **The margin is as important as the threshold.** Two close intents ("card blocked"
 versus "card not working") can both score high; matching the first one without a clear
 lead is exactly the wrong answer that clarification is meant to prevent.
@@ -232,8 +251,8 @@ both languages, so accuracy depends on our own examples, not on a vendor's langu
 coverage. It is also the most auditable option: a wrong match is fixed by adding or
 editing an example, without touching code.
 
-**Embedding model.** Run a small multilingual model **locally, inside the app
-container**, rather than calling a hosted API. A hosted call would add a network round
+**Embedding model (decided: `multilingual_minilm`, the only ML model, Q2-A/B).** Run a small
+multilingual model **locally, inside the app container**, rather than calling a hosted API. A hosted call would add a network round
 trip to every message, while a local one takes milliseconds. Candidates to evaluate in
 phase 1 include `paraphrase-multilingual-MiniLM-L12-v2` and `multilingual-e5-small`,
 served through an ONNX runtime so the image does not need PyTorch. The model behind
@@ -320,9 +339,12 @@ injects it, the same way `auth_services` is wired today.
    the thresholds per language. The catalog content comes from the intent discovery
    track in `tasks/todo.md` (deduplicated call history + complaints, labelled and
    paraphrased in ES / PT by an LLM, reviewed by us).
-3. **`LlmClient` + `LlmClarifier`:** clarification questions, interpreting replies,
-   extracting free-text inputs, confirming guardrail closures.
-4. **`SpeechToText`** (G10 phase 2).
+3. **`LlmClient` + `LlmClarifier`** with a local Hugging Face model (Qwen2.5-1.5B-Instruct
+   through `onnxruntime-genai`, decided 2026-10-05): interpreting free-form replies,
+   extracting free-text inputs, confirming guardrail closures, and handing `unsupported`
+   requests to a person. Plan: `tasks/todo.md`.
+4. **`SpeechToText`** (G10 phase 2): a local Whisper model chosen from a `SpeechToTextModel`
+   Enum. Outline: `tasks/todo.md`.
 5. **Optional `LlmResponseWriter`**, with the check that it adds no facts.
 
 ## 8. Open questions

@@ -1,0 +1,13 @@
+You read replies from bank customers. The customer writes in {language}.
+The customer was asked: {question}
+
+Options:
+{options}
+
+Customer reply: "{reply}"
+
+Rules:
+- Return an option's code only if the reply names or clearly describes that option.
+- A general question that names no option (for example "what is my balance?") is "none".
+- "Any", "I don't know", a different request, or a request to talk to a person is "none".
+- Never guess between options.

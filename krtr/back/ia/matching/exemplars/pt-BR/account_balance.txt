@@ -3,3 +3,16 @@ Boa tarde, preciso consultar o saldo do meu cartão de crédito.
 Qual é o meu saldo?
 Quanto dinheiro eu tenho na minha conta?
 Quero ver o saldo da minha conta
+Pode me dizer o saldo da minha conta corrente?
+Quanto eu devo no meu cartão de crédito?
+Qual é o limite disponível do meu cartão?
+Preciso saber quanto dinheiro tenho na poupança
+Consultar saldo
+Quanto me resta na conta?
+Qual é o saldo do meu empréstimo?
+Quanto eu tenho investido?
+Me diga o saldo do meu cartão de débito
+Quanto eu devo do meu financiamento imobiliário?
+Saldo do meu cartão
+Saldo da poupança
+Saldo da conta corrente

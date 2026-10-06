@@ -28,12 +28,15 @@ class EscalationReason(StrEnum):
     """Why a conversation is handed to a human (G20)."""
 
     CLARIFICATION_LIMIT = "clarification_limit"
+    UNSUPPORTED_REQUEST = "unsupported_request"  # A banking request the agent can't answer.
 
 
 class ClosureReason(StrEnum):
     """Why a hard rule closed a conversation (G13)."""
 
     REPETITIVE = "repetitive"
+    AGGRESSIVE = "aggressive"  # A guard flag confirmed by the LLM.
+    OFF_TOPIC = "off_topic"  # A guard flag confirmed by the LLM.
 
 
 class PendingQuestion(BaseModel):
@@ -61,7 +64,8 @@ class ConversationState(BaseModel):
     customer_id: str
     pending: PendingQuestion | None = None
     clarification_attempts: int = 0
-    recent_messages: list[str] = Field(default_factory=list)  # Normalised, newest last.
+    recent_embeddings: list[list[float]] = Field(default_factory=list)  # Window, newest last.
+    recent_requests: list[str] = Field(default_factory=list)  # Resolved requests, newest last.
     ended: TurnOutcome | None = None  # Set once the case is escalated or closed.
     language: InterfaceLanguage | None = None  # Set by the first clear message (G14).
 

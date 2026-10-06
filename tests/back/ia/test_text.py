@@ -2,7 +2,7 @@
 
 import pytest
 
-from krtr.back.ia.text import first_number, normalize_text
+from krtr.back.ia.text import first_number, matching_text, normalize_text
 
 
 @pytest.mark.parametrize(
@@ -30,3 +30,18 @@ def test_first_number_reads_the_first_number(raw: str, expected: int) -> None:
 def test_first_number_is_none_without_digits() -> None:
     """A reply with no digits picks no option."""
     assert first_number("la segunda") is None
+
+
+@pytest.mark.parametrize(
+    ("raw", "expected"),
+    [
+        ("¿Cómo va mi reclamo PQR-104233?", "¿Cómo va mi reclamo"),
+        ("saldo de la cuenta 4001-2200-7781", "saldo de la cuenta"),
+        ("mi queja 12 de ayer", "mi queja 12 de ayer"),
+    ],
+)
+def test_matching_text_drops_identifiers_but_keeps_words_and_short_numbers(
+    raw: str, expected: str
+) -> None:
+    """An ID pulls the embedding away from the catalog; small numbers like option picks stay."""
+    assert matching_text(raw) == expected

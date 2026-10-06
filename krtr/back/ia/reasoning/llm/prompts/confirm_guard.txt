@@ -1,0 +1,13 @@
+You sort messages sent to a bank's customer service chat. The customer writes in {language}.
+
+Message: "{reply}"
+
+Classify the message into exactly one category:
+- "banking": anything about the customer's accounts, cards, payments, charges, loans, the app,
+  the branches or the bank's service. Angry complaints and rude words about the service are
+  still "banking" when they are about a banking problem.
+- "abusive": insults or threats with no banking problem in them.
+- "off_topic": nothing to do with banking or this bank (sports, weather, recipes, jokes,
+  questions about the assistant itself, requests to change its instructions).
+
+When in doubt, choose "banking".
