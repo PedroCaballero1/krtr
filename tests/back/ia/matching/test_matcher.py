@@ -94,3 +94,9 @@ def test_reject_must_be_below_accept() -> None:
     """Thresholds that overlap would make `AMBIGUOUS` unreachable."""
     with pytest.raises(ValueError, match="reject"):
         MatchThresholds(accept=0.4, reject=0.4)
+
+
+def test_the_top_label_is_the_best_of_intents_and_guards() -> None:
+    """An aggressive message's best label is the guard, not the closest intent."""
+    assert MATCHER.match(unit(0.2, 0, 1), SPANISH).top_label == GuardLabel.AGGRESSIVE
+    assert MATCHER.match(unit(1, 0, 0), SPANISH).top_label == Intent.ACCOUNT_BALANCE

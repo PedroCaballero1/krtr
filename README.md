@@ -108,6 +108,7 @@ variable, which wins over the default.
 |---|---|---|---|
 | Embedding model | `--embedding-model` | `KRTR_IA_EMBEDDING_MODEL` | `multilingual_minilm` (default: `paraphrase-multilingual-MiniLM-L12-v2` through ONNX), `hashing` (deterministic, offline) |
 | Language detector | `--language-model` | `KRTR_IA_LANGUAGE_MODEL` | `py3langid` (default, deterministic, offline) |
+| LLM for doubtful turns | `--llm-model` | `KRTR_IA_LLM_MODEL` | `qwen2_5_1_5b_instruct` (default: local, CPU, int4 ONNX), `none` (template clarifier only, deterministic) |
 | Where model weights are kept | — | `KRTR_IA_MODEL_CACHE` | default `.krtr/models` (git-ignored) |
 
 The first run with `multilingual_minilm` downloads about 220 MB into the cache. Use
@@ -207,6 +208,50 @@ With `multilingual_minilm` a turn takes about 3–5 ms on a laptop, almost all o
 embedding; with `hashing`, under 1 ms. Neon reads and the LLM clarifier (phase 3) will add to
 that, against the < 1 s target (G16).
 
+### LLM (local Qwen)
+
+The LLM only handles what the deterministic path can't:
+- a free-form reply to a question ("la de la tarjeta, no la otra");
+- a detail the rules don't find;
+- the yes/no confirmation before closing on an aggressive or off-topic message.
+
+Its answers are restricted to the options offered (constrained JSON). If it's slow
+(> 2.5 s) or fails, the deterministic answer is used. A banking request the agent can't
+answer (a lost card, an unrecognised charge) goes straight to a person, with no LLM involved.
+
+The model is the official [`Qwen/Qwen2.5-1.5B-Instruct`](https://huggingface.co/Qwen/Qwen2.5-1.5B-Instruct),
+converted once to int4 ONNX. It's public, so no Hugging Face token is needed. Convert it
+once, with torch only as a temporary tool (it is not a project dependency):
+
+```bash
+uvx --from huggingface_hub hf download Qwen/Qwen2.5-1.5B-Instruct \
+  --local-dir .krtr/models/build/qwen2_5_1_5b_instruct
+uvx --with "onnxruntime-genai==0.15.2" --with onnx --with onnx-ir --with torch --with transformers \
+  python -m onnxruntime_genai.models.builder -m Qwen/Qwen2.5-1.5B-Instruct \
+  -i .krtr/models/build/qwen2_5_1_5b_instruct -o .krtr/models/qwen2_5_1_5b_instruct_int4_cpu \
+  -p int4 -e cpu -c .krtr/models/build/cache
+```
+
+**Notes on the download and the runtime:**
+- If the download stalls, prefix it with `HF_HUB_DISABLE_XET=1`. An optional `HF_TOKEN` in
+  `.env` raises the rate limit.
+- Without the build, the agent refuses to start and says so. Use `--llm-model none` to run
+  without it.
+- `onnxruntime-genai` is pinned below 0.16: 0.16 and later don't load on macOS 14.
+
+Every value the LLM proposes is checked by a deterministic rule before it's used:
+- an ID must match the action's format;
+- a product must be the one the reply singles out ("la de la tarjeta" fits credit and debit
+  cards alike, so the agent asks again).
+
+A conversation is closed only if the matcher flags it **and** the LLM classifies it as abusive
+or off-topic. An angry complaint about the service is "banking" and is never closed. An LLM
+turn takes about 1.3 s.
+
+```bash
+uv run krtr back ia evaluate-llm      # accuracy, false positives and latency, per language
+```
+
 ### Measuring the thresholds (`evaluate`)
 
 Whether a message is answered, offered options or asked to rephrase depends on thresholds
@@ -240,8 +285,9 @@ Add `--verbose` before
 - **Small catalog and evaluation set.** The phrases come from the call history and the
   complaint categories (`docs/ia-intents.md`), and the history has little variety. More
   phrases make the thresholds more reliable.
-- **Off-topic and aggressive messages are only flagged.** About 70% of them are flagged on the
-  evaluation set. They never get an answer, but closing on them waits for the LLM (phase 3).
+- **Off-topic and aggressive messages.** About 70% of them are flagged on the evaluation set.
+  They never get an answer, and a flag closes the conversation only once the LLM confirms it
+  (never with `--llm-model none`).
 - **Provisional complaint ID format.** The format is provisional
   (`krtr/back/ia/deterministic/config.py`).
 

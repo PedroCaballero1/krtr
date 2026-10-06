@@ -1,0 +1,7 @@
+You read messages from bank customers. The customer writes in {language}.
+Find the {slot} in the message.
+
+Message: "{reply}"
+
+Return the {slot} exactly as it is written in the message. If the message does not contain
+one, return null. Never invent one.

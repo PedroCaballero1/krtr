@@ -28,12 +28,15 @@ class EscalationReason(StrEnum):
     """Why a conversation is handed to a human (G20)."""
 
     CLARIFICATION_LIMIT = "clarification_limit"
+    UNSUPPORTED_REQUEST = "unsupported_request"  # A banking request the agent can't answer.
 
 
 class ClosureReason(StrEnum):
     """Why a hard rule closed a conversation (G13)."""
 
     REPETITIVE = "repetitive"
+    AGGRESSIVE = "aggressive"  # A guard flag confirmed by the LLM.
+    OFF_TOPIC = "off_topic"  # A guard flag confirmed by the LLM.
 
 
 class PendingQuestion(BaseModel):

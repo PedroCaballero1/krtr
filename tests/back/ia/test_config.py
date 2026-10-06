@@ -7,6 +7,7 @@ import pytest
 from krtr.back.ia.config import IaEnvironmentVariable, IaModelsConfig
 from krtr.back.ia.language.models import LanguageDetectorModel
 from krtr.back.ia.matching.models import EmbeddingModel
+from krtr.back.ia.reasoning.llm.models import LlmModel
 
 
 @pytest.fixture(autouse=True)
@@ -22,6 +23,7 @@ def test_without_options_or_environment_the_defaults_apply() -> None:
 
     assert config.embedding == EmbeddingModel.MULTILINGUAL_MINILM
     assert config.language == LanguageDetectorModel.PY3LANGID
+    assert config.llm == LlmModel.QWEN2_5_1_5B_INSTRUCT
     assert config.model_cache == Path(".krtr") / "models"
 
 
@@ -57,6 +59,7 @@ def test_an_empty_variable_counts_as_unset(monkeypatch: pytest.MonkeyPatch) -> N
     [
         (IaEnvironmentVariable.EMBEDDING_MODEL, "'hashing' or 'multilingual_minilm'"),
         (IaEnvironmentVariable.LANGUAGE_MODEL, "'py3langid'"),
+        (IaEnvironmentVariable.LLM_MODEL, "'none' or 'qwen2_5_1_5b_instruct'"),
     ],
 )
 def test_an_unknown_model_fails_naming_the_variable_and_the_choices(

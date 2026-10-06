@@ -7,22 +7,48 @@ message counts as a repeat, anywhere in the recent window (not only back to back
   it is worded. Similarity alone cannot tell a rewording from the same question about another
   product (those score higher), so the request is what decides.
 
-The guard labels (aggressive, off-topic) only flag: closing on them waits for the LLM's
-confirmation (phase 3). Consumed by `engine/engine.py`.
+A message flagged aggressive or off-topic is closed only when the LLM confirms the flag
+(`GuardConfirmer`); without an LLM, flags only flag. Consumed by `engine/engine.py`.
 """
 
 import json
 import logging
+from typing import Protocol
 
 import numpy as np
 
 from krtr.back.ia.config import IaConfig
+from krtr.back.ia.matching.artifacts import MatchKind, MatchResult
+from krtr.back.ia.matching.labels import GuardLabel
 from krtr.back.ia.matching.thresholds import LanguageThresholds
 from krtr.back.ia.reasoning.artifacts import Closed, ClosureReason, ConversationState, Resolved
 from krtr.back.ia.text import normalize_text
 from krtr.back.security.oidc.artifacts import InterfaceLanguage
 
 logger = logging.getLogger(__name__)
+
+# The flags a confirmed "yes" closes on, with the reason each one closes with.
+CLOSING_FLAGS: dict[GuardLabel, ClosureReason] = {
+    GuardLabel.AGGRESSIVE: ClosureReason.AGGRESSIVE,
+    GuardLabel.OFF_TOPIC: ClosureReason.OFF_TOPIC,
+}
+
+
+class GuardConfirmer(Protocol):
+    """Confirms a guard flag. Implemented by `reasoning/llm/tasks.LlmTasks`."""
+
+    def confirm_guard(self, label: GuardLabel, reply: str, language: InterfaceLanguage) -> bool:
+        """Tells whether the flagged message really is what the label says.
+
+        Args:
+            label: The flag.
+            reply: The customer's message.
+            language: The customer's language.
+
+        Returns:
+            bool: True only on a clear "yes".
+        """
+        ...
 
 
 class GuardrailPolicy:
@@ -31,15 +57,22 @@ class GuardrailPolicy:
     Exists so the rules and their limits live in one tested unit. Built by `engine/factory.py`.
     """
 
-    def __init__(self, config: IaConfig, thresholds: LanguageThresholds) -> None:
-        """Keeps the repetition limit and each language's similarity threshold for a repeat.
+    def __init__(
+        self,
+        config: IaConfig,
+        thresholds: LanguageThresholds,
+        confirmer: GuardConfirmer | None = None,
+    ) -> None:
+        """Keeps the limits and, if an LLM is selected, the confirmer of guard flags.
 
         Args:
             config: The conversation limits.
             thresholds: The selected model's thresholds per language (`repeat` is used).
+            confirmer: Confirms a flag before closing; None to never close on a flag.
         """
         self._config = config
         self._thresholds = thresholds
+        self._confirmer = confirmer
 
     def check(
         self,
@@ -86,6 +119,31 @@ class GuardrailPolicy:
             return None
         logger.info("Request repeated %d times in incident %s", repeats, state.incident_id)
         return Closed(reason=ClosureReason.REPETITIVE)
+
+    def check_flags(
+        self, state: ConversationState, text: str, match: MatchResult, language: InterfaceLanguage
+    ) -> Closed | None:
+        """Closes on an aggressive or off-topic flag, only once the confirmer says yes (G13).
+
+        A matched request is never closed: the customer gets their answer.
+
+        Args:
+            state: The conversation.
+            text: The customer's message.
+            match: The matcher's verdict, with its flags.
+            language: The customer's language.
+
+        Returns:
+            Closed | None: the closure, or None if no flag is confirmed.
+        """
+        if self._confirmer is None or match.kind == MatchKind.MATCHED:
+            return None
+        for label in match.guard_flags:
+            reason = CLOSING_FLAGS.get(label)
+            if reason and self._confirmer.confirm_guard(label, text, language):
+                logger.info("Confirmed %s in incident %s: closing", label, state.incident_id)
+                return Closed(reason=reason)
+        return None
 
 
 def request_signature(resolution: Resolved) -> str:

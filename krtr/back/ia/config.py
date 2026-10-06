@@ -14,6 +14,7 @@ from pydantic import BaseModel, Field, ValidationError
 
 from krtr.back.ia.language.models import LanguageDetectorModel
 from krtr.back.ia.matching.models import EmbeddingModel
+from krtr.back.ia.reasoning.llm.models import LlmModel
 
 logger = logging.getLogger(__name__)
 
@@ -29,6 +30,7 @@ class IaEnvironmentVariable(StrEnum):
 
     EMBEDDING_MODEL = "KRTR_IA_EMBEDDING_MODEL"  # A value of `EmbeddingModel`.
     LANGUAGE_MODEL = "KRTR_IA_LANGUAGE_MODEL"  # A value of `LanguageDetectorModel`.
+    LLM_MODEL = "KRTR_IA_LLM_MODEL"  # A value of `LlmModel`.
     MODEL_CACHE = "KRTR_IA_MODEL_CACHE"  # Where downloaded model weights are kept.
 
 
@@ -53,6 +55,7 @@ class IaModelsConfig(BaseModel):
 
     embedding: EmbeddingModel = EmbeddingModel.MULTILINGUAL_MINILM
     language: LanguageDetectorModel = LanguageDetectorModel.PY3LANGID
+    llm: LlmModel = LlmModel.QWEN2_5_1_5B_INSTRUCT
     model_cache: Path = DEFAULT_MODEL_CACHE
 
     @classmethod
@@ -60,12 +63,14 @@ class IaModelsConfig(BaseModel):
         cls,
         embedding: EmbeddingModel | None = None,
         language: LanguageDetectorModel | None = None,
+        llm: LlmModel | None = None,
     ) -> "IaModelsConfig":
         """Picks each model from the CLI option, else the environment, else the default.
 
         Args:
             embedding: The `--embedding-model` option, if given.
             language: The `--language-model` option, if given.
+            llm: The `--llm-model` option, if given.
 
         Returns:
             IaModelsConfig: the validated selection.
@@ -78,11 +83,18 @@ class IaModelsConfig(BaseModel):
             values["embedding"] = embedding
         if language is not None:
             values["language"] = language
+        if llm is not None:
+            values["llm"] = llm
         try:
             config = cls.model_validate(values)
         except ValidationError as error:
             raise ValueError(f"Invalid model selection: {_describe(error)}") from error
-        logger.info("Models: embedding %s, language %s", config.embedding, config.language)
+        logger.info(
+            "Models: embedding %s, language %s, LLM %s",
+            config.embedding,
+            config.language,
+            config.llm,
+        )
         return config
 
 
@@ -95,6 +107,7 @@ def _environment_values() -> dict[str, str | None]:
     return {
         "embedding": os.environ.get(IaEnvironmentVariable.EMBEDDING_MODEL) or None,
         "language": os.environ.get(IaEnvironmentVariable.LANGUAGE_MODEL) or None,
+        "llm": os.environ.get(IaEnvironmentVariable.LLM_MODEL) or None,
         "model_cache": os.environ.get(IaEnvironmentVariable.MODEL_CACHE) or None,
     }
 
@@ -111,6 +124,7 @@ def _describe(error: ValidationError) -> str:
     variables = {
         "embedding": IaEnvironmentVariable.EMBEDDING_MODEL,
         "language": IaEnvironmentVariable.LANGUAGE_MODEL,
+        "llm": IaEnvironmentVariable.LLM_MODEL,
         "model_cache": IaEnvironmentVariable.MODEL_CACHE,
     }
     return "; ".join(

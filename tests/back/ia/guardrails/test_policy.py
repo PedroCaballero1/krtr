@@ -1,10 +1,14 @@
-"""Tests the deterministic repetition rules (G13): by similar text and by the same request."""
+"""Tests the G13 rules: repetition (by text and by request) and confirmed guard flags."""
+
+import pytest
 
 from krtr.back.ia.config import IaConfig
 from krtr.back.ia.deterministic.artifacts import ProductType, SlotName
 from krtr.back.ia.deterministic.intents import Intent
 from krtr.back.ia.guardrails.policy import GuardrailPolicy, request_signature
+from krtr.back.ia.matching.artifacts import MatchKind, MatchResult
 from krtr.back.ia.matching.config import MatchThresholds
+from krtr.back.ia.matching.labels import GuardLabel
 from krtr.back.ia.reasoning.artifacts import ClosureReason, ConversationState, Resolved
 from krtr.back.security.oidc.artifacts import InterfaceLanguage
 from tests.back.ia.fakes import CUSTOMER_ID, unit
@@ -77,3 +81,66 @@ def test_the_signature_ignores_the_order_of_the_slots() -> None:
     second = Resolved(intent=Intent.ACCOUNT_BALANCE, slots={"b": "2", "a": "1"})
 
     assert request_signature(first) == request_signature(second)
+
+
+class FixedConfirmer:
+    """Confirms every flag, or none."""
+
+    def __init__(self, answer: bool) -> None:
+        self.answer = answer
+        self.asked: list[GuardLabel] = []
+
+    def confirm_guard(self, label: GuardLabel, reply: str, language: InterfaceLanguage) -> bool:
+        self.asked.append(label)
+        return self.answer
+
+
+def _flagged(*labels: GuardLabel, kind: MatchKind = MatchKind.NO_MATCH) -> MatchResult:
+    return MatchResult(kind=kind, candidates=[], guard_flags=list(labels))
+
+
+@pytest.mark.parametrize(
+    ("label", "reason"),
+    [
+        (GuardLabel.AGGRESSIVE, ClosureReason.AGGRESSIVE),
+        (GuardLabel.OFF_TOPIC, ClosureReason.OFF_TOPIC),
+    ],
+)
+def test_a_confirmed_flag_closes_with_its_reason(label: GuardLabel, reason: ClosureReason) -> None:
+    """Aggressive or off-topic, once the LLM says yes, ends the conversation (G13)."""
+    policy = GuardrailPolicy(IaConfig(), THRESHOLDS, confirmer=FixedConfirmer(True))
+
+    closure = policy.check_flags(_state(), "msg", _flagged(label), SPANISH)
+
+    assert closure is not None and closure.reason == reason
+
+
+def test_an_unconfirmed_flag_does_not_close() -> None:
+    """A "no" from the LLM keeps the conversation open."""
+    policy = GuardrailPolicy(IaConfig(), THRESHOLDS, confirmer=FixedConfirmer(False))
+
+    assert policy.check_flags(_state(), "msg", _flagged(GuardLabel.AGGRESSIVE), SPANISH) is None
+
+
+def test_without_an_llm_flags_never_close() -> None:
+    """With `--llm-model none`, behaviour is phase 2's: flag only."""
+    assert POLICY.check_flags(_state(), "msg", _flagged(GuardLabel.OFF_TOPIC), SPANISH) is None
+
+
+def test_a_matched_request_is_answered_even_if_flagged() -> None:
+    """An angry customer asking for a balance still gets it; the LLM isn't asked."""
+    confirmer = FixedConfirmer(True)
+    policy = GuardrailPolicy(IaConfig(), THRESHOLDS, confirmer=confirmer)
+    match = _flagged(GuardLabel.AGGRESSIVE, kind=MatchKind.MATCHED)
+
+    assert policy.check_flags(_state(), "msg", match, SPANISH) is None
+    assert confirmer.asked == []
+
+
+def test_unsupported_flags_are_never_sent_for_confirmation() -> None:
+    """Unsupported escalates deterministically; it is not a closing flag."""
+    confirmer = FixedConfirmer(True)
+    policy = GuardrailPolicy(IaConfig(), THRESHOLDS, confirmer=confirmer)
+
+    assert policy.check_flags(_state(), "m", _flagged(GuardLabel.UNSUPPORTED), SPANISH) is None
+    assert confirmer.asked == []

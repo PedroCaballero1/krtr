@@ -40,6 +40,7 @@ from krtr.back.ia.reasoning.artifacts import (
     Resolution,
     Resolved,
 )
+from krtr.back.ia.reasoning.llm.base import MeteredLlmClient
 from krtr.back.ia.reasoning.resolver import TurnResolver
 from krtr.back.ia.text import matching_text
 from krtr.back.ia.timing import StepTimer
@@ -69,6 +70,7 @@ class ConversationEngine:
         language: ConversationLanguagePolicy,
         messages: MessageStore,
         recent_messages_kept: int,
+        llm: MeteredLlmClient | None = None,
         clock: Callable[[], float] = time.perf_counter,
         now: Clock = utc_now,
     ) -> None:
@@ -84,6 +86,8 @@ class ConversationEngine:
             store: Loads and saves the conversation's state.
             language: Decides the language each reply is written in.
             messages: Stores the text of each message and reply.
+            llm: The LLM shared by the clarifier and the guardrails, metered per turn; None
+                when no LLM is selected.
             recent_messages_kept: How many past messages the repetition rule looks at.
             clock: Returns the current time in seconds, for timing the turn.
             now: Returns the current UTC time, for the messages' timestamps.
@@ -100,6 +104,7 @@ class ConversationEngine:
         self._clock = clock
         self._now = now
         self._messages = messages
+        self._llm = llm
 
     def handle(self, turn: UserTurn) -> AgentReply:
         """Answers one message of a case, timing each step of the turn.
@@ -111,6 +116,8 @@ class ConversationEngine:
             AgentReply: the reply text, its language, how the turn ended and how long it took.
         """
         timer = StepTimer(self._clock)
+        if self._llm is not None:
+            self._llm.reset()
         received_at = self._now()
         logger.info("Handling a message for incident %s", turn.incident_id)
         state = self._store.load(turn.customer_id, turn.incident_id)
@@ -122,6 +129,7 @@ class ConversationEngine:
         with timer.measure(TurnStep.PERSISTENCE):
             self._store.save(state)
             self._record_messages(turn, received_at, reply, language, outcome)
+        details = self._with_llm_usage(details, timer)
         timings = timer.finish()
         _log_turn(turn.incident_id, outcome, timings)
         return AgentReply(
@@ -233,8 +241,12 @@ class ConversationEngine:
             match = self._matcher.match(vector, language)
         if match.guard_flags:
             logger.warning("Guard flags %s on incident %s", match.guard_flags, state.incident_id)
+        with timer.measure(TurnStep.GUARDRAILS):
+            flagged = self._guardrails.check_flags(state, text, match, language)
+        if flagged is not None:
+            return flagged, match
         with timer.measure(TurnStep.RESOLUTION):
-            resolution = self._resolver.resolve(state, text, match)
+            resolution = self._resolver.resolve(state, text, match, language)
         if isinstance(resolution, Resolved):
             with timer.measure(TurnStep.GUARDRAILS):
                 closure = self._guardrails.check_request(state, resolution)
@@ -265,6 +277,21 @@ class ConversationEngine:
             return question_content(resolution)
         state.pending, state.ended = None, resolution.kind
         return ending_content(resolution)
+
+    def _with_llm_usage(self, details: TurnDetails, timer: StepTimer) -> TurnDetails:
+        """Adds the LLM's share of the turn to the timings and the details.
+
+        Args:
+            details: What the turn understood.
+            timer: The turn's timer.
+
+        Returns:
+            TurnDetails: the same details, with `llm_used` set.
+        """
+        if self._llm is None or self._llm.calls == 0:
+            return details
+        timer.record(TurnStep.LLM, self._llm.elapsed_ms)
+        return details.model_copy(update={"llm_used": True})
 
     def _remember(
         self, state: ConversationState, vector: np.ndarray, resolution: Resolution
