@@ -6,6 +6,8 @@ from krtr.back.ia.deterministic.intents import Intent
 from krtr.back.ia.engine.engine import ConversationEngine
 from krtr.back.ia.matching.artifacts import MatchKind
 from krtr.back.ia.matching.labels import GuardLabel
+from krtr.back.ia.messages.artifacts import MessageSender
+from krtr.back.ia.messages.store import InMemoryMessageStore
 from krtr.back.security.oidc.artifacts import InterfaceLanguage
 from tests.back.ia.fakes import CUSTOMER_ID, OTHER_CUSTOMER_ID, sample_engine
 
@@ -130,7 +132,11 @@ def test_an_ended_conversation_times_only_what_still_runs() -> None:
 
     reply = _say(engine, "¿Cuál es mi saldo?")
 
-    assert set(reply.timings.steps_ms) == {TurnStep.LANGUAGE, TurnStep.WRITING}
+    assert set(reply.timings.steps_ms) == {
+        TurnStep.LANGUAGE,
+        TurnStep.WRITING,
+        TurnStep.PERSISTENCE,
+    }
 
 
 def test_the_reply_reports_what_was_understood_for_the_events_log() -> None:
@@ -162,3 +168,30 @@ def test_a_closure_before_matching_reports_no_match_details() -> None:
     replies = [_say(engine, "hola banco") for _ in range(3)]
 
     assert replies[-1].details == TurnDetails()
+
+
+def test_each_turn_stores_the_message_and_the_reply() -> None:
+    """The text goes to the messages store, in order, with the turn's language and outcome."""
+    messages = InMemoryMessageStore()
+    engine = sample_engine(messages)
+
+    reply = _say(engine, "Quero saber o status da minha reclamação")
+
+    stored = messages.list_case(CUSTOMER_ID, "INC-1")
+    assert [(item.sender, item.content) for item in stored] == [
+        (MessageSender.CUSTOMER, "Quero saber o status da minha reclamação"),
+        (MessageSender.AGENT, reply.reply),
+    ]
+    assert [item.outcome for item in stored] == [None, TurnOutcome.NEEDS_CLARIFICATION]
+    assert {item.language for item in stored} == {InterfaceLanguage.PORTUGUESE}
+    assert stored[0].sent_at <= stored[1].sent_at
+
+
+def test_messages_after_the_conversation_ended_are_stored_too() -> None:
+    """Every message is kept, even those that only get the ended notice."""
+    messages = InMemoryMessageStore()
+    engine = sample_engine(messages)
+    for _ in range(4):
+        _say(engine, "hola banco")
+
+    assert len(messages.list_case(CUSTOMER_ID, "INC-1")) == 8

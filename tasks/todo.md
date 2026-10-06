@@ -133,7 +133,7 @@ model, writing the examples, and setting the thresholds from the evaluation set.
   - **Decided (2026-10-05):** metadata goes to `events`; message and reply text go to a
     messages table (Q5).
 
-- [ ] **1.16 `messages` table (decided 2026-10-05)** — the text of every message and reply.
+- [x] **1.16 `messages` table (decided 2026-10-05)** — the text of every message and reply.
   The contract is in `docs/ia-proposal.md` §9 and `docs/guia-web-seguridad_modal.md` §3.6.
   - **Columns:** `message_id`, `incident_id`, `customer_id`, `sender`, `content`,
     `language`, `outcome`, `sent_at`.
@@ -145,6 +145,21 @@ model, writing the examples, and setting the thresholds from the evaluation set.
       `select_by_case.sql`, `purge.sql`;
     - a `MessageStore` in `krtr/back/ia/`;
     - the grants to `krtr_app` in both Neon branches.
+  - **Done:**
+    - the 5 SQL files under `krtr/database/queries/messages/` (`query.sql` too, which the
+      column-order test requires);
+    - `CryptoEnvironmentVariable.MESSAGES_KEY`, and `.env.example`;
+    - `krtr/back/ia/messages/`: `NeonMessageStore` (encrypts on write, decrypts on read,
+      `purge_expired`) and `InMemoryMessageStore`;
+    - the engine stores the customer's message and the agent's reply every turn, timed as
+      the `persistence` step.
+  - **Still to do, by you (Neon):**
+    - `uv run krtr database neon create-schema messages` in the main branch and in `dev`;
+    - then `GRANT SELECT, INSERT, DELETE ON messages TO krtr_app`;
+    - generate `KRTR_MESSAGES_KEY` in `.env`.
+  - **Still to wire:**
+    - `NeonMessageStore` into the served app, once the chat endpoint exists (web task 4.9);
+    - `purge_expired` into the daily job (tasks 4.10 / 6.5).
   - **Still open:** where the case summary lives (G17). Proposed: the cases table (web
     task 4.8).
 

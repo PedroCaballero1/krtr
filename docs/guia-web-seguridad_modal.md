@@ -159,7 +159,7 @@ krtr/
   compute/modal/  # ✅ existente: se REUTILIZA (imagen, secretos, volúmenes)
   cli/back/{web,security,deploy}/      # comandos typer, espejo de krtr/back
   database/queries/{events,app_sessions}/   # ✅
-  database/queries/messages/                # ⬜ texto del chat (§3.6)
+  database/queries/messages/                # 🟡 texto del chat (§3.6): SQL listo, falta crearla en Neon
 tests/...  (espejo 1:1)     e2e/{security,browser,load}/  (contra producción)
 deploy/gcp/, Dockerfile, .dockerignore  ❌ eliminados en 0.2 (D18, 24d7dba)
 ```
@@ -201,7 +201,13 @@ Nunca se guardan contraseñas, tokens ni cookies en `properties`.
 
 ### 3.6 Tabla `messages` (G17, G21) 🆕
 
-⬜ Por crear. Guarda el texto de la conversación, separado de `events`, por dos razones:
+🟡 **Código listo (5-oct):** los SQL de `krtr/database/queries/messages/`, `NeonMessageStore` en `krtr/back/ia/messages/store.py` y `KRTR_MESSAGES_KEY`.
+
+Falta:
+- crear la tabla en Neon (`uv run krtr database neon create-schema messages`, en la rama principal y en `dev`) y dar los permisos de abajo;
+- conectarla a la app servida (4.9) y a la purga diaria (4.10 / 6.5).
+
+Guarda el texto de la conversación, separado de `events`, por dos razones:
 
 - **Datos financieros:** las respuestas traen saldos y números de tarjeta enmascarados, que no deben quedar en el log de auditoría.
 - **Lectura por caso:** `events` solo se puede consultar por `event_name` y `occurred_at`, así que no permite leer la conversación de un caso para retomarlo.

@@ -1,7 +1,7 @@
 """Builds an engine over sample customer data, for trying conversations without Neon or a model.
 
 Exists so `krtr back ia` can run the full pipeline on any machine: in-memory products and
-complaints for one demo customer, the hashing embedder, and an in-memory state store.
+complaints for one demo customer, the hashing embedder, and in-memory state and messages.
 Consumed by `krtr/cli/back/ia/handler.py`.
 """
 
@@ -22,6 +22,7 @@ from krtr.back.ia.engine.engine import ConversationEngine
 from krtr.back.ia.engine.factory import build_engine
 from krtr.back.ia.engine.store import InMemoryConversationStateStore
 from krtr.back.ia.matching.hashing import HashingEmbedder
+from krtr.back.ia.messages.store import InMemoryMessageStore
 
 DEMO_CUSTOMER_ID = "CUST-DEMO"
 DEMO_INCIDENT_ID = "INC-DEMO"
@@ -64,4 +65,5 @@ def build_demo_engine() -> ConversationEngine:
         products=InMemoryProductsReader({DEMO_CUSTOMER_ID: DEMO_PRODUCTS}),
         complaints=InMemoryComplaintsReader({DEMO_CUSTOMER_ID: DEMO_COMPLAINTS}),
         store=InMemoryConversationStateStore(),
+        messages=InMemoryMessageStore(),
     )

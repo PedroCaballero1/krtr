@@ -102,6 +102,7 @@ class TurnStep(StrEnum):
     RESOLUTION = "resolution"
     ACTION = "action"  # Running the action, or recording the question or the ending.
     WRITING = "writing"
+    PERSISTENCE = "persistence"  # Saving the conversation's state, the message and the reply.
 
 
 class TurnTimings(BaseModel):

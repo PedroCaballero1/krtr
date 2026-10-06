@@ -21,6 +21,7 @@ from krtr.back.ia.language.py3langid_detector import Py3LangidLanguageDetector
 from krtr.back.ia.matching.base import Embedder
 from krtr.back.ia.matching.catalog import ExemplarCatalog
 from krtr.back.ia.matching.matcher import IntentMatcher
+from krtr.back.ia.messages.store import MessageStore
 from krtr.back.ia.reasoning.clarifier import TemplateClarifier
 from krtr.back.ia.reasoning.resolver import TurnResolver
 from krtr.back.ia.writing.templates.writer import TemplateResponseWriter
@@ -31,6 +32,7 @@ def build_engine(
     products: CustomerProductsReader,
     complaints: CustomerComplaintsReader,
     store: ConversationStateStore,
+    messages: MessageStore,
     config: EngineConfig | None = None,
     language_detector: LanguageDetector | None = None,
 ) -> ConversationEngine:
@@ -41,6 +43,7 @@ def build_engine(
         products: Reads the customers' products.
         complaints: Reads the customers' complaints.
         store: Keeps each conversation's state.
+        messages: Keeps the text of each message and reply.
         config: The settings; the defaults when None.
         language_detector: Guesses each message's language; py3langid when None.
 
@@ -66,6 +69,7 @@ def build_engine(
         actions=actions,
         writer=TemplateResponseWriter.load(),
         store=store,
+        messages=messages,
         language=ConversationLanguagePolicy(
             language_detector or Py3LangidLanguageDetector(), settings.language
         ),

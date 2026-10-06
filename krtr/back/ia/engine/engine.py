@@ -3,12 +3,13 @@
 Exists as the only entry point the web chat endpoint and `krtr back ia` call
 (docs/ia-proposal.md §2.1): the reply language, hard rules, intent matching, resolution, an
 action or a question, then the template writer, saving the conversation's state at the end
-and timing every step (G16).
+storing the message and the reply (G17), and timing every step (G16).
 """
 
 import logging
 import time
 from collections.abc import Callable
+from datetime import datetime
 
 from krtr.back.ia.artifacts import (
     AgentReply,
@@ -29,6 +30,8 @@ from krtr.back.ia.language.policy import ConversationLanguagePolicy
 from krtr.back.ia.matching.artifacts import MatchResult
 from krtr.back.ia.matching.base import Embedder
 from krtr.back.ia.matching.matcher import IntentMatcher
+from krtr.back.ia.messages.artifacts import ConversationMessage, MessageSender
+from krtr.back.ia.messages.store import MessageStore
 from krtr.back.ia.reasoning.artifacts import (
     ConversationState,
     NeedsClarification,
@@ -39,6 +42,8 @@ from krtr.back.ia.reasoning.resolver import TurnResolver
 from krtr.back.ia.text import normalize_text
 from krtr.back.ia.timing import StepTimer
 from krtr.back.ia.writing.base import ResponseWriter
+from krtr.back.security.clock import Clock, utc_now
+from krtr.back.security.oidc.artifacts import InterfaceLanguage
 
 logger = logging.getLogger(__name__)
 
@@ -60,8 +65,10 @@ class ConversationEngine:
         writer: ResponseWriter,
         store: ConversationStateStore,
         language: ConversationLanguagePolicy,
+        messages: MessageStore,
         recent_messages_kept: int,
         clock: Callable[[], float] = time.perf_counter,
+        now: Clock = utc_now,
     ) -> None:
         """Keeps the pipeline's components.
 
@@ -74,8 +81,10 @@ class ConversationEngine:
             writer: Phrases the reply.
             store: Loads and saves the conversation's state.
             language: Decides the language each reply is written in.
+            messages: Stores the text of each message and reply.
             recent_messages_kept: How many past messages the repetition rule looks at.
             clock: Returns the current time in seconds, for timing the turn.
+            now: Returns the current UTC time, for the messages' timestamps.
         """
         self._embedder = embedder
         self._matcher = matcher
@@ -87,6 +96,8 @@ class ConversationEngine:
         self._language = language
         self._recent_messages_kept = recent_messages_kept
         self._clock = clock
+        self._now = now
+        self._messages = messages
 
     def handle(self, turn: UserTurn) -> AgentReply:
         """Answers one message of a case, timing each step of the turn.
@@ -98,14 +109,17 @@ class ConversationEngine:
             AgentReply: the reply text, its language, how the turn ended and how long it took.
         """
         timer = StepTimer(self._clock)
+        received_at = self._now()
         logger.info("Handling a message for incident %s", turn.incident_id)
         state = self._store.load(turn.customer_id, turn.incident_id)
         with timer.measure(TurnStep.LANGUAGE):
             language = self._language.resolve(state, turn.text, turn.language)
         content, outcome, details = self._run_turn(state, turn, timer)
-        self._store.save(state)
         with timer.measure(TurnStep.WRITING):
             reply = self._writer.write(content, language)
+        with timer.measure(TurnStep.PERSISTENCE):
+            self._store.save(state)
+            self._record_messages(turn, received_at, reply, language, outcome)
         timings = timer.finish()
         _log_turn(turn.incident_id, outcome, timings)
         return AgentReply(
@@ -115,6 +129,47 @@ class ConversationEngine:
             outcome=outcome,
             timings=timings,
             details=details,
+        )
+
+    def _record_messages(
+        self,
+        turn: UserTurn,
+        received_at: datetime,
+        reply: str,
+        language: InterfaceLanguage,
+        outcome: TurnOutcome,
+    ) -> None:
+        """Stores the customer's message and the agent's reply in the case's messages (G17).
+
+        Args:
+            turn: The customer's message and its case.
+            received_at: When the message arrived.
+            reply: The agent's reply text.
+            language: The language of the turn.
+            outcome: How the turn ended, stored on the reply.
+
+        Returns:
+            None.
+        """
+        case = {"incident_id": turn.incident_id, "customer_id": turn.customer_id}
+        self._messages.append(
+            ConversationMessage(
+                **case,
+                sender=MessageSender.CUSTOMER,
+                content=turn.text,
+                language=language,
+                sent_at=received_at,
+            )
+        )
+        self._messages.append(
+            ConversationMessage(
+                **case,
+                sender=MessageSender.AGENT,
+                content=reply,
+                language=language,
+                outcome=outcome,
+                sent_at=self._now(),
+            )
         )
 
     def _run_turn(

@@ -17,6 +17,7 @@ from krtr.back.ia.engine.store import InMemoryConversationStateStore
 from krtr.back.ia.matching.base import Embedder
 from krtr.back.ia.matching.catalog import CatalogLabel, ExemplarCatalog
 from krtr.back.ia.matching.hashing import HashingEmbedder
+from krtr.back.ia.messages.store import InMemoryMessageStore
 
 CUSTOMER_ID = "CUST-1"
 OTHER_CUSTOMER_ID = "CUST-2"
@@ -65,11 +66,12 @@ def sample_registry() -> ActionRegistry:
     )
 
 
-def sample_engine() -> ConversationEngine:
+def sample_engine(messages: InMemoryMessageStore | None = None) -> ConversationEngine:
     """Builds the full phase 1 engine over the demo data, owned by CUSTOMER_ID."""
     return build_engine(
         embedder=HashingEmbedder(),
         products=InMemoryProductsReader({CUSTOMER_ID: DEMO_PRODUCTS}),
         complaints=InMemoryComplaintsReader({CUSTOMER_ID: DEMO_COMPLAINTS}),
         store=InMemoryConversationStateStore(),
+        messages=messages or InMemoryMessageStore(),
     )
