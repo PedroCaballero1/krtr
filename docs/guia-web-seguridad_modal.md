@@ -347,7 +347,7 @@ Guarda el texto de la conversación, separado de `events`, por dos razones:
   - La rama `dev` (compute `ep-wispy-fire-b5ixpa32`, sin borrado automático) se creó desde `production` **después** de todo lo anterior y lo heredó: roles, contraseñas, base, tablas y permisos. Su conexión de administrador está en `.env` como `NEON_DEV_DB_HOST`.
   - Verificado entrando con cada rol en las dos ramas: `krtr_app` solo usa `events` y `app_sessions` (no puede leer `products`); `krtr_keycloak` puede crear tablas en `keycloak`; `krtr_audit_reader` solo entra.
   - ✅ 🆕 **Tablas de la app**, en la rama principal y en `dev`: con el rol dueño, `uv run krtr database neon create-schema events` y `uv run krtr database neon create-schema app_sessions` (el SQL es el de 2.1 y 2.2). Después, `GRANT SELECT, INSERT, UPDATE, DELETE ON events, app_sessions TO krtr_app`. Sin esto, la 4.11 no puede guardar eventos ni la 4.4 sesiones.
-  - ✅ en `dev` (3.1) · ⬜ en `production` (6.3) — 🆕 **Permiso de `krtr_audit_reader`:** `GRANT SELECT ON event_entity` en la base `keycloak` se da **después del primer arranque de Keycloak** (3.1 en `dev`, 6.3 en producción), porque esa tabla la crea Keycloak. No usar `ALTER DEFAULT PRIVILEGES`: también le daría lectura de `credential`, donde están los hashes de las contraseñas.
+  - ✅ en `dev` (3.1) · ✅ en `production` (5-oct, 6.5) — 🆕 **Permiso de `krtr_audit_reader`:** `GRANT SELECT ON event_entity` en la base `keycloak` se da **después del primer arranque de Keycloak** (3.1 en `dev`, 6.3 en producción), porque esa tabla la crea Keycloak. No usar `ALTER DEFAULT PRIVILEGES`: también le daría lectura de `credential`, donde están los hashes de las contraseñas.
 - **1.4 · 1.5 · 1.6** ✅
 
 ### Fase 2 — Base de datos
@@ -401,10 +401,15 @@ Guarda el texto de la conversación, separado de `events`, por dos razones:
 - **Commit:** `feat(back/security/keycloak): add krtr realm configuration`
 - **Depende de:** 3.1
 
-#### 3.3 🤖 Tema de login mínimo "krtr"
+#### 3.3 🤖 Tema de login mínimo "krtr" ✅ `a6b1b8f` · `dec1d57`
 - **Objetivo:** `themes/krtr/login` extendiendo el tema base, con el nombre krtr, el selector ES/PT y CSS sin estilos inline. Debe seguir la línea visual de `docs/krtr diseño.html` en lo básico (colores y tipografía).
 - **Aceptación:** la pantalla de login se ve en ES y en PT según `ui_locales`.
 - **Commit:** `feat(back/security/keycloak): add krtr login theme`
+- **Resultado (5-oct):**
+  - `krtr/back/security/keycloak/themes/krtr/login` hereda de `base` (no de `keycloak.v2`) y copia la pantalla de login de `docs/krtr diseño.html`: cabecera con la marca y el selector ES/PT, título a la izquierda y formulario a la derecha. Usa la tipografía Archivo (servida desde el tema, sin Google Fonts) y los colores del diseño, todo en `css/krtr.css` y sin estilos inline. Las propiedades `kc*Class` de `theme.properties` aplican las mismas clases a las demás páginas de `base` (OTP, acciones requeridas, errores).
+  - Textos propios en `messages_es` y `messages_pt_BR` ("Número de cliente", la pista del bloqueo tras 5 intentos); el resto sale de `base`.
+  - **Local:** el `docker compose` monta el tema (en modo dev, los cambios se ven sin reiniciar). Verificado con Chrome en escritorio y en móvil: ES, PT y el error de credenciales, sin errores de consola; CSS, fuentes, logo y JS responden 200.
+  - **Producción:** la imagen de Keycloak copia el tema a `/opt/keycloak/themes/krtr` (`images.py`; un test comprueba que la carpeta coincide con el `loginTheme` del realm). Como el realm ya existía (IGNORE_EXISTING), `loginTheme=krtr` se aplicó con `kcadm.sh` dentro del contenedor de `auth`. Verificado en `https://<ws>--krtr-auth.modal.run`: la pantalla sale en ES y en PT según `ui_locales`, y no quedó `/tmp/kc.cfg` en el contenedor.
 - **Depende de:** 3.2
 
 #### 3.4 🤖 Generador de credenciales (G6) ✅ `8b327c6`
@@ -526,14 +531,19 @@ Guarda el texto de la conversación, separado de `events`, por dos razones:
 - **Resultado:** la app servida responde con el **motor de IA** de `krtr/back/ia/` (`AgentChatResponder`), sobre lectores de Neon nuevos para `products` y `complaints` y la tabla `messages` cifrada; sin Neon, en desarrollo, responde el texto de D15. El patrón del ID de queja sigue el formato real (`CMP-` + 20 caracteres). La voz se valida (tipo, bytes mágicos, 2 MB) y responde el texto de D15, porque la voz a texto está fuera de alcance; la duración no se valida en el servidor (el front corta a 60 s). Cada respuesta registra `chat_response_received` con los metadatos del turno y la latencia, nunca el texto. Un límite global de `Content-Length` rechaza cuerpos grandes antes de leer el multipart.
 - **Depende de:** 4.5, 4.6
 
-#### 4.10 🤖 Jobs de eventos (como funciones, sin programación) 🟡 purga hecha (`fa1354c`)
+#### 4.10 🤖 Jobs de eventos (como funciones, sin programación) ✅ `fa1354c` · `95d22ab`
 - **Objetivo:**
   - Funciones del vertical `audit/`: `purge_expired_events()` (ejecuta `purge.sql` y registra cuántas filas borró) y `sync_auth_events()` (lee `event_entity` desde la última marca y los inserta como `auth_*` cifrados, D3).
   - Comandos CLI `krtr back security purge-events` y `sync-auth-events` que las llaman.
   - **La programación la pone Modal** (6.5).
 - **Aceptación:** los tests cubren la idempotencia de la sincronización y que la purga no borra eventos recientes.
-- **Commit:** `feat(back/security/audit): add purge and Keycloak event sync jobs`
-- **Depende de:** 4.7
+- **Commit:** `feat(back/security/audit): add purge and Keycloak event sync jobs` (quedó en `fa1354c`, la purga, y `95d22ab`, la sincronización)
+- **Resultado (5-oct):**
+  - `sync_auth_events()` en `krtr/back/security/audit/keycloak_sync.py`. Lee `event_entity` como `krtr_audit_reader` (variable `KRTR_AUDIT_DB_URL`) y guarda cada evento como **`auth_keycloak_<tipo>`** (`auth_keycloak_login`, `auth_keycloak_login_error`, `auth_keycloak_logout`, `auth_keycloak_user_disabled_by_temporary_lockout`…). El prefijo evita que choque con los `auth_*` de la app, como su `auth_logout`.
+  - **Marca e idempotencia:** la fila conserva el id del evento de Keycloak, y `events/insert_new.sql` usa `ON CONFLICT (id) DO NOTHING`. La marca es el último `auth_keycloak_*` de `events` menos 15 min de solape, para atrapar eventos que Keycloak confirme tarde. No hace falta tabla nueva. La primera corrida copia todo lo que Keycloak guarda (90 días).
+  - `properties` (cifrado) lleva el tipo, el realm, el cliente, el usuario y la sesión de Keycloak, la IP, el error y los detalles (que traen el `customer_id` en `username`). Se descarta cualquier detalle con nombre de credencial, igual que en `EventRecorder`.
+  - **CLI:** `uv run krtr back security audit sync-auth-events`. Va bajo `audit` por el espejo del CLI, como `credentials`. Para correrlo a mano hace falta `KRTR_AUDIT_DB_URL` en `.env` (ver `.env.example`). No se hizo un comando `purge-events`: la purga se corre con `modal run` (README).
+  - Verificado contra `dev`: la primera corrida copió 45 eventos y la segunda 0 nuevos; las propiedades se descifran con `KRTR_EVENTS_KEY`.
 
 #### 4.11 🤖 Registrar eventos en la app servida 🆕 ✅ `1634b54`
 - **Objetivo:** hoy `krtr/back/web/app.py` crea `app = create_app()` sin `EventRecorder`, así que la app servida (con `krtr back web serve` o en Modal) descarta todos los eventos y solo deja un warning en el log. Ninguna tarea lo conectaba. Hay que construir el `EventRecorder` (pool de `NeonClient` + `AesGcmCipher` con `KRTR_EVENTS_KEY`) desde el entorno para la app servida. Los tests siguen inyectando el suyo.
@@ -625,12 +635,17 @@ Guarda el texto de la conversación, separado de `events`, por dos razones:
 - **Commit:** `feat(back/deploy): add Keycloak import function`
 - **Depende de:** 3.5, 6.3
 
-#### 6.5 🤖 Crons 🟡 purga programada (`fa1354c`)
+#### 6.5 🤖 Crons 🟡 purga programada (`fa1354c`) · sincronización lista sin desplegar (`ec237aa`)
 - **Objetivo:** funciones `purge_events` con `schedule=modal.Cron("0 8 * * *")` (03:00 COT) y `sync_auth_events` con `schedule=modal.Period(minutes=15)`. Ambas con `cpu=0.125`, `secrets=[krtr-jobs]`, y llaman a las funciones de 4.10.
   - 🆕 v2.5: `purge_events` también ejecuta `messages/purge.sql` (retención de 3 meses, §3.6). Siguen siendo 2 crons.
 - **Aceptación:** al ejecutarlas a mano (`uv run --env-file .env modal run …`), terminan bien y dejan logs.
-- **Commit:** `feat(back/deploy): schedule event purge and Keycloak sync`
+- **Commit:** `feat(back/deploy): schedule event purge and Keycloak sync` (quedó en `fa1354c`, la purga, y `ec237aa`, la sincronización)
 - **Depende de:** 4.10, 6.2
+- **Resultado (5-oct):**
+  - `sync_auth_events` está en `krtr/back/deploy/app.py` con `modal.Period(minutes=15)`, `cpu=0.125` y `krtr-jobs`, y llama a la función de 4.10.
+  - `krtr-jobs` lleva ahora `KRTR_AUDIT_DB_URL` (la base `keycloak` en el host directo, como `krtr_audit_reader`), armada en `krtr/back/deploy/secrets.py` desde `KRTR_AUDIT_DB_PASSWORD`. Subido con `push-secrets` el 5-oct.
+  - `GRANT SELECT ON event_entity TO krtr_audit_reader` dado en `production` el 5-oct, como `krtr_keycloak` y sin `ALTER DEFAULT PRIVILEGES`. Verificado: el rol lee `event_entity` (120 eventos) y no puede leer `credential` ni `user_entity`.
+  - ⬜ **Falta desplegar** (`KRTR_WARM=true uv run --env-file .env modal deploy -m krtr.back.deploy.app`) y correrla una vez a mano. La rama `keycloak-theme` ya incluye `security-tests`, que es lo que corre hoy en producción (v9). Quien despliegue después tiene que partir de una rama con las dos; si no, el cron desaparece.
 
 #### 6.6 👤🤖 Primer despliegue y datos de producción ✅ (5-oct)
 - **Objetivo:**
@@ -650,7 +665,7 @@ Guarda el texto de la conversación, separado de `events`, por dos razones:
   - Realm `master`: protección contra fuerza bruta (5 fallos → 15 min) activada con `kcadm.sh` vía `modal container exec`.
   - **Cuenta con MFA:** `CLI-MFA000000001`, con la acción obligatoria "Configure OTP". El TOTP se enrola en su primer login. Su contraseña está en `data/credentials/mfa_credentials.csv` (fuera de git, `600`).
   - Medido: página 0,4 s con el contenedor encendido (6 s en frío), login 1,8 s, chat 0,5 s con saldos reales enmascarados en ES y PT.
-  - ⬜ Falta: guardar las credenciales QA en GitHub Secrets (para 6.7) y `GRANT SELECT ON event_entity TO krtr_audit_reader` en `production` (solo hace falta cuando se programe la sincronización de eventos de Keycloak).
+  - ⬜ Falta: guardar las credenciales QA en GitHub Secrets (para 6.7). El `GRANT SELECT ON event_entity TO krtr_audit_reader` en `production` quedó dado el 5-oct (6.5).
 
 #### 6.7 🤖 Despliegue continuo ✅
 - **Objetivo:** `.github/workflows/deploy.yml`:
