@@ -7,25 +7,24 @@ accounts (D4) come from `data/credentials/qa_credentials.csv`, never from the re
 Run with `uv run pytest e2e/security`; tests marked `slow` only run with `--run-slow`.
 """
 
-import csv
-import html
-import re
 from collections.abc import Iterator
-from pathlib import Path
 
 import httpx
 import pytest
 
+from e2e.production import (
+    PRODUCTION_AUTH_URL,
+    PRODUCTION_URL,
+    QA_CREDENTIALS,
+    login_form_action,
+    read_qa_accounts,
+)
 from krtr.database.neon.client import NeonClient
 from krtr.database.neon.config import NeonConfig
 
-PRODUCTION_URL = "https://juan-alvarezo-2002--krtr.modal.run"
-PRODUCTION_AUTH_URL = "https://juan-alvarezo-2002--krtr-auth.modal.run"
-QA_CREDENTIALS = Path("data/credentials/qa_credentials.csv")
 LOCKOUT_ACCOUNT_ROW = 50  # The QA account (row of the CSV, 1-based) the lockout test locks.
 SLOW_MARKER = "slow"
 TIMEOUT_SECONDS = 60
-_FORM_ACTION = re.compile(r'<form[^>]*id="kc-form-login"[^>]*action="([^"]+)"', re.S)
 
 
 def pytest_addoption(parser: pytest.Parser) -> None:
@@ -88,8 +87,7 @@ def qa_accounts() -> list[tuple[str, str]]:
     """Returns the QA accounts, or skips the tests that need them."""
     if not QA_CREDENTIALS.exists():
         pytest.skip(f"{QA_CREDENTIALS} not found")
-    with QA_CREDENTIALS.open() as file:
-        return [(row["customer_id"], row["password"]) for row in csv.DictReader(file)]
+    return read_qa_accounts()
 
 
 @pytest.fixture(scope="session")
@@ -128,8 +126,9 @@ def log_in(browser: httpx.Client, base_url: str, username: str, password: str) -
         httpx.Response: the response after the last redirect.
     """
     page = browser.get(f"{base_url}/auth/login?lang=es")
-    action = html.unescape(_FORM_ACTION.search(page.text).group(1))
-    return browser.post(action, data={"username": username, "password": password})
+    return browser.post(
+        login_form_action(page.text), data={"username": username, "password": password}
+    )
 
 
 def csrf_headers(browser: httpx.Client, base_url: str) -> dict[str, str]:

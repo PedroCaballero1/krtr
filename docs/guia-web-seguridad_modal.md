@@ -727,18 +727,38 @@ Guarda el texto de la conversación, separado de `events`, por dos razones:
 - **Aceptación:** 0 alertas altas; cada alerta media está justificada.
 - **Commit:** `ci(security): add OWASP ZAP baseline scan`
 - **Depende de:** 6.7
+- **Resultado (5-oct):** `.github/workflows/zap.yml` corre a mano (`workflow_dispatch`) y cuando el workflow `Deploy` termina en verde (`workflow_run`; como todo `workflow_run`, solo se activa cuando el archivo esté en `master`). Un job por URL: la app desde `/` y Keycloak desde su página de login real (la URL a la que redirige `/auth/login`, porque la raíz de `krtr-auth` lleva a `/admin`, que da 404). Ambos usan `.zap/baseline.sh`, que corre ZAP 2.17.0 (imagen fijada por digest) y aplica la aceptación: **ninguna alerta alta y ninguna media fuera de `.zap/rules.tsv`**. El mismo script corre en local con Docker (Colima) y deja los reportes en `.zap/reports/` (fuera de git); en GitHub se suben como artefactos.
+  - **Corrida local (5-oct, 23:15) — app:** 0 altas, 0 medias. Avisos bajos o informativos: directivas de caché (10015, 10049) en el HTML y los assets, un comentario sospechoso en el JS compilado (10027), COEP ausente (90004) y "Modern Web Application" (10109).
+  - **Keycloak:** 0 altas. Dos reglas medias, aceptadas en `rules.tsv`:
+    - **10202** (sin token anti-CSRF): falso positivo. El formulario está atado a la cookie `AUTH_SESSION_ID` y al `session_code`/`execution`/`tab_id` de un solo uso de su URL.
+    - **10055** (CSP): Keycloak pone una CSP mínima (`frame-src 'self'; frame-ancestors 'self'; object-src 'none'`) y el tema usa un `onsubmit` en línea. Se aceptó como **pendiente**: arreglarla requiere quitar el `onsubmit` del tema, fijar la CSP del realm con `kcadm.sh` y desplegar ([checklist](security-checklist.md) §5).
+  - Bajas en Keycloak: las respuestas 404 del gateway (`/`, `/admin/`) no llevan HSTS; las cookies de Keycloak usan `SameSite=None` y `KC_AUTH_SESSION_HASH` no es `HttpOnly` (así las define Keycloak).
 
 #### 7.5 🤖 Pruebas de carga
 - Igual que la v1: Locust con cuentas QA. Base de 20 usuarios por 10 min, pico de 50 y prueba sostenida de 30 min con 20. El objetivo es D7.
 - Se corren **con el modo demo encendido**. Ojo: Modal limita las cuentas nuevas a unas 200 peticiones por segundo; la prueba no debe pasar de eso.
 - **Commit:** `test(e2e/load): add Locust load scenarios`
 - **Depende de:** 6.8
+- **Resultado (5-oct):** `e2e/load/locustfile.py`, un usuario de Locust por cuenta QA, con el login real de Keycloak. Perfiles con `--load-profile`: `smoke` (20 usuarios, 3 min), `baseline` (20 × 10 min) y `spike` (20 → 50 → 20 en 5 min). La prueba sostenida de 30 min no se corrió (no se pidió en esta tarea).
+  - **Límite por IP:** Locust sale de una sola IP, así que todas las peticiones a la app, incluidas las del login, pasan por un regulador común de **8 por segundo** (480/min, el 80% de los 600). Más usuarios significa más sesiones simultáneas, no más tráfico. Un 429 cuenta como fallo de la prueba.
+  - **Qué mide D7:** el grupo `api` (todo `/api/*` y `/app`). El login (Keycloak) y el chat (motor de IA, ~1 mensaje por minuto por usuario) se reportan aparte. Al terminar, se registra el veredicto y el código de salida es 1 si el p95 pasa de 300 ms, o si hubo algún 5xx o 429.
+  - **Números** (desde Colombia; unos 130 ms de cada petición son la ida y vuelta a us-east):
+
+    | Perfil | Peticiones `api` | p50 | **p95 `api`** | 5xx | 429 | Chat p95 | Login p95 |
+    |---|---:|---:|---:|---:|---:|---:|---:|
+    | smoke | 1.281 | 170 ms | **250 ms** | 0 | 0 | 360 ms | 1,1 s |
+    | baseline | 4.365 | 170 ms | **250 ms** | 0 | 0 | 300 ms | 1,5 s |
+    | spike (pico de 50) | 2.060 | 170 ms | **240 ms** | 0 | 0 | 300 ms | 1,2 s |
+
+  - ✅ **D7 se cumple** en los tres. El endpoint más lento es `/api/session/activity` (p95 330–430 ms), porque a veces renueva el token con Keycloak.
+  - **Ojo:** en la base hubo 405 respuestas 401 (9%). Mientras corría, otra persona o proceso inició sesión con las filas 1–9 de `qa_credentials.csv` (el patrón de `e2e/security`), y cada login cerró la sesión de un usuario de Locust (G15). Se comprobó con los eventos `session_created` y `session_revoked_by_new_login` en `events`. No es un fallo de la app, pero **no hay que correr `e2e/security` al mismo tiempo que Locust**. El pico, sin interferencias, tuvo 0 fallos.
 
 #### 7.6 👤 Revisión contra ASVS nivel 2
 - **Objetivo:** `docs/security-checklist.md` con los controles aplicables de ASVS 5.0 L2. Cada control con estado y evidencia.
 - **Excepciones documentadas** por la plataforma: sin WAF, política TLS que no controlamos (0.4b), sin dominio propio, la administración de Keycloak solo por `modal container exec`, y lo que haya encontrado 0.4(f) (cabeceras que agrega Modal y usuario del contenedor).
 - **Aceptación:** no queda ningún control aplicable sin evidencia ni sin excepción justificada.
 - **Depende de:** 7.2–7.5
+- **Borrador (5-oct):** [`docs/security-checklist.md`](security-checklist.md), con los 253 controles L1 + L2 de ASVS 5.0.0, cada uno una sola vez: 152 ✅, 27 🟡, 16 ⚠️ (8 excepciones: E1–E6 de la plataforma, E7–E8 de diseño), 1 ❌ (V15.1.1, plazos para dependencias vulnerables) y 57 que no aplican. Incluye el inventario criptográfico, la clasificación de datos, el inventario de registros y 11 pendientes priorizados. ⬜ Falta la revisión y la firma de una persona del equipo.
 
 ### Fase 8 — Entrega
 

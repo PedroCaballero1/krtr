@@ -1,0 +1,53 @@
+name: ZAP
+
+# Task 7.4 of docs/guia-web-seguridad_modal.md: OWASP ZAP baseline scan (passive, no attacks)
+# of the app and of Keycloak, after every successful deploy and by hand. Accepted rules live in
+# .zap/rules.tsv; .zap/baseline.sh fails on any High alert or unaccepted Medium alert.
+on:
+  workflow_run:
+    workflows: [Deploy]
+    types: [completed]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  APP_URL: https://juan-alvarezo-2002--krtr.modal.run
+
+jobs:
+  baseline:
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        target: [app, auth]
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # The app is scanned from its landing page. Keycloak's root redirects to /admin, which
+      # the gateway hides (D19), so its scan starts at the real login page: the one
+      # /auth/login redirects to.
+      - name: Pick the target URL
+        id: target
+        run: |
+          if [ "${{ matrix.target }}" = "app" ]; then
+            echo "url=$APP_URL/" >> "$GITHUB_OUTPUT"
+          else
+            login=$(curl -s -o /dev/null -w '%{redirect_url}' "$APP_URL/auth/login?lang=es")
+            echo "url=$login" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Scan with ZAP
+        run: .zap/baseline.sh "${{ steps.target.outputs.url }}" "zap-${{ matrix.target }}"
+
+      - name: Upload the report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: zap-${{ matrix.target }}
+          path: .zap/reports/zap-${{ matrix.target }}.*

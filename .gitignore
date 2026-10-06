@@ -29,3 +29,6 @@ krtr/front/dist/
 
 # Generated customer credentials (jury/QA/import batches) — never committed
 data/credentials/
+
+# OWASP ZAP reports (.zap/baseline.sh)
+.zap/reports/
