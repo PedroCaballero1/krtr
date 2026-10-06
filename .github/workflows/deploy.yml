@@ -1,0 +1,86 @@
+name: Deploy
+
+# Task 6.7 of docs/guia-web-seguridad_modal.md: every merge to master that passes CI
+# (lint-and-test and security) is deployed to Modal, then smoke-tested.
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+    branches: [master]
+  workflow_dispatch: # Redeploy master by hand (e.g. to switch the demo mode).
+
+permissions:
+  contents: read
+
+# One deploy at a time; a newer merge waits instead of racing the one in flight.
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+env:
+  APP_URL: https://juan-alvarezo-2002--krtr.modal.run
+  AUTH_URL: https://juan-alvarezo-2002--krtr-auth.modal.run
+
+jobs:
+  deploy:
+    # Only after a green CI run of a push to master (not of a pull request).
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.workflow_run.conclusion == 'success' &&
+       github.event.workflow_run.event == 'push')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout the commit CI tested
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Build the frontend
+        run: |
+          npm ci --no-fund
+          npm --workspace krtr/front run build
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+        with:
+          enable-cache: true
+
+      - name: Set up Python
+        run: uv python install
+
+      - name: Install dependencies (with the modal extra)
+        run: uv sync --locked --extra modal
+
+      # As a module (-m): the images carry the krtr sources, not the file on its own.
+      # KRTR_WARM (repository variable) keeps one container of each service on (D17). It
+      # defaults to true during the evaluation, so a merge never switches the demo mode off;
+      # set the variable to false when the evaluation ends.
+      - name: Deploy to Modal
+        env:
+          MODAL_TOKEN_ID: ${{ secrets.MODAL_TOKEN_ID }}
+          MODAL_TOKEN_SECRET: ${{ secrets.MODAL_TOKEN_SECRET }}
+          KRTR_WARM: ${{ vars.KRTR_WARM || 'true' }}
+        run: uv run modal deploy -m krtr.back.deploy.app
+
+      # Keycloak restarts on every deploy (about 30 s, longer from cold): wait up to 10 min.
+      - name: Smoke test
+        run: |
+          check() {
+            for attempt in $(seq 1 60); do
+              status=$(curl -s -o /dev/null -w "%{http_code}" --max-time 20 "$1" || true)
+              if [ "$status" = "200" ]; then echo "OK $1"; return 0; fi
+              sleep 10
+            done
+            echo "FAILED $1 (last status $status)"; return 1
+          }
+          check "$APP_URL/healthz"
+          check "$AUTH_URL/realms/krtr/.well-known/openid-configuration"
+          admin=$(curl -s -o /dev/null -w "%{http_code}" --max-time 20 "$AUTH_URL/admin/")
+          if [ "$admin" != "404" ]; then echo "FAILED /admin/ answered $admin"; exit 1; fi
+          echo "OK /admin/ is hidden"

@@ -651,13 +651,16 @@ Guarda el texto de la conversación, separado de `events`, por dos razones:
   - Medido: página 0,4 s con el contenedor encendido (6 s en frío), login 1,8 s, chat 0,5 s con saldos reales enmascarados en ES y PT.
   - ⬜ Falta: guardar las credenciales QA en GitHub Secrets (para 6.7) y `GRANT SELECT ON event_entity TO krtr_audit_reader` en `production` (solo hace falta cuando se programe la sincronización de eventos de Keycloak).
 
-#### 6.7 🤖 Despliegue continuo
+#### 6.7 🤖 Despliegue continuo ✅
 - **Objetivo:** `.github/workflows/deploy.yml`:
   - Al hacer push a `master`, espera que pasen `lint-and-test` y `security`.
   - Luego: `npm ci` + build del front → `uv sync --locked --extra modal` → `uv run modal deploy krtr/back/deploy/app.py`, con `MODAL_TOKEN_ID` y `MODAL_TOKEN_SECRET` y `KRTR_WARM` desde una variable del repositorio.
   - Smoke test: `/healthz` de la app y `/.well-known/openid-configuration` de Keycloak.
 - **Aceptación:** un merge de prueba despliega sin intervención manual.
 - **Commit:** `ci(deploy): deploy to Modal on master`
+- **Resultado (5-oct):** `.github/workflows/deploy.yml` corre con `workflow_run` cuando el workflow `CI` termina **en verde** sobre un push a `master` (nunca en un PR), y también a mano (`workflow_dispatch`). Despliega exactamente el commit que probó el CI, con `modal deploy -m krtr.back.deploy.app`, y uno a la vez (`concurrency`). El smoke test espera hasta 10 min a `/healthz` y al `.well-known` de Keycloak (que se reinicia en cada despliegue), y comprueba que `/admin/` siga en 404. `KRTR_WARM` sale de la variable del repositorio, con `true` por defecto mientras dure la evaluación.
+  - 👤 Requisitos en GitHub: los secretos `MODAL_TOKEN_ID` / `MODAL_TOKEN_SECRET` (0.1 dice que ya existen) y, al terminar la evaluación, la variable `KRTR_WARM=false`.
+  - ⬜ Sin verificar todavía: la primera corrida real. Si el job `security` del CI no está en verde (7.1), el despliegue nunca arranca.
 - **Depende de:** 6.6, 7.1
 
 #### 6.8 👤 Modo demo y control de costos (D17)
