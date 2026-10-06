@@ -44,3 +44,12 @@ def test_a_missing_source_exits_with_an_error(tmp_path: Path) -> None:
     )
 
     assert result.exit_code == 1
+
+
+def test_import_without_users_files_exits_with_an_error(tmp_path: Path) -> None:
+    """Pointing the import at the wrong folder must fail clearly, before reaching Keycloak."""
+    result = runner.invoke(
+        app, ["back", "security", "credentials", "import", "--source", str(tmp_path)]
+    )
+
+    assert result.exit_code == 1
