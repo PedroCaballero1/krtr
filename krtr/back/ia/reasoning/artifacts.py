@@ -61,7 +61,8 @@ class ConversationState(BaseModel):
     customer_id: str
     pending: PendingQuestion | None = None
     clarification_attempts: int = 0
-    recent_messages: list[str] = Field(default_factory=list)  # Normalised, newest last.
+    recent_embeddings: list[list[float]] = Field(default_factory=list)  # Window, newest last.
+    recent_requests: list[str] = Field(default_factory=list)  # Resolved requests, newest last.
     ended: TurnOutcome | None = None  # Set once the case is escalated or closed.
     language: InterfaceLanguage | None = None  # Set by the first clear message (G14).
 

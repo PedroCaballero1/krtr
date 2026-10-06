@@ -1,6 +1,170 @@
+# Phase 2 — the real embedder, the catalog and the thresholds
+
+_Source: `docs/ia-proposal.md` §7, phase 2 · 2026-10-05 · Status: **implemented, pending your review**_
+
+**Goal:** replace the lexical stand-in with a local multilingual model, fill the catalog with
+phrases from the data, and set the thresholds from measurements, for each model and language.
+The engine does not change; only what plugs into `Embedder` and `MatchThresholds` does.
+
+**Rule for every model (`tasks/lessons.md`):**
+- A model is a member of a `StrEnum` that lists every option, deterministic ones included.
+- It is chosen by an environment variable or a CLI option typed with that Enum, so an
+  unknown name fails validation.
+- A factory maps each member to its implementation.
+
+**Branch:** `implement-ia-phase-2`, from `master` (`407932b`).
+
+## Tasks
+
+- [x] **2.1 Model registry** — `matching/models.py`:
+  - `EmbeddingModel` StrEnum:
+    - `HASHING` — the deterministic trigram embedder of phase 1: offline, used in tests;
+    - `MULTILINGUAL_MINILM` — `sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2`
+      (220 MB, 384 dimensions, run through ONNX).
+  - Each member is mapped to its traits: deterministic or not, its download name, and its
+    dimensions.
+  - `language/models.py`: `LanguageDetectorModel` StrEnum with `PY3LANGID` (deterministic,
+    the only one), selected the same way, so every model the agent uses is listed in an Enum.
+- [x] **2.2 Selection by environment or CLI** — `IaModelsConfig` (pydantic):
+  - reads `KRTR_IA_EMBEDDING_MODEL` and `KRTR_IA_LANGUAGE_MODEL`;
+  - validates them against the Enums, so an unknown value fails at startup and names the
+    accepted values;
+  - CLI: `--embedding-model` and `--language-model` on `ask`, `chat` and `evaluate`, typed
+    with the Enums. The CLI option wins over the environment variable, which wins over the
+    default.
+  - Factories `build_embedder(EmbeddingModel)` and `build_language_detector(...)`; `build_engine`
+    takes the config instead of instances.
+- [x] **2.3 ONNX embedder** — `matching/onnx/` (`FastEmbedEmbedder`):
+  - built on `fastembed` (ONNX runtime, about 20 MB, no PyTorch), added with `uv add fastembed`;
+  - imported only when the multilingual model is selected, so tests and `--embedding-model
+    hashing` never load it;
+  - the model is downloaded once to `.krtr/models/` (git-ignored).
+- [x] **2.4 Thresholds per model and language** — `matching/thresholds.json`, keyed by model
+  then language.
+  - The matcher receives the turn's language: the language step already runs before matching.
+  - A missing (model, language) pair fails when the engine is built, not mid-conversation.
+  - The hashing values from phase 1 move into this file unchanged.
+- [x] **2.5 Catalog content (tracks D.1–D.3)** — done by me in this session, in place of a
+  separate LLM pipeline, and reviewed by you:
+  - **D.1:** extract the distinct texts, offline, from Neon (Q2-C):
+    - the customer lines of the call history (6, from the EDA);
+    - the complaint `description`, category and subcategory texts.
+
+    In the live flow, the text comes from the web page instead.
+  - **D.2:** label each text as an existing intent, a new deterministic one, or hard
+    (escalate), in a review table `docs/ia-intents.md`. A **new** intent needs a new action,
+    which is out of this phase unless you choose one.
+  - **D.3:** direct ES → pt-BR translation of the lines, plus 10–20 phrases per intent and
+    language, in `exemplars/<language>/<label>.txt`.
+- [x] **2.6 Evaluation set (D.4)** — `matching/evaluation/<language>/<label>.txt`, one
+  message per line, never reused as catalog phrases, plus `none.txt` for messages outside
+  the catalog. Reviewed by you.
+- [x] **2.7 `krtr back ia evaluate`:**
+  - scores the evaluation set with the selected model;
+  - reports, per language, how many messages land on each outcome (right match, wrong match,
+    ambiguous, no match) and the embedding latency;
+  - sweeps `accept`, `reject` and `margin`, and proposes the values with **zero wrong
+    matches** and the most right ones.
+
+  I set `thresholds.json` from that report. A wrong match answers the wrong question, so it
+  costs more than one extra clarification.
+- [x] **2.8 Tests:**
+  - the Enum validation from the environment and from the CLI;
+  - the factories, including that `hashing` never imports `fastembed`;
+  - threshold loading, including a missing pair;
+  - the sweep, on fixed scores;
+  - the CLI options.
+  - One test runs the real model on a few ES / PT phrases, marked to be skipped when the
+    model isn't downloaded.
+- [x] **2.9 Verification and docs** — coverage of 85% or more; lint; README (model options,
+  `evaluate`); a review section here.
+
+- [x] **2.10 Broad off-topic coverage** (requested 2026-10-05) —
+  `exemplars/<language>/off_topic.txt` in ES and PT, covering many categories: sports,
+  weather, cooking, health, politics, religion, entertainment, travel, studies and homework,
+  technology, other companies, small talk, jokes, questions about the bot itself, attempts to
+  change its instructions, illegal or sexual requests, and financial advice outside the bank.
+  - Off-topic phrases must never swallow a banking request the catalog doesn't cover yet (for
+    example "quiero un préstamo"). The evaluation set includes those, and the `guard`
+    threshold is set so they don't flag.
+  - A flag still does not close the conversation by itself; that needs the LLM's
+    confirmation (phase 3).
+- [x] **2.11 Repetition by meaning, anywhere in the window** (requested 2026-10-05):
+  - Before: only identical texts counted, though not necessarily back to back (3 within the
+    last 10 messages).
+  - Now: a message counts as a repeat when its embedding is at least `repeat` similar to an
+    earlier message in the window, so a paraphrase of an earlier question counts too.
+  - The engine embeds once, before the guardrails, and the state keeps the window's vectors.
+    Option numbers are still excluded.
+  - `repeat` lives in `thresholds.json` per model and language. The evaluation measures it
+    with pairs that must count (paraphrases) and pairs that must not (the same request for
+    another product, which is a new question).
+
+## Decisions (2026-10-05)
+
+- **Q2-A — Default embedding model:** `multilingual_minilm`. `hashing` is for offline use and
+  the tests.
+- **Q2-B — Second ML model:** none. MiniLM only.
+- **Q2-C — Where the texts come from:**
+  - **offline** (building the catalog and the evaluation set): read from Neon;
+  - **online** (live conversations): the customer's text comes straight from the web page,
+    and nothing is read from the data.
+- **Q2-D — Production image:** the MiniLM weights are built into the Modal image (web task
+  6.2), so cold starts never download them. Noted in the web guide.
+
+## Review (phase 2)
+
+**Result:**
+- Models are chosen from Enums, by CLI or environment:
+  - `EmbeddingModel`: `multilingual_minilm` (default) and `hashing` (deterministic);
+  - `LanguageDetectorModel`: `py3langid`.
+- MiniLM runs through ONNX (`fastembed`) in about 2.5 ms per message.
+- Tests: 601 passed, 3 skipped, 99% coverage on `krtr/back/ia/`. Lint is clean, and no
+  function goes over 40 lines.
+
+**What the measurements changed (beyond the plan):**
+- **A new rival label, `unsupported`.** Banking requests the agent can't answer scored as high
+  as real ones ("Me cobraron algo que no reconozco" scored 0.72 against `account_balance`;
+  "Saldo de mi tarjeta de crédito" scored 0.71). A match now needs a lead over every guard
+  label too. Guard recall went from 4 of 16 (ES) and 8 of 16 (PT) to 11 and 12 of 16, with
+  zero false flags.
+- **Identifiers stripped before embedding.** "¿Cómo va mi reclamo PQR-104233?" went from 0.55
+  to a clear match.
+- **Repetition by request.** With MiniLM, the same balance request for another product is
+  more similar (0.72–0.74) than a real rewording (0.60–0.67). A similarity threshold alone
+  would close legitimate conversations. Now, the same intent with the same details, anywhere
+  in the window, counts as a repeat; a near-identical text still counts too.
+- **The threshold search was rewritten twice.** A joint search on 51 messages gave arbitrary
+  picks (an `accept` of 0.30, a margin of 0). The final rules are explicit, each with a 0.03
+  safety gap:
+  - `margin` comes from the non-catalog messages within reach of a match;
+  - `accept` keeps every right match that clears that margin;
+  - `reject` never sends a catalog message to "rephrase".
+
+**Final measurements (MiniLM):**
+
+| | ES | PT |
+|---|---|---|
+| Catalog messages answered directly | 17 of 18 | 17 of 18 |
+| Wrong matches | 0 | 0 |
+| Guard flags | 11 of 16, 0 false | 12 of 16, 0 false |
+| Repeats caught | 2 of 5, 0 false out of 1,200+ negative pairs | 3 of 5, 0 false |
+
+The hashing thresholds were re-measured with the same rules.
+
+**Open:**
+- **Guard flags only flag.** Closing on them, and escalating `unsupported` straight to a
+  person, waits for phase 3.
+- **The catalog and the evaluation set are small.** Growing them is the cheapest way to raise
+  coverage and confidence.
+- **Candidate intents** `goodbye` and `file_complaint` (`docs/ia-intents.md`).
+- **Q-A:** the `complaint_id` format.
+
+---
+
 # Phase 1 — `krtr/back/ia/` deterministic core
 
-_Source: `docs/ia-proposal.md` §7, phase 1 · 2026-10-02 · Status: **phase 1 implemented, pending your review**_
+_Source: `docs/ia-proposal.md` §7, phase 1 · 2026-10-02 · Status: **merged into `master` (#13, v1.7.0)**_
 
 **Goal:** an end-to-end conversation engine with **no model calls at all**. A message
 goes through the guardrails and the intent matcher (with a fake embedder in tests), then

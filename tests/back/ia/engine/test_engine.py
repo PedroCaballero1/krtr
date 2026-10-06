@@ -110,7 +110,7 @@ def test_a_clear_sentence_in_the_other_language_switches_the_replies() -> None:
     engine = sample_engine()
 
     _say(engine, "Preciso consultar o saldo do meu cartão de crédito")
-    switched = _say(engine, "Ahora quiero saber el saldo de mi cuenta de ahorros")
+    switched = _say(engine, "Buenas, quería saber cuál es mi saldo actual en mi cuenta de ahorros")
 
     assert switched.language == InterfaceLanguage.SPANISH
     assert switched.reply.startswith("Saldo de cuenta de ahorros:")

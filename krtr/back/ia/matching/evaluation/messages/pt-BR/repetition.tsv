@@ -1,0 +1,10 @@
+same	Qual é o meu saldo?	Me diga quanto tenho na conta
+same	Como está minha reclamação?	O que aconteceu com minha reclamação?
+same	Quero falar com alguém	Preciso falar com uma pessoa
+same	oi banco	Oi, banco
+same	Saldo do meu cartão de crédito	Quanto devo no cartão de crédito?
+different	Saldo da minha conta poupança	Saldo do meu cartão de crédito
+different	Saldo da minha conta corrente	Saldo do meu empréstimo pessoal
+different	Qual é o meu saldo?	Como está minha reclamação?
+different	Status do meu caso PQR-104233	Saldo da minha conta poupança
+different	Cobraram algo que não reconheço	Qual é o meu saldo?

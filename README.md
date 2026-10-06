@@ -92,9 +92,26 @@ the details the answer needs with rules, and asks the customer when something is
 always answers from ES / PT templates, never with free text. See `docs/ia-proposal.md` for
 the design.
 
-Phase 1 runs on sample data for one demo customer (`CUST-DEMO`), held in memory, so it needs
-no `.env`, no Neon and no model. It understands two intents for now: a product's balance and
-a complaint's status.
+The commands run on sample data for one demo customer (`CUST-DEMO`), held in memory, so they
+need no `.env` and no Neon. It understands two intents for now: a product's balance and a
+complaint's status. Messages it can't answer (an unrecognised charge, a lost card, off-topic
+questions) are never answered with the wrong thing: the agent asks to rephrase and, after 3
+questions, hands the case to a person.
+
+### Models
+
+Every model the agent runs is chosen from a fixed list, by CLI option or environment variable.
+An unknown name fails at startup and lists the accepted values. The option wins over the
+variable, which wins over the default.
+
+| What | Option | Variable | Values |
+|---|---|---|---|
+| Embedding model | `--embedding-model` | `KRTR_IA_EMBEDDING_MODEL` | `multilingual_minilm` (default: `paraphrase-multilingual-MiniLM-L12-v2` through ONNX), `hashing` (deterministic, offline) |
+| Language detector | `--language-model` | `KRTR_IA_LANGUAGE_MODEL` | `py3langid` (default, deterministic, offline) |
+| Where model weights are kept | — | `KRTR_IA_MODEL_CACHE` | default `.krtr/models` (git-ignored) |
+
+The first run with `multilingual_minilm` downloads about 220 MB into the cache. Use
+`--embedding-model hashing` to run without downloading anything.
 
 ### Asking one message
 
@@ -186,20 +203,45 @@ uv run krtr --verbose back ia ask "¿Cuál es mi saldo?"
 #     embedding 0.04, matching 0.10, resolution 0.04, action 0.02, writing 0.01
 ```
 
-Today's sub-millisecond turns come from the hashing embedder and in-memory data. The real
-multilingual model (phase 2), Neon reads and the LLM clarifier (phase 3) are what the < 1 s
-target (G16) will be measured against.
+With `multilingual_minilm` a turn takes about 3–5 ms on a laptop, almost all of it the
+embedding; with `hashing`, under 1 ms. Neon reads and the LLM clarifier (phase 3) will add to
+that, against the < 1 s target (G16).
+
+### Measuring the thresholds (`evaluate`)
+
+Whether a message is answered, offered options or asked to rephrase depends on thresholds
+measured per model and language. They live in `krtr/back/ia/matching/thresholds.json`.
+
+```bash
+uv run krtr back ia evaluate                 # report, for the selected model
+uv run krtr back ia evaluate --write         # also save the proposed thresholds
+uv run krtr back ia evaluate --embedding-model hashing
+# [es] 51 messages, 10 repetition pairs, embedding p50 2.6 ms, p95 4.0 ms
+#   current : right 17 · wrong 0 · ambiguous 5 · no match 29 · guards 11/0 false · repeats 2/0 false
+#   proposed: ...
+```
+
+The report is based on the evaluation set (`krtr/back/ia/matching/evaluation/messages/<language>/`),
+which is kept separate from the catalog's example phrases
+(`krtr/back/ia/matching/exemplars/<language>/`). Both use one file per label, one phrase per
+line. The proposal follows four rules:
+
+- **No wrong matches:** a message is never answered with the wrong intent.
+- **No false flags or repeats:** no message is flagged off-topic, and no pair counted as a
+  repeat, by mistake.
+- **A safety gap of 0.03:** every threshold keeps that distance from the measured messages.
+- **Then coverage:** as many messages as possible are answered directly.
 
 Add `--verbose` before
 `back` (`uv run krtr --verbose back ia chat`) to see each step of the turn in the log.
 
 ### Current limits
 
-- **Spelling, not meaning.** The matcher compares spelling (character trigrams), not meaning,
-  until the local multilingual model arrives in phase 2. A message worded far from the example
-  phrases may therefore be asked about instead of answered.
-- **Seed phrases.** The example phrases (`krtr/back/ia/matching/exemplars/<language>/<intent>.txt`,
-  one per line) are a small seed set.
+- **Small catalog and evaluation set.** The phrases come from the call history and the
+  complaint categories (`docs/ia-intents.md`), and the history has little variety. More
+  phrases make the thresholds more reliable.
+- **Off-topic and aggressive messages are only flagged.** About 70% of them are flagged on the
+  evaluation set. They never get an answer, but closing on them waits for the LLM (phase 3).
 - **Provisional complaint ID format.** The format is provisional
   (`krtr/back/ia/deterministic/config.py`).
 

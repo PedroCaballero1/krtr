@@ -1,0 +1,10 @@
+same	¿Cuál es mi saldo?	Dime cuánto tengo en la cuenta
+same	¿Cómo va mi queja?	¿Qué pasó con mi reclamo?
+same	Quiero hablar con alguien	Necesito hablar con una persona
+same	hola banco	Hola, banco
+same	Saldo de mi tarjeta de crédito	¿Cuánto debo en la tarjeta de crédito?
+different	Saldo de mi cuenta de ahorros	Saldo de mi tarjeta de crédito
+different	Saldo de mi cuenta corriente	Saldo de mi préstamo personal
+different	¿Cuál es mi saldo?	¿Cómo va mi queja?
+different	Estado de mi caso PQR-104233	Saldo de mi cuenta de ahorros
+different	Me cobraron algo que no reconozco	¿Cuál es mi saldo?

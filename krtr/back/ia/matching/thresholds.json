@@ -1,0 +1,38 @@
+{
+  "hashing": {
+    "es": {
+      "accept": 0.5,
+      "reject": 0.39,
+      "margin": 0.14,
+      "guard": 0.66,
+      "repeat": 0.55,
+      "top_k": 3
+    },
+    "pt-BR": {
+      "accept": 0.44,
+      "reject": 0.38,
+      "margin": 0.13,
+      "guard": 0.53,
+      "repeat": 0.53,
+      "top_k": 3
+    }
+  },
+  "multilingual_minilm": {
+    "es": {
+      "accept": 0.66,
+      "reject": 0.65,
+      "margin": 0.03,
+      "guard": 0.77,
+      "repeat": 0.73,
+      "top_k": 3
+    },
+    "pt-BR": {
+      "accept": 0.67,
+      "reject": 0.66,
+      "margin": 0.03,
+      "guard": 0.76,
+      "repeat": 0.79,
+      "top_k": 3
+    }
+  }
+}
