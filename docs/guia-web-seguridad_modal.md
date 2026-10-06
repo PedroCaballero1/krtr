@@ -712,6 +712,12 @@ Guarda el texto de la conversación, separado de `events`, por dos razones:
 - **Aceptación:** 0 alertas altas; cada alerta media está justificada.
 - **Commit:** `ci(security): add OWASP ZAP baseline scan`
 - **Depende de:** 6.7
+- **Resultado (5-oct):** `.github/workflows/zap.yml` corre a mano (`workflow_dispatch`) y cuando el workflow `Deploy` termina en verde (`workflow_run`; como todo `workflow_run`, solo se activa cuando el archivo esté en `master`). Un job por URL: la app desde `/` y Keycloak desde su página de login real (la URL a la que redirige `/auth/login`, porque la raíz de `krtr-auth` lleva a `/admin`, que da 404). Ambos usan `.zap/baseline.sh`, que corre ZAP 2.17.0 (imagen fijada por digest) y aplica la aceptación: **ninguna alerta alta y ninguna media fuera de `.zap/rules.tsv`**. El mismo script corre en local con Docker (Colima) y deja los reportes en `.zap/reports/` (fuera de git); en GitHub se suben como artefactos.
+  - **Corrida local (5-oct, 23:15) — app:** 0 altas, 0 medias. Avisos bajos o informativos: directivas de caché (10015, 10049) en el HTML y los assets, un comentario sospechoso en el JS compilado (10027), COEP ausente (90004) y "Modern Web Application" (10109).
+  - **Keycloak:** 0 altas. Dos reglas medias, aceptadas en `rules.tsv`:
+    - **10202** (sin token anti-CSRF): falso positivo. El formulario está atado a la cookie `AUTH_SESSION_ID` y al `session_code`/`execution`/`tab_id` de un solo uso de su URL.
+    - **10055** (CSP): Keycloak pone una CSP mínima (`frame-src 'self'; frame-ancestors 'self'; object-src 'none'`) y el tema usa un `onsubmit` en línea. Se aceptó como **pendiente**: arreglarla requiere quitar el `onsubmit` del tema, fijar la CSP del realm con `kcadm.sh` y desplegar ([checklist](security-checklist.md) §5).
+  - Bajas en Keycloak: las respuestas 404 del gateway (`/`, `/admin/`) no llevan HSTS; las cookies de Keycloak usan `SameSite=None` y `KC_AUTH_SESSION_HASH` no es `HttpOnly` (así las define Keycloak).
 
 #### 7.5 🤖 Pruebas de carga
 - Igual que la v1: Locust con cuentas QA. Base de 20 usuarios por 10 min, pico de 50 y prueba sostenida de 30 min con 20. El objetivo es D7.
