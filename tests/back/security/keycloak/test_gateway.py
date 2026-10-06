@@ -4,6 +4,8 @@ Acceptance: blocked paths answer 404 without reaching Keycloak, several Set-Cook
 through, 302 redirects are passed on unchanged, and a timeout answers 504.
 """
 
+import gzip
+
 import httpx
 import pytest
 import respx
@@ -15,6 +17,7 @@ from krtr.back.security.keycloak.gateway import build_gateway, normalize_path
 KEYCLOAK = "http://127.0.0.1:8081"
 PUBLIC_HOST = "juan-alvarezo-2002--krtr-auth.modal.run"
 LOGIN_PAGE = "/realms/krtr/protocol/openid-connect/auth"
+STYLESHEET = "/resources/abc12/login/krtr/css/krtr.css"
 
 
 @pytest.fixture
@@ -192,6 +195,37 @@ def test_hardening_headers_are_added_and_server_removed(
     assert response.headers["strict-transport-security"].startswith("max-age=")
     assert response.headers.get_list("referrer-policy") == ["no-referrer"]
     assert "server" not in response.headers
+
+
+def test_keycloak_is_asked_for_an_uncompressed_answer(
+    gateway: TestClient, keycloak: respx.MockRouter
+) -> None:
+    """Keycloak gzips its stylesheets unless told not to; the browser's preference is dropped."""
+    stylesheet = keycloak.get(STYLESHEET).mock(return_value=httpx.Response(200))
+
+    gateway.get(STYLESHEET, headers={"Accept-Encoding": "gzip, br"})
+
+    assert stylesheet.calls.last.request.headers.get_list("accept-encoding") == ["identity"]
+
+
+def test_a_compressed_answer_reaches_the_browser_decoded_and_unlabelled(
+    gateway: TestClient, keycloak: respx.MockRouter
+) -> None:
+    """The login page lost its styles when the decoded CSS kept Keycloak's gzip label."""
+    css = b"body { color: #201e1d; }"
+    keycloak.get(STYLESHEET).mock(
+        return_value=httpx.Response(
+            200,
+            content=gzip.compress(css),
+            headers={"content-encoding": "gzip", "content-type": "text/css"},
+        )
+    )
+
+    response = gateway.get(STYLESHEET)
+
+    assert "content-encoding" not in response.headers
+    assert response.headers["content-length"] == str(len(css))
+    assert response.content == css
 
 
 def test_an_oversized_body_is_413_without_reaching_keycloak(

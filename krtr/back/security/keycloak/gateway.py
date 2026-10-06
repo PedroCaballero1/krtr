@@ -44,7 +44,7 @@ _DROPPED_REQUEST_HEADERS = frozenset(
     {
         "host",
         "content-length",
-        "accept-encoding",  # Keycloak answers uncompressed, so the body is passed as is.
+        "accept-encoding",  # Replaced by `identity`; see `_forwarded_headers`.
         "forwarded",
         "x-forwarded-for",
         "x-forwarded-host",
@@ -61,8 +61,18 @@ _DROPPED_REQUEST_HEADERS = frozenset(
         "upgrade",
     }
 )
+# `content-encoding` goes too: httpx always hands over the decoded body, so a `gzip` label left on
+# it would make the browser fail to decode the stylesheets and scripts of the login page.
 _DROPPED_RESPONSE_HEADERS = frozenset(
-    {"server", "content-length", "connection", "keep-alive", "transfer-encoding", "trailer"}
+    {
+        "server",
+        "content-length",
+        "content-encoding",
+        "connection",
+        "keep-alive",
+        "transfer-encoding",
+        "trailer",
+    }
 )
 _ALL_METHODS = ["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"]
 
@@ -166,6 +176,9 @@ class KeycloakGateway:
     def _forwarded_headers(self, request: Request) -> list[tuple[str, str]]:
         """Copies the client's headers, minus hop and spoofable ones, plus the X-Forwarded set.
 
+        Asks Keycloak for an uncompressed answer: without it httpx sends its own
+        `Accept-Encoding`, and Keycloak gzips its static resources.
+
         Args:
             request: The incoming request.
 
@@ -180,6 +193,7 @@ class KeycloakGateway:
         client_ip = request.client.host if request.client else ""
         return [
             *headers,
+            ("Accept-Encoding", "identity"),
             ("X-Forwarded-Proto", "https"),
             ("X-Forwarded-Host", self._config.public_host),
             ("X-Forwarded-Port", "443"),
