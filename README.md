@@ -1,5 +1,148 @@
 # krtr
 
+**A banking customer service agent that answers only what it can prove.**
+
+> **Start here:** download and open [`00-START-HERE-krtr-story.html`](00-START-HERE-krtr-story.html)
+> in a browser. It's the full story as an infographic, with the numbers behind each decision.
+> GitHub shows HTML files as source code, so the file has to be opened locally.
+
+## What we achieved
+
+A bank customer asks for a balance or how a complaint is going, in Spanish or Portuguese. krtr
+answers from that customer's own data, or hands the case to a person.
+
+- **Zero wrong answers on the evaluation set,** in both languages. The thresholds are set so a
+  doubtful message gets a question, never a guess.
+- **About 3 ms for a clear request,** with no LLM. About 1.3 s only when the local LLM reads a
+  doubtful reply.
+- **Under 10 USD a month for the whole solution,** all the infrastructure and model hosting
+  included.
+- **No tokens sent to an outside model.** Both models run locally: no per-token cost, and no
+  conversation leaves the system.
+- **656 automated tests,** with 98% coverage on the agent. The tests never download a model.
+- **Built:** the agent (three phases, usable from the command line), login with Keycloak and
+  sessions on the server, an encrypted log of every event, and the bilingual web front end.
+
+### For the jury
+
+Log in to the krtr page with the test accounts in
+`https://juan-alvarezo-2002--krtr.modal.run/`
+using: `krtr-security/data/credentials/jury_credentials.csv`.
+
+## The solution: deterministic first
+
+Every answer comes from the customer's own data; models only help understand the question.
+- **An action** reads the session customer's data and returns facts.
+- **A template** phrases those facts in the customer's language, and can show nothing else.
+- **A local embedding model** (MiniLM, vector similarity) matches the message against known
+  phrasings. A match needs a high score and a clear lead over every rival.
+- **A local LLM** (Qwen2.5-1.5B, int4 ONNX) reads only the doubtful replies. It chooses among
+  the options offered, and a deterministic rule checks whatever it proposes.
+
+Each turn ends in one of four ways:
+1. **Answer:** a clear request with its details.
+2. **Ask:** a question with numbered options, when a detail is missing or the match is
+   doubtful.
+3. **Hand over:** a person takes the case, for requests the agent can't answer or after three
+   questions without progress.
+4. **Close:** a confirmed repeated, abusive or off-topic conversation.
+
+## How the data led there
+
+### The brief
+
+The hackathon asked for a secure web page where a bank's customers log in and chat with an
+agent ([`docs/goals.md`](docs/goals.md)). It had to:
+- meet industry-standard security;
+- close the session after 5 minutes idle;
+- log every event;
+- support Spanish and Portuguese (a requirement of the challenge);
+- answer in under a second;
+- route by difficulty to cut cost, and hand a case to a person when needed.
+
+### What the data said
+
+We had ten datasets covering three years of daily files: 150,000 customers, 67,095 complaints,
+171,321 call transcripts and 212,759 surveys. Four analyses ([`notebooks/eda/`](notebooks/eda/))
+found real structure in size and concentration:
+
+| Hypothesis | What the data supports |
+|---|---|
+| Delinquency | The top 10% of delinquent customers hold about 77% of the delinquent balance |
+| Complaints | 74.9% of complaints are still active |
+| Branches | No branch stands out |
+| Customer value | Very skewed: the top 10% of customers hold 66% of interest income |
+
+### Why there is no machine learning model
+
+The EDA found **no relationship a model could learn**:
+- credit score and tenure vs customer value: Spearman 0.00;
+- days to resolution vs low-rating comments: between −0.07 and +0.08;
+- call topic labels vs call text: Cramér's V 0.01;
+- delinquency: a flat 15% in every segment.
+
+The one relationship that moves is activity vs balances (0.61), and it's mechanical: more
+products mean more activity.
+
+The data also looks generated, not observed:
+- `days_past_due` takes only 7 values;
+- surveys hold 13 distinct comments;
+- a complaint's product never belongs to the complainant.
+
+**Any predictive model trained on it would overfit:** it would look accurate on these files
+and fail on real customers. No large opportunity in the analysis needed one either. The only
+machine learning technique the solution uses is **vector similarity**, to match a customer's
+message with known phrasings.
+
+### The decision
+
+The call history made it clear. Its 171,321 transcripts hold only 12 distinct lines, and
+**every call opens with a balance request**. Two facts pointed to automating the recurring
+questions:
+- **What customers ask:** balances, and how their complaints are going (3 in 4 are still
+  open). Both can be answered from data the bank holds, with no person involved.
+- **What it costs today:** about 92,000 jobs a year are handled by people (11,321 of them
+  call-center complaints).
+
+The agent covers **account balance** and **complaint status** first. Everything else (an
+unrecognised charge, a lost card, a loan) goes to a person.
+
+### Built in three phases, measured at every step
+
+1. **A deterministic core:** no model at all, fully testable offline.
+2. **Vector similarity (MiniLM):** the thresholds are measured per language with one rule, no
+   wrong match ever. A rival label for requests the agent can't answer raised the guard flags
+   from 4 to 11 of 16.
+3. **A local LLM (Qwen):** it reads only doubtful replies. Asking it to classify a message
+   instead of "is it abusive?" cut false closures from 17 to 1 of 26 banking complaints.
+
+### The platform
+
+Both developers work full time, so every infrastructure choice was judged by how fast we could
+change it and test it.
+
+| Choice | Why |
+|---|---|
+| **Modal** | Google Cloud's free trial requires a payment. Modal's Starter credits run our code without Docker image builds, so changes are tested quickly. |
+| **Neon** | Serverless Postgres with a free tier and branches for `dev` and production, easy to use from Modal. |
+| **Keycloak** | Open-source, standard login (OIDC with PKCE) for the 150,000 accounts, at no cost. |
+| **FastAPI** | A backend-for-frontend: the browser never sees a token, and session cookies are `HttpOnly`, `Secure` and `__Host-`. |
+| **Local models** | MiniLM and Qwen run inside the app: no per-token cost, no data leaving, and they run in tests. |
+| **Clean code** | Vertical slices, every model chosen from a fixed list, SQL in `.sql` files, events encrypted with AES-256-GCM. |
+
+## Next steps
+
+| Area | Next step |
+|---|---|
+| Agent | **More deterministic answers:** open more intents the agent can solve from data, starting with a polite close and filing a complaint with its category, so fewer cases need a person. |
+| Agent | **Some independence:** give the agents more room where it is safe, such as phrasing replies or chaining steps, while every fact still comes from a deterministic action. |
+| Agent | **Bundles by config:** package each agent (intents, phrases, thresholds, models, prompts) as a versioned configuration, so a version can be deployed, compared and rolled back. |
+| Platform | **Cheaper, stable infra:** look for hosting that costs less and is more stable than a monthly credit budget, for the web app, the login service and the models. |
+| Platform | **Docker:** containerise the repository, so it runs the same way on every machine and on any provider. |
+| Platform | **Microservices:** split the vertical slices (web, security, agent, data) into services that can be deployed and scaled on their own. |
+
+The rest of this README is the walkthrough for the repository's tools.
+
 ## Cómo inicializar
 
 Requisitos previos: Python 3.13+ and [uv](https://docs.astral.sh/uv/).
