@@ -10,16 +10,15 @@ with local caches must not share the database (D20). Consumed by
 """
 
 import logging
-from pathlib import Path, PurePosixPath
+from pathlib import Path
 from typing import Protocol
 
+from krtr.back.security.credentials.config import IMPORT_VOLUME, VOLUME_IMPORT_DIRECTORY
 from krtr.back.security.keycloak.artifacts import PartialImportResult
 from krtr.compute.modal.staging import StagingVolume
 
 logger = logging.getLogger(__name__)
 
-IMPORT_VOLUME = "krtr-credentials-import"
-VOLUME_IMPORT_DIRECTORY = PurePosixPath("/import")  # Inside the Volume.
 APP_NAME = "krtr-web"
 AUTH_FUNCTION = "auth"
 IMPORT_FUNCTION = "auth_import"

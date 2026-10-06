@@ -7,7 +7,7 @@ and where every file goes are declared once. Consumed by `krtr/back/security/cre
 
 import string
 from enum import StrEnum
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 
 from pydantic import BaseModel, Field
 
@@ -15,6 +15,11 @@ DEFAULT_SOURCE = Path("data/customers.parquet")
 DEFAULT_OUTPUT_DIRECTORY = Path("data/credentials")
 IMPORT_SUBDIRECTORY = "import"
 REALM = "krtr"
+
+# The Modal Volume the users files are staged on for the production import (task 3.5), and the
+# folder inside it; kept here, free of heavy imports, because the Keycloak image reads them.
+IMPORT_VOLUME = "krtr-credentials-import"
+VOLUME_IMPORT_DIRECTORY = PurePosixPath("/import")
 
 
 class SampleGroup(StrEnum):

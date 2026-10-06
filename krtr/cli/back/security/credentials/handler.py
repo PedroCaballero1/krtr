@@ -15,6 +15,7 @@ import typer
 from krtr.back.security.credentials.config import (
     DEFAULT_OUTPUT_DIRECTORY,
     DEFAULT_SOURCE,
+    IMPORT_VOLUME,
     CredentialsConfig,
 )
 from krtr.back.security.credentials.generator import generate_credentials
@@ -25,7 +26,6 @@ from krtr.back.security.credentials.importer import (
     users_files,
 )
 from krtr.back.security.credentials.remote import (
-    IMPORT_VOLUME,
     KeycloakIsServing,
     ModalAuthImportTarget,
     import_on_modal,
